@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import OpenAI from "openai";
 
 export async function DiscordRequest(endpoint, options) {
   // append endpoint to root API URL
@@ -44,4 +45,43 @@ export function getRandomEmoji() {
 
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+export async function getOnlineUsersWithRole(guildId, roleId) {
+  const endpoint = `/guilds/${guildId}/members?limit=1000`;
+  const response = await DiscordRequest(endpoint, { method: 'GET' });
+
+  const members = await response.json();
+  return members.filter(
+      (m) =>
+          m.roles.includes(roleId) &&
+          m.presence?.status !== 'offline'
+  );
+}
+
+export function formatTime(time) {
+  const days = Math.floor(time / (24 * 60 * 60));
+  const hours = Math.floor((time % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((time % (60 * 60)) / 60);
+  const seconds = time % 60;
+
+  const parts = [];
+
+  if (days > 0) parts.push(`**${days}** jour${days > 1 ? 's' : ''}`);
+  if (hours > 0) parts.push(`**${hours}** heure${hours > 1 ? 's' : ''}`);
+  if (minutes > 0) parts.push(`**${minutes}** minute${minutes > 1 ? 's' : ''}`);
+  if (seconds > 0 || parts.length === 0) parts.push(`**${seconds}** seconde${seconds > 1 ? 's' : ''}`);
+
+  return parts.join(', ').replace(/,([^,]*)$/, ' et$1');
+}
+
+export async function gork(messageHistory) {
+  const openai = new OpenAI();
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    messages: messageHistory,
+  });
+
+  return completion.choices[0].message.content;
 }
