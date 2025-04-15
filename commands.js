@@ -61,7 +61,7 @@ const CHALLENGE_COMMAND = {
 // Timeout vote command
 const TIMEOUT_COMMAND = {
   name: 'timeout',
-  description: 'Vote démocratique pour time out un boug',
+  description: 'Vote démocratique pour timeout un boug',
   options: [
     {
       type: 6,

@@ -42,6 +42,36 @@ export function getRandomEmoji() {
   const emojiList = ['😭','😄','😌','🤓','😎','😤','🤖','😶‍🌫️','🌏','📸','💿','👋','🌊','✨'];
   return emojiList[Math.floor(Math.random() * emojiList.length)];
 }
+export function getRandomHydrateText() {
+  const texts = [
+      `Hydratez-vous`,
+      `Pensez à vous hydratez`,
+      `Vous vous êtes hydratez aujourd'hui ?`,
+      `Buvez de l'eau la team`,
+      `#etsi vous vous hydratiez`,
+      `Oubliez pas de vous hydratez`,
+      `Hydratez vous la team`,
+      `Hydratez vous c'est important`,
+      `Hydratez-vous`,
+      `Pensez à vous hydratez`,
+      `Vous vous êtes hydratez aujourd'hui ?`,
+      `Buvez de l'eau la team`,
+      `#etsi vous vous hydratiez`,
+      `Oubliez pas de vous hydratez`,
+      `Hydratez vous la team`,
+      `Hydratez vous c'est important`,
+      `Hydratez-vous`,
+      `Pensez à vous hydratez`,
+      `Vous vous êtes hydratez aujourd'hui ?`,
+      `Buvez de l'eau la team`,
+      `#etsi vous vous hydratiez`,
+      `Oubliez pas de vous hydratez`,
+      `Hydratez vous la team`,
+      `Hydratez vous c'est important`,
+      `nsm ojd ça s'hydrate pas`,
+  ];
+  return texts[Math.floor(Math.random() * texts.length)];
+}
 
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
