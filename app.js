@@ -88,7 +88,7 @@ client.on('messageCreate', async (message) => {
       formatted.push(
           {
             role: "developer",
-            content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum "
+            content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum "
           },
           {
             role: "developer",
