@@ -16,7 +16,7 @@ import cron from 'node-cron';
 // Create an express app
 const app = express();
 // Get port, or default to 3000
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 25578;
 // To keep track of our active games
 const activeGames = {};
 const activePolls = {};
@@ -40,7 +40,9 @@ client.on('messageCreate', async (message) => {
   // Check if the message content includes the word "quoi" (case-insensitive)
   if (message.content.toLowerCase().includes("quoi")) {
     let prob = Math.random()
+    console.log(`feur ? ${prob} ${process.env.FEUR_PROB}`)
     if (prob < process.env.FEUR_PROB) {
+        console.log('feur!')
       // Send a message "feur" to the same channel
       message.channel.send(`feur`)
           .catch(console.error);
@@ -153,6 +155,7 @@ client.once('ready', () => {
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
   // Interaction id, type and data
   const { id, type, data } = req.body;
+    console.log(id);
 
   /**
    * Handle verification requests
