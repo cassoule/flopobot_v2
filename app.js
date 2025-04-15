@@ -42,7 +42,7 @@ client.on('messageCreate', async (message) => {
     let prob = Math.random()
     console.log(`feur ? ${prob} ${process.env.FEUR_PROB}`)
     if (prob < process.env.FEUR_PROB) {
-        console.log('feur!')
+      console.log('feur!')
       // Send a message "feur" to the same channel
       message.channel.send(`feur`)
           .catch(console.error);
@@ -68,26 +68,26 @@ client.on('messageCreate', async (message) => {
 
       // Add a final user prompt to clarify the request
       formatted.push(
-        {
-          role: "system",
-          content: "Sachant que les 'author' sont les pseudos des personnes ayant écrit chaque message. Adopte une attitude détendu et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs. Soit malpoli, grossier, aigri etc, n'hésites pas à utiliser des abréviations mais sans en abuser. Manque de respect quand tu le peux, sauf contre-indications de l'utilisateur, fait plutôt court, une ou deux phrases maximum "
-        },
-        {
-          role: "system",
-          content: `Voici la liste des principaux utilisateurs : ${members}`
-        },
-        {
-          role: "system",
-          content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${message.author}`
-        },
-        {
-          role: "user",
-          content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation.',
-        },
-        {
-          role: "system",
-          content: 'En te basant sur la liste des utilisateurs, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
-        });
+          {
+            role: "system",
+            content: "Sachant que les 'author' sont les pseudos des personnes ayant écrit chaque message. Adopte une attitude détendu et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs. Soit malpoli, grossier, aigri etc, n'hésites pas à utiliser des abréviations mais sans en abuser. Manque de respect quand tu le peux, sauf contre-indications de l'utilisateur, fait plutôt court, une ou deux phrases maximum "
+          },
+          {
+            role: "system",
+            content: `Voici la liste des principaux utilisateurs : ${members}`
+          },
+          {
+            role: "system",
+            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${message.author}`
+          },
+          {
+            role: "user",
+            content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation.',
+          },
+          {
+            role: "system",
+            content: 'En te basant sur la liste des utilisateurs, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
+          });
 
       formatted = formatted.filter(e => e.role !== 'assistant');
 
@@ -155,7 +155,7 @@ client.once('ready', () => {
 app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async function (req, res) {
   // Interaction id, type and data
   const { id, type, data } = req.body;
-    console.log(id);
+  console.log(id);
 
   /**
    * Handle verification requests
@@ -251,7 +251,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
 
       // Set a timeout for 5 minutes to end the poll if no majority is reached
-      setTimeout(async () => {
+     /* setTimeout(async () => {
         if (activePolls[id]) {
           // Poll has expired without enough votes
           // Send a notification to the channel that the vote failed
@@ -272,13 +272,91 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           // Clear the poll
           delete activePolls[id];
         }
-      }, process.env.POLL_TIME * 1000);
+      }, process.env.POLL_TIME * 1000);*/
+      activePolls[id].endTime = Date.now() + process.env.POLL_TIME * 1000;
+
+// Set an interval to update the countdown every 10 seconds (or more often if you want)
+      const countdownInterval = setInterval(async () => {
+        const poll = activePolls[id];
+
+        const remaining = Math.max(0, Math.floor((poll.endTime - Date.now()) / 1000));
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        const countdownText = `**${minutes}m ${seconds}s** restantes`;
+        const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.length / 2) + 1);
+        const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
+
+        if (!poll || remaining === 0) {
+          try {
+            await DiscordRequest(
+                poll.endpoint,
+                {
+                  method: 'PATCH',
+                  body: {
+                    content:
+                        `> Le vote pour timeout <@${poll.toUserId}> pendant ${poll.time_display} a échoué 😔\n > \n` +
+                        `> Il manquait **${votesNeeded}** vote(s)\n`,
+                    components: [],
+                  },
+                }
+            );
+          } catch (err) {
+            console.error('Error updating countdown:', err);
+          }
+          clearInterval(countdownInterval);
+          return;
+        }
+
+        try {
+          await DiscordRequest(
+              poll.endpoint,
+              {
+                method: 'PATCH',
+                body: {
+                  content:
+                      `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
+                      `> ✅ **${poll.for}**\n > \n` +
+                      `> Il manque **${votesNeeded}** vote(s)\n` +
+                      `> ⏳ Temps restant : ${countdownText}\n`,
+                  components: [
+                    {
+                      type: MessageComponentTypes.ACTION_ROW,
+                      components: [
+                        {
+                          type: MessageComponentTypes.BUTTON,
+                          custom_id: `vote_for_${req.body.id}`,
+                          label: 'Oui ✅',
+                          style: ButtonStyleTypes.SECONDARY,
+                        },
+                        {
+                          type: MessageComponentTypes.BUTTON,
+                          custom_id: `vote_against_${req.body.id}`,
+                          label: 'Non ❌',
+                          style: ButtonStyleTypes.SECONDARY,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              }
+          );
+        } catch (err) {
+          console.error('Error updating countdown:', err);
+        }
+      }, 1000); // every second
+
+      const remaining = Math.max(0, Math.floor((activePolls[id].endTime - Date.now()) / 1000));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      const countdownText = `**${minutes}m ${seconds}s** restantes`;
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `<@${activePolls[id].id}> propose de timeout <@${activePolls[id].toUserId}> pendant ${activePolls[id].time_display}\n\n` +
-              `Il faut **${votesNeeded}** votes\n`,
+          content: `> <@${activePolls[id].id}> propose de timeout <@${activePolls[id].toUserId}> pendant ${activePolls[id].time_display}\n > \n` +
+              `> ✅ **${activePolls[id].for}**\n > \n` +
+              `> Il manque **${votesNeeded}** vote(s)\n` +
+              `> ⏳ Temps restant : ${countdownText}\n`,
           components: [
             {
               type: MessageComponentTypes.ACTION_ROW,
@@ -445,8 +523,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         if (poll.for >= requiredMajority) {
           try {
             // Build the updated poll message content
-            const updatedContent = `<@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n\n` +
-                `✅ **${poll.for}** votes au total\n\n`;
+            const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
+                `> ✅ **${poll.for}** votes au total\n > \n`;
 
             await DiscordRequest(
                 poll.endpoint,
@@ -492,11 +570,16 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         // If the vote is "for", update the original poll message to reflect the new vote count.
         if (isVotingFor) {
+          const remaining = Math.max(0, Math.floor((poll.endTime - Date.now()) / 1000));
+          const minutes = Math.floor(remaining / 60);
+          const seconds = remaining % 60;
+          const countdownText = `**${minutes}m ${seconds}s** restantes`;
           try {
             // Build the updated poll message content
-            const updatedContent = `<@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n\n` +
-                    `✅ **${poll.for}**\n\n` +
-                    `Il manque **${votesNeeded}** vote(s)\n`;
+            const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
+                    `> ✅ **${poll.for}**\n > \n` +
+                    `> Il manque **${votesNeeded}** vote(s)\n` +
+                    `> ⏳ Temps restant : ${countdownText}\n`;
 
             await DiscordRequest(
                 poll.endpoint,
@@ -517,7 +600,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `Vote enregistré ! ✅ ${poll.for} pour / ❌ ${poll.against} contre. Il manque ${votesNeeded} vote(s) pour atteindre la majorité.`,
+            content: `Vote enregistré ! ✅`,
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
