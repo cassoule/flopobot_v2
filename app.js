@@ -11,7 +11,7 @@ import {
 import {
   getRandomEmoji,
   DiscordRequest,
-  getOnlineUsersWithRole,
+  //getOnlineUsersWithRole,
   formatTime,
   gork,
   getRandomHydrateText
@@ -33,9 +33,23 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,             // For guild events
     GatewayIntentBits.GuildMessages,      // For messages in guilds
-    GatewayIntentBits.MessageContent,     // For reading message content (privileged intent)
+    GatewayIntentBits.MessageContent, // For reading message content (privileged intent)
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
   ]
 });
+
+async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=process.env.VOTING_ROLE_ID) {
+  try {
+    const guild = await client.guilds.fetch(guild_id);
+    const members = await guild.members.fetch(); // Fetch all members
+
+    const online = members.filter(m => !m.user.bot && (m.presence?.status === 'online' || m.presence?.status === 'dnd') && m.roles.cache.has(role_id));
+    return online
+  } catch (err) {
+    console.error('Error while counting online members:', err);
+  }
+}
 
 // Login to Discord using your bot token (set BOT_TOKEN in your .env file)
 client.login(process.env.BOT_TOKEN);
@@ -115,7 +129,7 @@ client.on('messageCreate', async (message) => {
             content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
           });
 
-      const reply = await gork(formatted);
+      const reply = 'Je chill zbi (ntm a vouloir gaspiller les token)'//await gork(formatted); IA en pause
 
       // Send response to the channel
       await message.channel.send(reply);
@@ -127,7 +141,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // Once bot is ready
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   const randomMinute = Math.floor(Math.random() * 60);
   const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
@@ -144,16 +158,13 @@ client.once('ready', () => {
     const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
     const members = await getOnlineUsersWithRole(guild.id, roleId);
 
-    // Filter out bots and members the bot can't moderate
-    const eligible = members.filter(member => !member.user.bot);
-
     const prob = Math.random();
-    if (eligible.length === 0 || prob > process.env.CHAOS_PROB) {
+    if (members.size === 0 || prob > process.env.CHAOS_PROB) {
       console.log(`No roulette tonight ${prob}`)
       return
     }
 
-    const randomMember = eligible[Math.floor(Math.random() * eligible.length)];
+    const randomMember = eligible[Math.floor(Math.random() * members.size)];
 
     const timeoutUntil = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
@@ -298,44 +309,49 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const guildId = req.body.guild_id;
       const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
       const onlineEligibleUsers = await getOnlineUsersWithRole(guildId, roleId);
-      const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.length / 2) + 1);
+      const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.size / 2) + 1);
       const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
 
       // Set a timeout for 5 minutes to end the poll if no majority is reached
-     /* setTimeout(async () => {
-        if (activePolls[id]) {
-          // Poll has expired without enough votes
-          // Send a notification to the channel that the vote failed
-          try {
-            await DiscordRequest(
-                `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
-                {
-                  method: 'PATCH',
-                  body: {
-                    content: `Le vote pour timeout de <@${activePolls[id].toUserId}> a expiré sans atteindre la majorité.`,
-                    components: []  // remove the buttons
-                  },
-                }
-            );
-          } catch (err) {
-            console.error('Error sending vote failure message:', err);
-          }
-          // Clear the poll
-          delete activePolls[id];
-        }
-      }, process.env.POLL_TIME * 1000);*/
+      /* setTimeout(async () => {
+         if (activePolls[id]) {
+           // Poll has expired without enough votes
+           // Send a notification to the channel that the vote failed
+           try {
+             await DiscordRequest(
+                 `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+                 {
+                   method: 'PATCH',
+                   body: {
+                     content: `Le vote pour timeout de <@${activePolls[id].toUserId}> a expiré sans atteindre la majorité.`,
+                     components: []  // remove the buttons
+                   },
+                 }
+             );
+           } catch (err) {
+             console.error('Error sending vote failure message:', err);
+           }
+           // Clear the poll
+           delete activePolls[id];
+         }
+       }, process.env.POLL_TIME * 1000);*/
       activePolls[id].endTime = Date.now() + process.env.POLL_TIME * 1000;
+      activePolls[id].requiredMajority = requiredMajority;
 
 // Set an interval to update the countdown every 10 seconds (or more often if you want)
       const countdownInterval = setInterval(async () => {
         const poll = activePolls[id];
 
-        const remaining = Math.max(0, Math.floor((poll.endTime - Date.now()) / 1000));
+        if (!poll) {
+          clearInterval(countdownInterval);
+          return;
+        }
+
+        const remaining = Math.max(0, Math.floor((poll?.endTime - Date.now()) / 1000));
         const minutes = Math.floor(remaining / 60);
         const seconds = remaining % 60;
         const countdownText = `**${minutes}m ${seconds}s** restantes`;
-        const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.length / 2) + 1);
-        const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
+        const votesNeeded = Math.max(0, activePolls[id].requiredMajority - activePolls[id].for);
 
         if (!poll || remaining === 0) {
           try {
@@ -567,15 +583,14 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         const guildId = req.body.guild_id;
         const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
         const onlineEligibleUsers = await getOnlineUsersWithRole(guildId, roleId);
-        const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.length / 2) + 1);
-        const votesNeeded = Math.max(0, requiredMajority - poll.for);
+        const votesNeeded = Math.max(0, poll.requiredMajority - poll.for);
 
         // Check if the majority is reached
-        if (poll.for >= requiredMajority) {
+        if (poll.for >= poll.requiredMajority) {
           try {
             // Build the updated poll message content
             const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
-                `> ✅ **${poll.for}** votes au total\n > \n`;
+                `> ✅ **${poll.for}** votes au total\n\n`;
 
             await DiscordRequest(
                 poll.endpoint,
@@ -628,9 +643,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           try {
             // Build the updated poll message content
             const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
-                    `> ✅ **${poll.for}**\n > \n` +
-                    `> Il manque **${votesNeeded}** vote(s)\n` +
-                    `> ⏳ Temps restant : ${countdownText}\n`;
+                `> ✅ **${poll.for}**\n > \n` +
+                `> Il manque **${votesNeeded}** vote(s)\n` +
+                `> ⏳ Temps restant : ${countdownText}\n`;
 
             await DiscordRequest(
                 poll.endpoint,
