@@ -29,6 +29,7 @@ const PORT = process.env.PORT || 25578;
 const activeGames = {};
 const activePolls = {};
 let todaysHydrateCron = ''
+const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
 const client = new Client({
   intents: [
@@ -118,7 +119,7 @@ client.on('messageCreate', async (message) => {
     const timestamps = requestTimestamps.get(message.author.id) || [];
 
 // Remove timestamps older than SPAM_INTERVAL seconds
-    const updatedTimestamps = timestamps.filter(ts => now - ts < process.env.SPAM_INTERVAL);
+    const updatedTimestamps = timestamps.filter(ts => now - ts < SPAM_INTERVAL);
 
     if (updatedTimestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
       console.log(akhyAuthor.warned ? `${message.author.username} is restricted : ${updatedTimestamps}` : `Rate limit exceeded for ${message.author.username}`);
@@ -137,7 +138,7 @@ client.on('messageCreate', async (message) => {
           totalRequests: akhyAuthor.totalRequests
         },
       ])
-      akhyAuthor = getUser.get(akhyAuthor.id)
+      akhyAuthor = await getUser.get(akhyAuthor.id)
       if (akhyAuthor.warns > process.env.MAX_WARNS ?? 10) {
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const time = parseInt(process.env.SPAM_TIMEOUT_TIME)
@@ -162,13 +163,13 @@ client.on('messageCreate', async (message) => {
 
 // Track this new usage
     updatedTimestamps.push(now);
-    requestTimestamps.set(message.author.id, updatedTimestamps);
+    requestTimestamps.set(akhyAuthor.id, updatedTimestamps);
 
 // Proceed with your logic
     // akhyAuthor.warned = false;
     // akhyAuthor.warns = 0;
     // akhyAuthor.totalRequests++;
-    updateManyUsers([
+    await updateManyUsers([
       { 
         id: akhyAuthor.id, 
         username: akhyAuthor.username, 
@@ -179,7 +180,7 @@ client.on('messageCreate', async (message) => {
         totalRequests: akhyAuthor.totalRequests + 1
       },
     ])
-    akhyAuthor = getUser.get(akhyAuthor.id)
+    akhyAuthor = await getUser.get(akhyAuthor.id)
 
     try {
       // Fetch last 10 messages from the channel
@@ -195,15 +196,22 @@ client.on('messageCreate', async (message) => {
       }));
 
       const members = await getOnlineUsersWithRole(process.env.GUILD_ID, process.env.VOTING_ROLE_ID);
+      const allAkhys = await getAllUsers.all()
 
       formatted.push({
         role: 'developer',
         content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
       })
-      members.forEach(member => {
+      // members.forEach(member => {
+      //   formatted.push({
+      //     role: 'developer',
+      //     content: `${member.user.id} : ${member.user.global_name}, ${member.user.username}`,
+      //   })
+      // })
+      allAkhys.forEach(akhy => {
         formatted.push({
           role: 'developer',
-          content: `${member.user.id} : ${member.user.global_name}, ${member.user.username}`,
+          content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
         })
       })
 
@@ -215,7 +223,7 @@ client.on('messageCreate', async (message) => {
           },
           {
             role: "developer",
-            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${message.author}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots`
+            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots`
           },
           {
             role: "user",
@@ -251,7 +259,7 @@ client.on('messageCreate', async (message) => {
   }
   else if (message.content.toLowerCase().startsWith('membres')) {
     let content = ``
-    const allAkhys = getAllUsers.all()
+    const allAkhys = await getAllUsers.all()
     allAkhys.forEach((akhy) => content += `> ### ${akhy.globalName} \n > **${akhy.totalRequests}** requests \n > **${akhy.warns}** warns \n > **${akhy.allTimeWarns}** all-time warns \n\n`);
 
     message.channel.send(`${content}`)
