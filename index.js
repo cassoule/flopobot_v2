@@ -19,6 +19,7 @@ import {
 import { getShuffledOptions, getResult } from './game.js';
 import { Client, GatewayIntentBits } from 'discord.js';
 import cron from 'node-cron';
+import { flopoDB, insertUser, insertManyUsers, updateUser, updateManyUsers, getUser, getAllUsers, stmt } from './init_database.js';
 
 // Create an express app
 const app = express();
@@ -40,12 +41,13 @@ const client = new Client({
 });
 
 const requestTimestamps = new Map(); // userId => [timestamp1, timestamp2, ...]
-const MAX_REQUESTS_PER_MINUTE = parseInt(process.env.MAX_REQUESTS || "5");
+const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
 
 const akhysData= new Map()
 
 async function getAkhys() {
   try {
+    stmt.run();
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const members = await guild.members.fetch(); // Fetch all members
 
@@ -61,6 +63,17 @@ async function getAkhys() {
         allTimeWarns: 0,
         totalRequests: 0,
       });
+      insertManyUsers([
+        { 
+          id: akhy.user.id, 
+          username: akhy.user.username, 
+          globalName: akhy.user.globalName, 
+          warned: 0, 
+          warns: 0, 
+          allTimeWarns: 0, 
+          totalRequests: 0
+        },
+      ]);
     });
   } catch (err) {
     console.error('Error while counting akhys:', err);
@@ -90,6 +103,7 @@ client.on('messageCreate', async (message) => {
   // Check if the message content includes the word "quoi" (case-insensitive)
   if (message.content.toLowerCase().includes("quoi")) {
     let prob = Math.random()
+    console.log(`feur ${prob}`)
     if (prob < process.env.FEUR_PROB) {
       // Send a message "feur" to the same channel
       message.channel.send(`feur`)
@@ -97,34 +111,75 @@ client.on('messageCreate', async (message) => {
     }
   }
   else if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
-    let akhyAuthor = akhysData.get(message.author.id)
-    if (akhyAuthor.warns > process.env.MAX_WARNS) {
-      //todo timeout pour spam
-    }
+    //let akhyAuthor = akhysData.get(message.author.id)
+    let akhyAuthor = getUser.get(message.author.id)
 
     const now = Date.now();
     const timestamps = requestTimestamps.get(message.author.id) || [];
 
-// Remove timestamps older than 60 seconds
-    const updatedTimestamps = timestamps.filter(ts => now - ts < 60 * 1000);
+// Remove timestamps older than SPAM_INTERVAL seconds
+    const updatedTimestamps = timestamps.filter(ts => now - ts < process.env.SPAM_INTERVAL);
 
-    if (updatedTimestamps.length >= MAX_REQUESTS_PER_MINUTE) {
+    if (updatedTimestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
       console.log(akhyAuthor.warned ? `${message.author.username} is restricted : ${updatedTimestamps}` : `Rate limit exceeded for ${message.author.username}`);
       if (!akhyAuthor.warned) message.channel.send(`T'abuses fréro, attends un peu ⏳`);
-      akhyAuthor.warned = true;
-      akhyAuthor.warns++;
-      akhyAuthor.allTimeWarns++;
+      // akhyAuthor.warned = true;
+      // akhyAuthor.warns++;
+      // akhyAuthor.allTimeWarns++;
+      updateManyUsers([
+        { 
+          id: akhyAuthor.id, 
+          username: akhyAuthor.username, 
+          globalName: akhyAuthor.globalName, 
+          warned: 1, // true
+          warns: akhyAuthor.warns + 1, 
+          allTimeWarns: akhyAuthor.allTimeWarns + 1, 
+          totalRequests: akhyAuthor.totalRequests
+        },
+      ])
+      akhyAuthor = getUser.get(akhyAuthor.id)
+      if (akhyAuthor.warns > process.env.MAX_WARNS ?? 10) {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const time = parseInt(process.env.SPAM_TIMEOUT_TIME)
+        try {
+          await guild.members.edit(akhyAuthor.id, {
+            communication_disabled_until: new Date(Date.now() + time).toISOString(),
+            reason: 'Dose le spam fdp',
+          });
+        } catch (e) {
+          console.log('Tried timeout for AI spam : ', e)
+          message.channel.send(`<@${akhyAuthor.id}> tu me fais chier !! T'as de la chance que je puisse pas te timeout 🔪`)
+            .catch(console.error);
+          return
+        }
+        message.channel.send(`Ce bouffon de <@${akhyAuthor.id}> a été timeout pendant ${formatTime(time/1000)}, il me cassait les couilles 🤫`)
+          .catch(console.error);
+        return
+      }
       return;
     }
+    
 
 // Track this new usage
     updatedTimestamps.push(now);
     requestTimestamps.set(message.author.id, updatedTimestamps);
 
 // Proceed with your logic
-    akhyAuthor.warned = false;
-    akhyAuthor.warns = 0;
-    akhyAuthor.totalRequests++;
+    // akhyAuthor.warned = false;
+    // akhyAuthor.warns = 0;
+    // akhyAuthor.totalRequests++;
+    updateManyUsers([
+      { 
+        id: akhyAuthor.id, 
+        username: akhyAuthor.username, 
+        globalName: akhyAuthor.globalName, 
+        warned: 0, // false
+        warns: 0,  // reset 
+        allTimeWarns: akhyAuthor.allTimeWarns, 
+        totalRequests: akhyAuthor.totalRequests + 1
+      },
+    ])
+    akhyAuthor = getUser.get(akhyAuthor.id)
 
     try {
       // Fetch last 10 messages from the channel
@@ -183,7 +238,9 @@ client.on('messageCreate', async (message) => {
             content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
           });
 
-      const reply = 'Je chill zbi (ntm a vouloir gaspiller les token)'//await gork(formatted); IA en pause
+      // 'Je chill zbi (ntm a vouloir gaspiller les token)' // IA en pause
+      // await gork(formatted); IA en marche
+      const reply = await gork(formatted);
 
       // Send response to the channel
       await message.channel.send(reply);
@@ -193,8 +250,9 @@ client.on('messageCreate', async (message) => {
     }
   }
   else if (message.content.toLowerCase().startsWith('membres')) {
-    let content = `Liste des membres : \n`
-    akhysData.forEach((akhy, id) => content += `${akhy.globalName} | **${akhy.totalRequests}** requests | **${akhy.warns}** warns | **${akhy.allTimeWarns}** all-time warns \n`);
+    let content = ``
+    const allAkhys = getAllUsers.all()
+    allAkhys.forEach((akhy) => content += `> ### ${akhy.globalName} \n > **${akhy.totalRequests}** requests \n > **${akhy.warns}** warns \n > **${akhy.allTimeWarns}** all-time warns \n\n`);
 
     message.channel.send(`${content}`)
         .catch(console.error);
