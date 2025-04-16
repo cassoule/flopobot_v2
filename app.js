@@ -39,12 +39,40 @@ const client = new Client({
   ]
 });
 
+const requestTimestamps = new Map(); // userId => [timestamp1, timestamp2, ...]
+const MAX_REQUESTS_PER_MINUTE = parseInt(process.env.MAX_REQUESTS || "5");
+
+const akhysData= new Map()
+
+async function getAkhys() {
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const members = await guild.members.fetch(); // Fetch all members
+
+    const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.VOTING_ROLE_ID));
+
+    akhys.forEach(akhy => {
+      akhysData.set(akhy.user.id, {
+        id: akhy.user.id,
+        username: akhy.user.username,
+        globalName: akhy.user.globalName,
+        warned: false,
+        warns: 0,
+        allTimeWarns: 0,
+        totalRequests: 0,
+      });
+    });
+  } catch (err) {
+    console.error('Error while counting akhys:', err);
+  }
+}
+
 async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=process.env.VOTING_ROLE_ID) {
   try {
     const guild = await client.guilds.fetch(guild_id);
     const members = await guild.members.fetch(); // Fetch all members
 
-    const online = members.filter(m => !m.user.bot && (m.presence?.status === 'online' || m.presence?.status === 'dnd') && m.roles.cache.has(role_id));
+    const online = members.filter(m => !m.user.bot && m.presence?.status && m.roles.cache.has(role_id));
     return online
   } catch (err) {
     console.error('Error while counting online members:', err);
@@ -62,16 +90,42 @@ client.on('messageCreate', async (message) => {
   // Check if the message content includes the word "quoi" (case-insensitive)
   if (message.content.toLowerCase().includes("quoi")) {
     let prob = Math.random()
-    console.log(`feur ? ${prob} ${process.env.FEUR_PROB}`)
     if (prob < process.env.FEUR_PROB) {
-      console.log('feur!')
       // Send a message "feur" to the same channel
       message.channel.send(`feur`)
           .catch(console.error);
     }
   }
+  else if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
+    let akhyAuthor = akhysData.get(message.author.id)
+    if (akhyAuthor.warns > process.env.MAX_WARNS) {
+      //todo timeout pour spam
+    }
 
-  if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
+    const now = Date.now();
+    const timestamps = requestTimestamps.get(message.author.id) || [];
+
+// Remove timestamps older than 60 seconds
+    const updatedTimestamps = timestamps.filter(ts => now - ts < 60 * 1000);
+
+    if (updatedTimestamps.length >= MAX_REQUESTS_PER_MINUTE) {
+      console.log(akhyAuthor.warned ? `${message.author.username} is restricted : ${updatedTimestamps}` : `Rate limit exceeded for ${message.author.username}`);
+      if (!akhyAuthor.warned) message.channel.send(`T'abuses fréro, attends un peu ⏳`);
+      akhyAuthor.warned = true;
+      akhyAuthor.warns++;
+      akhyAuthor.allTimeWarns++;
+      return;
+    }
+
+// Track this new usage
+    updatedTimestamps.push(now);
+    requestTimestamps.set(message.author.id, updatedTimestamps);
+
+// Proceed with your logic
+    akhyAuthor.warned = false;
+    akhyAuthor.warns = 0;
+    akhyAuthor.totalRequests++;
+
     try {
       // Fetch last 10 messages from the channel
       const fetched = await message.channel.messages.fetch({ limit: 50 });
@@ -138,6 +192,13 @@ client.on('messageCreate', async (message) => {
       await message.channel.send("Oups, y'a eu un problème!");
     }
   }
+  else if (message.content.toLowerCase().startsWith('membres')) {
+    let content = `Liste des membres : \n`
+    akhysData.forEach((akhy, id) => content += `${akhy.globalName} | **${akhy.totalRequests}** requests | **${akhy.warns}** warns | **${akhy.allTimeWarns}** all-time warns \n`);
+
+    message.channel.send(`${content}`)
+        .catch(console.error);
+  }
 });
 
 // Once bot is ready
@@ -147,6 +208,8 @@ client.once('ready', async () => {
   const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
   todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
   console.log(todaysHydrateCron)
+  await getAkhys();
+  console.log('Akhys ready')
 
   // ─── 💀 Midnight Chaos Timer ──────────────────────
   cron.schedule(process.env.CRON_EXPR, async () => {
@@ -156,7 +219,7 @@ client.once('ready', async () => {
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
-    const members = await getOnlineUsersWithRole(guild.id, roleId);
+    const members = await getOnlineUsersWithRole(process.env.GUILD_ID, roleId);
 
     const prob = Math.random();
     if (members.size === 0 || prob > process.env.CHAOS_PROB) {
@@ -164,7 +227,7 @@ client.once('ready', async () => {
       return
     }
 
-    const randomMember = eligible[Math.floor(Math.random() * members.size)];
+    const randomMember = members[Math.floor(Math.random() * members.size)];
 
     const timeoutUntil = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
@@ -200,7 +263,7 @@ client.once('ready', async () => {
 
       if (generalChannel && generalChannel.isTextBased()) {
         generalChannel.send(
-            `${getRandomHydrateText()} <@${process.env.VOTING_ROLE_ID}> ${getRandomEmoji()}`
+            `${getRandomHydrateText()} <@&${process.env.VOTING_ROLE_ID}> ${getRandomEmoji()}`
         );
       }
 
@@ -312,29 +375,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.size / 2) + 1);
       const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
 
-      // Set a timeout for 5 minutes to end the poll if no majority is reached
-      /* setTimeout(async () => {
-         if (activePolls[id]) {
-           // Poll has expired without enough votes
-           // Send a notification to the channel that the vote failed
-           try {
-             await DiscordRequest(
-                 `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
-                 {
-                   method: 'PATCH',
-                   body: {
-                     content: `Le vote pour timeout de <@${activePolls[id].toUserId}> a expiré sans atteindre la majorité.`,
-                     components: []  // remove the buttons
-                   },
-                 }
-             );
-           } catch (err) {
-             console.error('Error sending vote failure message:', err);
-           }
-           // Clear the poll
-           delete activePolls[id];
-         }
-       }, process.env.POLL_TIME * 1000);*/
       activePolls[id].endTime = Date.now() + process.env.POLL_TIME * 1000;
       activePolls[id].requiredMajority = requiredMajority;
 
