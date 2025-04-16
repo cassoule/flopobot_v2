@@ -1,21 +1,22 @@
 {
-  "name": "discord-getting-started",
+  "name": "t12_flopobot",
   "private": true,
   "version": "1.0.0",
-  "description": "Discord example app",
-  "main": "app.js",
+  "description": "Flopobot le 2 donc en mieux",
+  "main": "index.js",
   "type": "module",
   "engines": {
     "node": ">=18.x"
   },
   "scripts": {
-    "start": "node app.js",
+    "start": "node index.js",
     "register": "node commands.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon index.js"
   },
   "author": "Shay DeWael",
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "^11.9.1",
     "discord-interactions": "^4.0.0",
     "discord.js": "^14.18.0",
     "dotenv": "^16.0.3",
