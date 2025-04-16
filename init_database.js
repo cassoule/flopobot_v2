@@ -21,11 +21,11 @@ export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, wa
 export const getUser = flopoDB.prepare('SELECT * FROM users WHERE id = ?');
 export const getAllUsers = flopoDB.prepare('SELECT * FROM users');
 
-export const insertManyUsers = flopoDB.transaction((users) => {
-  for (const user of users) try { insertUser.run(user) } catch (e) { console.log('users insert failed') };
+export const insertManyUsers = flopoDB.transaction(async (users) => {
+  for (const user of users) try { await insertUser.run(user) } catch (e) { console.log('users insert failed') };
 });
-export const updateManyUsers = flopoDB.transaction((users) => {
-  for (const user of users) try { updateUser.run(user) } catch (e) { console.log('users update failed') };
+export const updateManyUsers = flopoDB.transaction(async (users) => {
+  for (const user of users) try { await updateUser.run(user) } catch (e) { console.log('users update failed') };
 });
 //const getManyUsers = flopoDB.transaction(())
 

@@ -112,7 +112,7 @@ client.on('messageCreate', async (message) => {
   }
   else if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     //let akhyAuthor = akhysData.get(message.author.id)
-    let akhyAuthor = getUser.get(message.author.id)
+    let akhyAuthor = await getUser.get(message.author.id)
 
     const now = Date.now();
     const timestamps = requestTimestamps.get(message.author.id) || [];
@@ -126,7 +126,7 @@ client.on('messageCreate', async (message) => {
       // akhyAuthor.warned = true;
       // akhyAuthor.warns++;
       // akhyAuthor.allTimeWarns++;
-      updateManyUsers([
+      await updateManyUsers([
         { 
           id: akhyAuthor.id, 
           username: akhyAuthor.username, 
