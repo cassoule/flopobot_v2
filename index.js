@@ -93,7 +93,7 @@ async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=pro
   }
 }
 
-// Login to Discord using your bot token (set BOT_TOKEN in your .env file)
+// Login to Discord using bot token (optional)
 client.login(process.env.BOT_TOKEN);
 
 // Listen for message events
@@ -101,18 +101,12 @@ client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
 
-  // Check if the message content includes the word "quoi" (case-insensitive)
-  if (message.content.toLowerCase().includes("quoi")) {
-    let prob = Math.random()
-    console.log(`feur ${prob}`)
-    if (prob < process.env.FEUR_PROB) {
-      // Send a message "feur" to the same channel
-      message.channel.send(`feur`)
-          .catch(console.error);
-    }
-  }
-  else if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
-    //let akhyAuthor = akhysData.get(message.author.id)
+
+  
+  if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
+    let startTime = Date.now()
+    console.log('-------------------------------')
+    console.log('Request received : ' + startTime)
     let akhyAuthor = await getUser.get(message.author.id)
 
     const now = Date.now();
@@ -123,7 +117,7 @@ client.on('messageCreate', async (message) => {
 
     if (updatedTimestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
       console.log(akhyAuthor.warned ? `${message.author.username} is restricted : ${updatedTimestamps}` : `Rate limit exceeded for ${message.author.username}`);
-      if (!akhyAuthor.warned) message.channel.send(`T'abuses fréro, attends un peu ⏳`);
+      if (!akhyAuthor.warned) message.reply(`T'abuses fréro, attends un peu ⏳`);
       // akhyAuthor.warned = true;
       // akhyAuthor.warns++;
       // akhyAuthor.allTimeWarns++;
@@ -164,11 +158,6 @@ client.on('messageCreate', async (message) => {
 // Track this new usage
     updatedTimestamps.push(now);
     requestTimestamps.set(akhyAuthor.id, updatedTimestamps);
-
-// Proceed with your logic
-    // akhyAuthor.warned = false;
-    // akhyAuthor.warns = 0;
-    // akhyAuthor.totalRequests++;
     await updateManyUsers([
       { 
         id: akhyAuthor.id, 
@@ -183,78 +172,130 @@ client.on('messageCreate', async (message) => {
     akhyAuthor = await getUser.get(akhyAuthor.id)
 
     try {
-      // Fetch last 10 messages from the channel
-      const fetched = await message.channel.messages.fetch({ limit: 50 });
+      // Fetch last messages from the channel
+      const fetched = await message.channel.messages.fetch({ limit: 100 });
       const messagesArray = Array.from(fetched.values()).reverse(); // oldest to newest
+      console.log('after Discord fetch : ' + startTime + ', ' + (Date.now() - startTime))
 
       const requestMessage = message.content.replace(`<@${process.env.APP_ID}>`, '')
 
-      // Map to OpenAI format
+      // Map to OpenAI/Gemini format
+      console.log(process.env.MODEL)
       let formatted = messagesArray.map(msg => ({
         role: msg.author.bot ? "assistant" : "user",
         content: `${msg.author.id} | ${msg.content} | ${msg.id}`,
       }));
-
-      const members = await getOnlineUsersWithRole(process.env.GUILD_ID, process.env.VOTING_ROLE_ID);
       const allAkhys = await getAllUsers.all()
+      if (process.env.MODEL === 'OpenAI' || process.env.MODEL === 'Gemini') {
+          
 
-      formatted.push({
-        role: 'developer',
-        content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
-      })
-      // members.forEach(member => {
-      //   formatted.push({
-      //     role: 'developer',
-      //     content: `${member.user.id} : ${member.user.global_name}, ${member.user.username}`,
-      //   })
-      // })
-      allAkhys.forEach(akhy => {
+          formatted.push({
+            role: 'developer',
+            content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
+          })
+          allAkhys.forEach(akhy => {
+            formatted.push({
+              role: 'developer',
+              content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
+            })
+          })
+
+          // Add a final user prompt to clarify the request
+          formatted.push(
+              {
+                role: "developer",
+                content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum "
+              },
+              {
+                role: "developer",
+                content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots`
+              },
+              {
+                role: "user",
+                content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation. Sans prendre en compte mon dernier message vide',
+              },
+              {
+                role: 'developer',
+                content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}, l'id du message est : ${message.reference?.messageId}` : '',
+              },
+              {
+                role: "developer",
+                content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
+              },
+              {
+                role: "developer",
+                content: 'En te basant sur la liste des utilisateurs et des id utilisateurs présent au début de chaque message, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
+              },
+              {
+                role: "developer",
+                content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
+              });
+      } else if (process.env.MODEL === 'Mistral') {
+        // Map to Mistral format
         formatted.push({
-          role: 'developer',
-          content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
-        })
-      })
+          role: 'system',
+          content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
+        });
 
-      // Add a final user prompt to clarify the request
-      formatted.push(
+        allAkhys.forEach(akhy => {
+          formatted.push({
+            role: 'system',
+            content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
+          });
+        });
+
+        formatted.push(
           {
-            role: "developer",
-            content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum "
+            role: "system",
+            content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum."
           },
           {
-            role: "developer",
-            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots`
+            role: "system",
+            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots.`
           },
           {
             role: "user",
             content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation. Sans prendre en compte mon dernier message vide',
           },
           {
-            role: 'developer',
+            role: 'system',
             content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}, l'id du message est : ${message.reference?.messageId}` : '',
           },
           {
-            role: "developer",
+            role: "system",
             content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
           },
           {
-            role: "developer",
+            role: "system",
             content: 'En te basant sur la liste des utilisateurs et des id utilisateurs présent au début de chaque message, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
           },
           {
-            role: "developer",
+            role: "system",
             content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
-          });
+          }
+        );
+      }
 
       // 'Je chill zbi (ntm a vouloir gaspiller les token)' // IA en pause
       // await gork(formatted); IA en marche
       const reply = await gork(formatted);
 
+      console.log('after AI fetch : ' + startTime + ', ' + (Date.now() - startTime))
+    
       // Send response to the channel
-      await message.channel.send(reply);
+      await message.reply(reply);
     } catch (err) {
       console.error("Error fetching or sending messages:", err);
-      await message.channel.send("Oups, y'a eu un problème!");
+      await message.reply("Oups, y'a eu un problème!");
+    }
+  }
+  else if (message.content.toLowerCase().includes("quoi")) {
+    let prob = Math.random()
+    console.log(`feur ${prob}`)
+    if (prob < process.env.FEUR_PROB) {
+      // Send a message "feur" to the same channel
+      message.channel.send(`feur`)
+          .catch(console.error);
     }
   }
   else if (message.content.toLowerCase().startsWith('membres')) {
@@ -364,7 +405,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     console.log(name)
 
     // "test" command
-    if (name === 'test') {
+    /*if (name === 'test') {
       // Send a message into the channel where command was triggered from
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -410,7 +451,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           ],
         },
       });
-    }
+    }*/
 
     // 'timeout' command
     if (name === 'timeout') {
@@ -422,10 +463,16 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const akhy = req.body.data.options[0].value;
       const time = req.body.data.options[1].value;
 
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      const fromMember = await guild.members.fetch(userId);
+      const toMember = await guild.members.fetch(akhy);
+
       // Save the poll information along with channel ID so we can notify later
       activePolls[id] = {
         id: userId,
+        username: fromMember.user,
         toUserId: akhy,
+        toUsername: toMember.user,
         time: time,
         time_display: formatTime(time),
         for: 0,
@@ -466,15 +513,31 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                 {
                   method: 'PATCH',
                   body: {
-                    content:
-                        `> Le vote pour timeout <@${poll.toUserId}> pendant ${poll.time_display} a échoué 😔\n > \n` +
-                        `> Il manquait **${votesNeeded}** vote(s)\n`,
+                    embeds: [
+                      {
+                        title: `Le vote pour timeout ${poll.toUsername} pendant ${poll.time_display} a échoué 😔`,
+                        description: `Il manquait **${votesNeeded}** vote(s)`,
+                        fields: [
+                            {
+                                name: 'Pour',
+                                value: '✅ ' + poll.for,
+                                inline: true,
+                            },
+                            {
+                                name: 'Temps restant',
+                                value: '⏳ ' + countdownText,
+                                inline: false,
+                            },
+                        ],
+                        color: 0xF2F3F3, // You can set the color of the embed
+                      },
+                    ],
                     components: [],
                   },
                 }
             );
           } catch (err) {
-            console.error('Error updating countdown:', err);
+            console.error('Error sending message', err);
           }
           clearInterval(countdownInterval);
           return;
@@ -486,11 +549,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               {
                 method: 'PATCH',
                 body: {
-                  content:
-                      `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
-                      `> ✅ **${poll.for}**\n > \n` +
-                      `> Il manque **${votesNeeded}** vote(s)\n` +
-                      `> ⏳ Temps restant : ${countdownText}\n`,
+                  embeds: [
+                    {
+                      title: `Timeout`,
+                      description: `**${poll.username}** propose de timeout **${poll.toUsername}** pendant ${poll.time_display}\nIl manque **${votesNeeded}** vote(s)`,
+                      fields: [
+                          {
+                              name: 'Pour',
+                              value: '✅ ' + poll.for,
+                              inline: true,
+                          },
+                          {
+                              name: 'Temps restant',
+                              value: '⏳ ' + countdownText,
+                              inline: false,
+                          },
+                      ],
+                      color: 0xF2F3F3, // You can set the color of the embed
+                    },
+                  ],
                   components: [
                     {
                       type: MessageComponentTypes.ACTION_ROW,
@@ -526,10 +603,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
-          content: `> <@${activePolls[id].id}> propose de timeout <@${activePolls[id].toUserId}> pendant ${activePolls[id].time_display}\n > \n` +
-              `> ✅ **${activePolls[id].for}**\n > \n` +
-              `> Il manque **${votesNeeded}** vote(s)\n` +
-              `> ⏳ Temps restant : ${countdownText}\n`,
+          embeds: [
+            {
+              title: `Timeout`,
+              description: `**${activePolls[id].username}** propose de timeout **${activePolls[id].toUsername}** pendant ${activePolls[id].time_display}\nIl manque **${votesNeeded}** vote(s)`,
+              fields: [
+                  {
+                      name: 'Pour',
+                      value: '✅ ' + activePolls[id].for,
+                      inline: true,
+                  },
+                  {
+                      name: 'Temps restant',
+                      value: '⏳ ' + countdownText,
+                      inline: false,
+                  },
+              ],
+              color: 0xF2F3F3, // You can set the color of the embed
+            },
+          ],
           components: [
             {
               type: MessageComponentTypes.ACTION_ROW,
@@ -695,15 +787,25 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         if (poll.for >= poll.requiredMajority) {
           try {
             // Build the updated poll message content
-            const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
-                `> ✅ **${poll.for}** votes au total\n\n`;
-
             await DiscordRequest(
                 poll.endpoint,
                 {
                   method: 'PATCH',
                   body: {
-                    content: updatedContent,
+                    embeds: [
+                      {
+                        title: `Timeout`,
+                        description: `Proposition de timeout **${activePolls[id].toUsername}** pendant ${activePolls[id].time_display}`,
+                        fields: [
+                            {
+                                name: 'Votes totaux',
+                                value: '✅ ' + activePolls[id].for,
+                                inline: true,
+                            },
+                        ],
+                        color: 0xF2F3F3, // You can set the color of the embed
+                      },
+                    ],
                     components: [], // remove buttons
                   },
                 }
@@ -748,17 +850,31 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           const countdownText = `**${minutes}m ${seconds}s** restantes`;
           try {
             // Build the updated poll message content
-            const updatedContent = `> <@${poll.id}> propose de timeout <@${poll.toUserId}> pendant ${poll.time_display}\n > \n` +
-                `> ✅ **${poll.for}**\n > \n` +
-                `> Il manque **${votesNeeded}** vote(s)\n` +
-                `> ⏳ Temps restant : ${countdownText}\n`;
 
             await DiscordRequest(
                 poll.endpoint,
                 {
                   method: 'PATCH',
                   body: {
-                    content: updatedContent,
+                    embeds: [
+                      {
+                        title: `Timeout`,
+                        description: `**${poll.username}** propose de timeout **${poll.toUsername}** pendant ${poll.time_display}\nIl manque **${votesNeeded}** vote(s)`,
+                        fields: [
+                            {
+                                name: 'Pour',
+                                value: '✅ ' + poll.for,
+                                inline: true,
+                            },
+                            {
+                                name: 'Temps restant',
+                                value: '⏳ ' + countdownText,
+                                inline: false,
+                            },
+                        ],
+                        color: 0xF2F3F3, // You can set the color of the embed
+                      },
+                    ],
                     components: req.body.message.components, // preserve the buttons
                   },
                 }
@@ -780,7 +896,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     }
     return;
   }
-
 
   console.error('unknown interaction type', type);
   return res.status(400).json({ error: 'unknown interaction type' });
