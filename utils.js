@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
+import { Mistral } from '@mistralai/mistralai';
 
 export async function DiscordRequest(endpoint, options) {
   // append endpoint to root API URL
@@ -105,13 +107,39 @@ export function formatTime(time) {
   return parts.join(', ').replace(/,([^,]*)$/, ' et$1');
 }
 
+const openai = new OpenAI();
+const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_KEY})
+const leChat = new Mistral({apiKey: process.env.MISTRAL_KEY});
+
 export async function gork(messageHistory) {
-  const openai = new OpenAI();
+  if (process.env.MODEL === 'OpenAI') {
+    // OPEN AI
+    const completion = await openai.chat.completions.create({
+        model: "gpt-4.1-mini",
+        messages: messageHistory,
+      });
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4.1-mini",
-    messages: messageHistory,
-  });
+    return completion.choices[0].message.content;
+  }
+  else if (process.env.MODEL === 'Gemini') {
+    //GEMINI
+    const formattedHistory = messageHistory.map(msg => {
+        return `${msg.role}: ${msg.content}`;
+      }).join('\n');
+    const response = await gemini.models.generateContent({
+        model: "gemini-2.0-flash-lite",
+        contents: formattedHistory,
+      })
+    return response.text
+  } else if (process.env.MODEL === 'Mistral') {
+    // MISTRAL
+    const chatResponse = await leChat.chat.complete({
+      model: 'mistral-large-latest',
+      messages: messageHistory,
+    })
 
-  return completion.choices[0].message.content;
+    return chatResponse.choices[0].message.content
+  } else {
+    return "Pas d'IA"
+  }
 }
