@@ -795,11 +795,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                     embeds: [
                       {
                         title: `Timeout`,
-                        description: `Proposition de timeout **${activePolls[id].toUsername}** pendant ${activePolls[id].time_display}`,
+                        description: `Proposition de timeout **${poll.toUsername}** pendant ${poll.time_display}`,
                         fields: [
                             {
                                 name: 'Votes totaux',
-                                value: '✅ ' + activePolls[id].for,
+                                value: '✅ ' + poll.for,
                                 inline: true,
                             },
                         ],
