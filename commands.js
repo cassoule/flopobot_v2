@@ -82,6 +82,32 @@ const TIMEOUT_COMMAND = {
   contexts: [0, 2],
 }
 
-const ALL_COMMANDS = [/*TEST_COMMAND, CHALLENGE_COMMAND, */TIMEOUT_COMMAND];
+// Valorant
+const VALORANT_COMMAND = {
+  name: 'valorant',
+  description: 'Ouvrir une caisse valorant',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
+// Own inventory command
+const INVENTORY_COMMAND = {
+  name: 'inventory',
+  description: 'Voir inventaire',
+  options: [
+    {
+      type: 6,
+      name: 'akhy',
+      description: 'Qui ?',
+      required: false,
+    },
+  ],
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
+const ALL_COMMANDS = [/*TEST_COMMAND, CHALLENGE_COMMAND, */TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
