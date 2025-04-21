@@ -17,9 +17,27 @@ import {
   getRandomHydrateText
 } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
-import { flopoDB, insertUser, insertManyUsers, updateUser, updateManyUsers, getUser, getAllUsers, stmt } from './init_database.js';
+import { flopoDB,
+        insertUser,
+        insertManyUsers,
+        updateUser,
+        updateManyUsers,
+        getUser,
+        getAllUsers,
+        stmtUsers,
+        stmtSkins,
+        updateManySkins,
+        insertSkin,
+        updateSkin,
+        insertManySkins,
+        getAllSkins,
+        getSkin,
+        getAllAvailableSkins,
+        getUserInventory
+      } from './init_database.js';
+import { getValorantSkins, getSkinTiers } from './valo.js';
 
 // Create an express app
 const app = express();
@@ -28,6 +46,7 @@ const PORT = process.env.PORT || 25578;
 // To keep track of our active games
 const activeGames = {};
 const activePolls = {};
+const activeInventories = {};
 let todaysHydrateCron = ''
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
@@ -45,10 +64,11 @@ const requestTimestamps = new Map(); // userId => [timestamp1, timestamp2, ...]
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
 
 const akhysData= new Map()
+const skins = []
 
 async function getAkhys() {
   try {
-    stmt.run();
+    stmtUsers.run();
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const members = await guild.members.fetch(); // Fetch all members
 
@@ -79,6 +99,165 @@ async function getAkhys() {
   } catch (err) {
     console.error('Error while counting akhys:', err);
   }
+  try {
+    stmtSkins.run();
+
+    const fetchedSkins = await getValorantSkins()
+    const fetchedTiers = await getSkinTiers()
+
+    fetchedSkins.forEach((skin) => {
+      const chromas = []
+      const levels = []
+      skin.chromas.forEach((chroma) => {
+        chromas.push({
+          uuid: chroma.uuid,
+          displayName: chroma.displayName,
+          displayIcon: chroma.displayIcon,
+          fullRender: chroma.fullRender,
+          swatch: chroma.swatch,
+          streamedVideo: chroma.streamedVideo,
+        })
+      })
+      skin.levels.forEach((level) => {
+        levels.push({
+          uuid: level.uuid,
+          displayName: level.displayName,
+          displayIcon: level.displayIcon,
+          streamedVideo: level.streamedVideo,
+        })
+      })
+      skins.push({
+        uuid: skin.uuid,
+        displayName: skin.displayName,
+        contentTierUuid: skin.contentTierUuid,
+        displayIcon: skin.displayIcon,
+        chromas: chromas,
+        levels: levels,
+      })
+    })
+
+    let newSkinCount = 0;
+    for (const skin of skins) {
+
+      try {
+        if (skin.contentTierUuid !== null) {
+          const tierRank = () => {
+            const tier = fetchedTiers.filter((tier) => { return tier.uuid === skin.contentTierUuid})[0]
+            const rank = tier ? tier['rank'] : null;
+            return rank ? rank + 1 : 0;
+          }
+          const tierColor = () => {
+            const tier = fetchedTiers.filter((tier) => { return tier.uuid === skin.contentTierUuid})[0]
+            return tier ? tier['highlightColor']?.slice(0, 6) : 'F2F3F3'
+          }
+          const tierText = () => {
+            const tier = fetchedTiers.filter((tier) => { return tier.uuid === skin.contentTierUuid})[0]
+            const rank = tier ? tier['rank'] : null;
+            let res;
+            if (rank === null) return 'Pas de tier';
+            switch(rank) {
+              case 0:
+                res = '**<:select:1362964319498670222> Select**'
+                break
+              case 1:
+                res = '**<:deluxe:1362964308094488797> Deluxe**'
+                break
+              case 2:
+                res = '**<:premium:1362964330349330703> Premium**'
+                break
+              case 3:
+                res = '**<:exclusive:1362964427556651098> Exclusive**'
+                break
+              case 4:
+                res = '**<:ultra:1362964339685986314> Ultra**'
+                break
+              default:
+                return 'Pas de tier'
+            }
+            res += skin.displayName.includes('VCT') ? ' | Esports Edition' : ''
+            return res
+          }
+          const basePrice = () => {
+            let res;
+            if (skin.displayName.toLowerCase().includes('classic')){
+              res = 150;
+            } else if (skin.displayName.toLowerCase().includes('shorty')) {
+              res = 300;
+            } else if (skin.displayName.toLowerCase().includes('frenzy')) {
+              res = 450;
+            } else if (skin.displayName.toLowerCase().includes('ghost')) {
+              res = 500;
+            } else if (skin.displayName.toLowerCase().includes('sheriff')) {
+              res = 800;
+            } else if (skin.displayName.toLowerCase().includes('stinger')) {
+              res = 1100;
+            } else if (skin.displayName.toLowerCase().includes('spectre')) {
+              res = 1600;
+            } else if (skin.displayName.toLowerCase().includes('bucky')) {
+              res = 850;
+            } else if (skin.displayName.toLowerCase().includes('judge')) {
+              res = 1850;
+            } else if (skin.displayName.toLowerCase().includes('bulldog')) {
+              res = 2050;
+            } else if (skin.displayName.toLowerCase().includes('guardian')) {
+              res = 2250;
+            } else if (skin.displayName.toLowerCase().includes('phantom')) {
+              res = 2900;
+            } else if (skin.displayName.toLowerCase().includes('vandal')) {
+              res = 2900;
+            } else if (skin.displayName.toLowerCase().includes('marshal')) {
+              res = 950;
+            } else if (skin.displayName.toLowerCase().includes('outlaw')) {
+              res = 2400;
+            } else if (skin.displayName.toLowerCase().includes('operator')) {
+              res = 4700;
+            } else if (skin.displayName.toLowerCase().includes('ares')) {
+              res = 1600;
+            } else if (skin.displayName.toLowerCase().includes('odin')) {
+              res = 3200;
+            } else {
+              res = 6000;
+            }
+
+            res *= (1 + (tierRank()))
+            res *= skin.displayName.includes('VCT') ? 1.25 : 1;
+
+            return (res/111).toFixed(2);
+          }
+          await insertSkin.run(
+              {
+                uuid: skin.uuid,
+                displayName: skin.displayName,
+                contentTierUuid: skin.contentTierUuid,
+                displayIcon: skin.displayIcon,
+                user_id: null,
+                tierRank: tierRank(),
+                tierColor: tierColor(),
+                tierText: tierText(),
+                basePrice: basePrice(),
+                currentLvl: null,
+                currentChroma: null,
+                currentPrice: null,
+              });
+          newSkinCount++;
+        }
+      } catch (e) {
+       //
+      }
+    }
+    console.log(`New skins : ${newSkinCount}`);
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const generalChannel = guild.channels.cache.find(
+        ch => ch.name === 'général' || ch.name === 'general'
+    );
+    if (generalChannel && generalChannel.isTextBased() && newSkinCount > 0) {
+      generalChannel.send(
+          `🔫 ${newSkinCount} nouveau(x) skin(s)`
+      );
+    }
+  } catch (e) {
+    console.error('Error while fetching skins:', e);
+  }
 }
 
 async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=process.env.VOTING_ROLE_ID) {
@@ -100,9 +279,8 @@ client.login(process.env.BOT_TOKEN);
 client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
+  if (message.guildId !== process.env.GUILD_ID) return;
 
-
-  
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
     console.log('-------------------------------')
@@ -230,7 +408,8 @@ client.on('messageCreate', async (message) => {
                 role: "developer",
                 content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
               });
-      } else if (process.env.MODEL === 'Mistral') {
+      }
+      else if (process.env.MODEL === 'Mistral') {
         // Map to Mistral format
         formatted.push({
           role: 'system',
@@ -316,7 +495,7 @@ client.once('ready', async () => {
   todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
   console.log(todaysHydrateCron)
   await getAkhys();
-  console.log('Akhys ready')
+  console.log('Ready')
 
   // ─── 💀 Midnight Chaos Timer ──────────────────────
   cron.schedule(process.env.CRON_EXPR, async () => {
@@ -403,55 +582,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
     console.log(name)
-
-    // "test" command
-    /*if (name === 'test') {
-      // Send a message into the channel where command was triggered from
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          // Fetches a random emoji to send from a helper function
-          content: `hello world ${getRandomEmoji()}`,
-        },
-      });
-    }
-
-    // "challenge" command
-    if (name === 'challenge') {
-      // Interaction context
-      const context = req.body.context;
-      // User ID is in user field for (G)DMs, and member for servers
-      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
-      // User's object choice
-      const objectName = req.body.data.options[0].value;
-
-      // Create active game using message ID as the game ID
-      activeGames[id] = {
-        id: userId,
-        objectName,
-      };
-
-      return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-          content: `Rock papers scissors challenge from <@${userId}>`,
-          components: [
-            {
-              type: MessageComponentTypes.ACTION_ROW,
-              components: [
-                {
-                  type: MessageComponentTypes.BUTTON,
-                  // Append the game ID to use later on
-                  custom_id: `accept_button_${req.body.id}`,
-                  label: 'Accept',
-                  style: ButtonStyleTypes.PRIMARY,
-                },
-              ],
-            },
-          ],
-        },
-      });
-    }*/
 
     // 'timeout' command
     if (name === 'timeout') {
@@ -643,6 +773,342 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           ],
         },
       });
+    }
+
+    if (name === 'inventory') {
+      // Interaction context
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+      // User's choices
+      const akhy = req.body.data.options ? req.body.data.options[0].value : userId;
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      const completeAkhy = await guild.members.fetch(akhy);
+
+      const invSkins = getUserInventory.all({user_id: akhy});
+
+      const chromaText = (skin) => {
+        let res = ""
+        for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
+          res += skin.currentChroma === i ? '💠 ' : '◾ '
+        }
+        return res
+      }
+      const chromaName = (skin) => {
+        if (skin.currentChroma >= 2) {
+          const name = skins.find((s) => s.uuid === skin.uuid).chromas[skin.currentChroma-1].displayName.replace(/[\r\n]+/g, '').replace(skin.displayName, '')
+          const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+          const result = match ? match[2] : null;
+          if (match) {
+            return match[1].trim()
+          } else {
+            return name
+          }
+        }
+        if (skin.currentChroma === 1) {
+          return 'Base'
+        }
+        return ''
+      };
+      let content = '';
+      let totalPrice = 0;
+      let fields = [];
+      invSkins.forEach(skin => {
+        content += `- ${skin.displayName} | ${skin.currentPrice.toFixed()}€ \n`;
+        totalPrice += skin.currentPrice;
+        fields.push({
+          name: `${skin.displayName} | ${skin.currentPrice.toFixed(2)}€`,
+          value: `${skin.tierText}\nChroma : ${chromaText(skin)} | ${chromaName(skin)}\nLvl : **${skin.currentLvl}**/${skins.find((s) => s.uuid === skin.uuid).levels.length}\n`,
+          inline: false,
+        })
+      })
+
+      activeInventories[id] = {
+        akhyId: akhy,
+        page: 0,
+        amount: invSkins.length,
+        endpoint: `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+      };
+
+      if (invSkins.length === 0) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [
+              {
+                title: `Inventaire de ${completeAkhy.user.username}`,
+                description: "Aucun skin dans l'inventaire",
+                color: 0xF2F3F3,
+                footer: {text: `Total : ${totalPrice.toFixed(2)}€`},
+              },
+            ],
+          },
+        });
+      }
+      const trueSkin = skins.find((s) => s.uuid === invSkins[0].uuid);
+
+      const imageUrl = () => {
+        let res;
+        if (invSkins[0].currentLvl === trueSkin.levels.length) {
+          if (invSkins[0].currentChroma === 1) {
+            res = trueSkin.chromas[0].displayIcon
+
+          } else {
+            res = trueSkin.chromas[invSkins[0].currentChroma-1].fullRender ?? trueSkin.chromas[invSkins[0].currentChroma-1].displayIcon
+          }
+        } else if (invSkins[0].currentLvl === 1) {
+          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+        } else if (invSkins[0].currentLvl === 2 || invSkins[0].currentLvl === 3) {
+          res = trueSkin.displayIcon
+        }
+        if (res) return res;
+        return trueSkin.displayIcon
+      };
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [
+            {
+              title: `Inventaire de ${completeAkhy.user.username}`,
+              description: `${invSkins?.length > 0 ? '' : "Aucun skin dans l'inventaire"}`,
+              color: 0xF2F3F3,
+              footer: {text: `${activeInventories[id].page+1}/${invSkins?.length} | Total : ${totalPrice.toFixed(2)}€`},
+              fields: [fields[activeInventories[id].page]],
+              image: {
+                url: invSkins?.length > 0 ? imageUrl() : '',
+              }
+            },
+          ],
+          components: [
+            {
+              type: MessageComponentTypes.ACTION_ROW,
+              components: [
+                {
+                  type: MessageComponentTypes.BUTTON,
+                  custom_id: `prev_page_${req.body.id}`,
+                  label: '⏮️ Préc.',
+                  style: ButtonStyleTypes.SECONDARY,
+                },
+                {
+                  type: MessageComponentTypes.BUTTON,
+                  custom_id: `next_page_${req.body.id}`,
+                  label: 'Suiv. ⏭️',
+                  style: ButtonStyleTypes.SECONDARY,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+
+    if (name === 'others_inventory') {
+      // TODO
+    }
+
+    if (name === 'valorant') {
+      // First, send the initial response immediately
+      const initialEmbed = new EmbedBuilder()
+          .setTitle(`\t`)
+          .setImage('https://media.tenor.com/gIWab6ojBnYAAAAd/weapon-line-up-valorant.gif')
+          .setColor(`#F2F3F3`);
+
+      // Send the initial response and store the reply object
+      await res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { embeds: [initialEmbed] }
+      });
+
+      // Get a random skin
+      const dbSkins = getAllAvailableSkins.all();
+      const randomIndex = Math.floor(Math.random() * dbSkins.length);
+      let randomSkin;
+
+      try {
+        randomSkin = skins.find((skin) => skin.uuid === dbSkins[randomIndex].uuid);
+        if (!randomSkin) throw new Error("Skin not found");
+      } catch (e) {
+        // Edit the original message if there's an error
+        await DiscordRequest(
+            `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+            {
+              method: 'PATCH',
+              body: {
+                content: "Oups, ya eu un ptit problème",
+                embeds: []
+              }
+            }
+        );
+        return;
+      }
+
+      // Generate random level and chroma
+      const randomLevel = Math.floor(Math.random() * randomSkin.levels.length + 1);
+      const randomChroma = randomLevel === randomSkin.levels.length
+          ? Math.floor(Math.random() * randomSkin.chromas.length + 1)
+          : 1;
+
+      const selectedLevel = randomSkin.levels[randomLevel - 1]
+      const selectedChroma = randomSkin.chromas[randomChroma - 1]
+
+      //TODO : add currentLevel, currentChroma (null by default then set when opening) so I can calculate the real price in inventory
+
+      // console.log(randomSkin.chromas)
+      // console.log(randomIndex)
+
+      // Set timeout for the reveal
+      setTimeout(async () => {
+        // Prepare the final embed
+        const selectedLevel = randomSkin.levels[randomLevel - 1];
+        const selectedChroma = randomSkin.chromas[randomChroma - 1];
+
+        // Helper functions (unchanged from your original code)
+        const videoUrl = () => {
+          let res;
+          if (randomLevel === randomSkin.levels.length) {
+            if (randomChroma === 1) {
+              res = randomSkin.levels[randomSkin.levels.length - 1].streamedVideo ?? randomSkin.chromas[0].streamedVideo
+            } else {
+              res = randomSkin.chromas[randomChroma-1].streamedVideo
+            }
+          } else {
+            res = randomSkin.levels[randomLevel-1].streamedVideo
+          }
+          return res;
+        };
+        const imageUrl = () => {
+          let res;
+          if (randomLevel === randomSkin.levels.length) {
+            if (randomChroma === 1) {
+              res = randomSkin.chromas[0].displayIcon
+
+            } else {
+              res = randomSkin.chromas[randomChroma-1].fullRender ?? randomSkin.chromas[randomChroma-1].displayIcon
+            }
+          } else if (randomLevel === 1) {
+            res = randomSkin.levels[0].displayIcon ?? randomSkin.chromas[0].fullRender
+          } else if (randomLevel === 2 || randomLevel === 3) {
+            res = randomSkin.displayIcon
+          }
+          if (res) return res;
+          console.log('default')
+          return randomSkin.displayIcon
+        };
+        const chromaName = () => {
+          if (randomChroma >= 2) {
+            const name = selectedChroma.displayName.replace(/[\r\n]+/g, '').replace(randomSkin.displayName, '')
+            const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+            const result = match ? match[2] : null;
+            if (match) {
+              return match[1].trim()
+            } else {
+              return name
+            }
+          }
+          if (randomChroma === 1) {
+            return 'Base'
+          }
+          return ''
+        };
+        const lvlText = () => {
+          let res = ""
+          if (randomLevel >= 1) {
+            res += '1️⃣ '
+          }
+          if (randomLevel >= 2) {
+            res += '2️⃣ '
+          }
+          if (randomLevel >= 3) {
+            res += '3️⃣ '
+          }
+          if (randomLevel >= 4) {
+            res += '4️⃣ '
+          }
+          if (randomLevel >= 5) {
+            res += '5️⃣ '
+          }
+          for (let i = 0; i < randomSkin.levels.length - randomLevel; i++) {
+            res += '◾ '
+          }
+          return res
+        }
+        const chromaText = () => {
+          let res = ""
+          for (let i = 1; i <= randomSkin.chromas.length; i++) {
+            res += randomChroma === i ? '💠 ' : '◾ '
+          }
+          return res
+        }
+        const price = () => {
+          let res = dbSkins[randomIndex].basePrice;
+
+          res *= (1 + (randomLevel / Math.max(randomSkin.levels.length, 2)))
+          res *= (1 + (randomChroma / 4))
+
+          return res.toFixed(2);
+        }
+
+        // Update the database
+        try {
+          await updateSkin.run({
+            uuid: randomSkin.uuid,
+            user_id: req.body.member.user.id,
+            currentLvl: randomLevel,
+            currentChroma: randomChroma,
+            currentPrice: price()
+          });
+        } catch (e) {
+          console.log('Database error', e);
+        }
+
+        // Build the final embed
+        const finalEmbed = new EmbedBuilder()
+            .setTitle(`${randomSkin.displayName} | ${chromaName()}`)
+            .setFields([
+              { name: '', value: `**Lvl** | ${lvlText()}`, inline: true },
+              { name: '', value: `**Chroma** | ${chromaText()}`, inline: true },
+              { name: '', value: `**Prix** | ${price()} <:vp:1362964205808128122>`, inline: true },
+            ])
+            .setDescription(dbSkins[randomIndex].tierText)
+            .setImage(imageUrl())
+            .setFooter({ text: 'Ajouté à ton inventaire' })
+            .setColor(`#${dbSkins[randomIndex].tierColor}`);
+
+        // Prepare components if video exists
+        const video = videoUrl();
+        const components = [];
+
+        if (video) {
+          components.push(
+              new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                      .setLabel('🎬 Aperçu vidéo')
+                      .setStyle(ButtonStyle.Link)
+                      .setURL(video)
+              )
+          );
+        }
+
+        // Edit the original message
+        try {
+          await DiscordRequest(
+              `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+              {
+                method: 'PATCH',
+                body: {
+                  embeds: [finalEmbed],
+                  components: components
+                }
+              }
+          );
+        } catch (err) {
+          console.error('Error editing message:', err);
+        }
+      }, 5500);
+
+      return;
     }
 
     console.error(`unknown command: ${name}`);
@@ -893,6 +1359,212 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           },
         });
       }
+    }
+    else if (componentId.startsWith('prev_page')) {
+      let invId = componentId.replace('prev_page_', '');
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+
+      const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
+
+      const chromaText = (skin) => {
+        let res = ""
+        for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
+          res += skin.currentChroma === i ? '💠 ' : '◾ '
+        }
+        return res
+      }
+      const chromaName = (skin) => {
+        if (skin.currentChroma >= 2) {
+          const name = skins.find((s) => s.uuid === skin.uuid).chromas[skin.currentChroma-1].displayName.replace(/[\r\n]+/g, '').replace(skin.displayName, '')
+          const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+          const result = match ? match[2] : null;
+          if (match) {
+            return match[1].trim()
+          } else {
+            return name
+          }
+        }
+        if (skin.currentChroma === 1) {
+          return 'Base'
+        }
+        return ''
+      };
+      let content = '';
+      let totalPrice = 0;
+      let fields = [];
+      invSkins.forEach(skin => {
+        content += `- ${skin.displayName} | ${skin.currentPrice.toFixed()}€ \n`;
+        totalPrice += skin.currentPrice;
+        fields.push({
+          name: `${skin.displayName} | ${skin.currentPrice.toFixed(2)}€`,
+          value: `${skin.tierText}\nChroma : ${chromaText(skin)} | ${chromaName(skin)}\nLvl : **${skin.currentLvl}**/${skins.find((s) => s.uuid === skin.uuid).levels.length}\n`,
+          inline: false,
+        })
+      })
+
+      if (activeInventories[invId] && activeInventories[invId].akhyId === req.body.member.user.id) {
+        if (activeInventories[invId].page === 0) {
+          activeInventories[invId].page = activeInventories[invId].amount-1
+        } else {
+          activeInventories[invId].page--
+        }
+      } else {return }
+
+      const trueSkin = skins.find((s) => s.uuid === invSkins[activeInventories[invId].page].uuid);
+      const imageUrl = () => {
+        let res;
+        if (invSkins[activeInventories[invId].page].currentLvl === trueSkin.levels.length) {
+          if (invSkins[activeInventories[invId].page].currentChroma === 1) {
+            res = trueSkin.chromas[0].displayIcon
+
+          } else {
+            res = trueSkin.chromas[invSkins[activeInventories[invId].page].currentChroma-1].fullRender ?? trueSkin.chromas[invSkins[activeInventories[invId].page].currentChroma-1].displayIcon
+          }
+        } else if (invSkins[activeInventories[invId].page].currentLvl === 1) {
+          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+        } else if (invSkins[activeInventories[invId].page].currentLvl === 2 || invSkins[activeInventories[invId].page].currentLvl === 3) {
+          res = trueSkin.displayIcon
+        }
+        if (res) return res;
+        return trueSkin.displayIcon
+      };
+
+      try {
+        await DiscordRequest(
+            activeInventories[invId].endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Inventaire de ${completeAkhy.user.username}`,
+                    description: `${invSkins?.length > 0 ? '' : "Aucun skin dans l'inventaire"}`,
+                    color: 0xF2F3F3,
+                    footer: {text: `${activeInventories[invId].page+1}/${invSkins?.length} | Total : ${totalPrice.toFixed(2)}€`},
+                    fields: [fields[activeInventories[invId].page]],
+                    image: {
+                      url: invSkins?.length > 0 ? imageUrl() : '',
+                    }
+                  },
+                ],
+                components: req.body.message.components,
+              },
+            }
+        );
+      } catch (err) {
+        console.log('Pas trouvé : ', err)
+      }
+      return res.send({
+        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+      });
+    }
+    else if (componentId.startsWith('next_page')) {
+      let invId = componentId.replace('next_page_', '');
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+
+      const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
+
+      const chromaText = (skin) => {
+        let res = ""
+        for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
+          res += skin.currentChroma === i ? '💠 ' : '◾ '
+        }
+        return res
+      }
+      const chromaName = (skin) => {
+        if (skin.currentChroma >= 2) {
+          const name = skins.find((s) => s.uuid === skin.uuid).chromas[skin.currentChroma-1].displayName.replace(/[\r\n]+/g, '').replace(skin.displayName, '')
+          const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+          const result = match ? match[2] : null;
+          if (match) {
+            return match[1].trim()
+          } else {
+            return name
+          }
+        }
+        if (skin.currentChroma === 1) {
+          return 'Base'
+        }
+        return ''
+      };
+      let content = '';
+      let totalPrice = 0;
+      let fields = [];
+      invSkins.forEach(skin => {
+        content += `- ${skin.displayName} | ${skin.currentPrice.toFixed()}€ \n`;
+        totalPrice += skin.currentPrice;
+        fields.push({
+          name: `${skin.displayName} | ${skin.currentPrice.toFixed(2)}€`,
+          value: `${skin.tierText}\nChroma : ${chromaText(skin)} | ${chromaName(skin)}\nLvl : **${skin.currentLvl}**/${skins.find((s) => s.uuid === skin.uuid).levels.length}\n`,
+          inline: false,
+        })
+      })
+
+      if (activeInventories[invId] && activeInventories[invId].akhyId === req.body.member.user.id) {
+        if (activeInventories[invId].page === activeInventories[invId].amount-1) {
+          activeInventories[invId].page = 0
+        } else {
+          activeInventories[invId].page++
+        }
+      } else {return }
+
+      const trueSkin = skins.find((s) => s.uuid === invSkins[activeInventories[invId].page].uuid);
+      const imageUrl = () => {
+        let res;
+        if (invSkins[activeInventories[invId].page].currentLvl === trueSkin.levels.length) {
+          if (invSkins[activeInventories[invId].page].currentChroma === 1) {
+            res = trueSkin.chromas[0].displayIcon
+
+          } else {
+            res = trueSkin.chromas[invSkins[activeInventories[invId].page].currentChroma-1].fullRender ?? trueSkin.chromas[invSkins[activeInventories[invId].page].currentChroma-1].displayIcon
+          }
+        } else if (invSkins[activeInventories[invId].page].currentLvl === 1) {
+          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+        } else if (invSkins[activeInventories[invId].page].currentLvl === 2 || invSkins[activeInventories[invId].page].currentLvl === 3) {
+          res = trueSkin.displayIcon
+        }
+        if (res) return res;
+        return trueSkin.displayIcon
+      };
+
+      try {
+        await DiscordRequest(
+            activeInventories[invId].endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Inventaire de ${completeAkhy.user.username}`,
+                    description: `${invSkins?.length > 0 ? '' : "Aucun skin dans l'inventaire"}`,
+                    color: 0xF2F3F3,
+                    footer: {text: `${activeInventories[invId].page+1}/${invSkins?.length} | Total : ${totalPrice.toFixed(2)}€`},
+                    fields: [fields[activeInventories[invId].page]],
+                    image: {
+                      url: invSkins?.length > 0 ? imageUrl() : '',
+                    }
+                  },
+                ],
+                components: req.body.message.components,
+              },
+            }
+        );
+      } catch (err) {
+        console.log('Pas trouvé : ', err)
+      }
+      return res.send({
+        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+      });
     }
     return;
   }
