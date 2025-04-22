@@ -40,8 +40,28 @@ export async function InstallGlobalCommands(appId, commands) {
 }
 
 // Simple method that returns a random emoji from list
-export function getRandomEmoji() {
-  const emojiList = ['😭','😄','😌','🤓','😎','😤','🤖','😶‍🌫️','🌏','📸','💿','👋','🌊','✨'];
+export function getRandomEmoji(list=0) {
+    let emojiList
+
+    switch (list) {
+        case 0:
+            emojiList = ['😭','😄','😌','🤓','😎','😤','🤖','😶‍🌫️','🌏','📸','💿','👋','🌊','✨']
+            break
+        case 1:
+            emojiList = [
+                '<:CAUGHT:1323810730155446322>',
+                '<:hinhinhin:1072510144933531758>',
+                '<:o7:1290773422451986533>',
+                '<:zhok:1115221772623683686>',
+                '<:nice:1154049521110765759>',
+                '<:nerd~1:1087658195603951666>',
+                '<:peepSelfie:1072508131839594597>',
+            ]
+            break
+        default:
+            emojiList = ['']
+            break
+    }
   return emojiList[Math.floor(Math.random() * emojiList.length)];
 }
 export function getRandomHydrateText() {

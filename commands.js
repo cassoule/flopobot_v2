@@ -108,6 +108,14 @@ const INVENTORY_COMMAND = {
   contexts: [0, 2],
 }
 
-const ALL_COMMANDS = [/*TEST_COMMAND, CHALLENGE_COMMAND, */TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND];
+const INFO_COMMAND = {
+  name: 'info',
+  description: 'Qui est time out ?',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
+const ALL_COMMANDS = [TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND, INFO_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
