@@ -295,7 +295,11 @@ client.on('messageCreate', async (message) => {
 
     if (updatedTimestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
       console.log(akhyAuthor.warned ? `${message.author.username} is restricted : ${updatedTimestamps}` : `Rate limit exceeded for ${message.author.username}`);
-      if (!akhyAuthor.warned) message.reply(`T'abuses fréro, attends un peu ⏳`);
+      if (!akhyAuthor.warned) {
+        await message.reply(`T'abuses fréro, attends un peu ⏳`)
+      } else if (akhyAuthor.warns === Math.max(1, process.env.MAX_WARNS - 3)) {
+        await message.author.send("Attention si tu continues de spam tu vas te faire timeout 🤯")
+      }
       // akhyAuthor.warned = true;
       // akhyAuthor.warns++;
       // akhyAuthor.allTimeWarns++;
@@ -365,8 +369,6 @@ client.on('messageCreate', async (message) => {
       }));
       const allAkhys = await getAllUsers.all()
       if (process.env.MODEL === 'OpenAI' || process.env.MODEL === 'Gemini') {
-          
-
           formatted.push({
             role: 'developer',
             content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
@@ -497,6 +499,20 @@ client.once('ready', async () => {
   await getAkhys();
   console.log('Ready')
 
+  // every 5 minutes
+  cron.schedule('*/5 * * * *', async () => {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+
+    // clean 5 minutes old inventories
+    for (const id in activeInventories) {
+      const inventory = activeInventories[id];
+      if (Date.now() >= inventory.timestamp + FIVE_MINUTES) {
+        console.log(`Removing expired inventory : ${id}`);
+        delete activeInventories[id];
+      }
+    }
+  });
+
   // ─── 💀 Midnight Chaos Timer ──────────────────────
   cron.schedule(process.env.CRON_EXPR, async () => {
     const randomMinute = Math.floor(Math.random() * 60);
@@ -549,7 +565,7 @@ client.once('ready', async () => {
 
       if (generalChannel && generalChannel.isTextBased()) {
         generalChannel.send(
-            `${getRandomHydrateText()} <@&${process.env.VOTING_ROLE_ID}> ${getRandomEmoji()}`
+            `${getRandomHydrateText()} <@&${process.env.VOTING_ROLE_ID}> ${getRandomEmoji(1)}`
         );
       }
 
@@ -596,6 +612,28 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const guild = await client.guilds.fetch(req.body.guild_id);
       const fromMember = await guild.members.fetch(userId);
       const toMember = await guild.members.fetch(akhy);
+
+      const already = Object.values(activePolls).find(poll => poll.toUsername === toMember.user);
+
+      if (already) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Impossible de timeout **${toMember.user}** car un vote est déjà en cours`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        });
+      }
+
+      if (toMember.communicationDisabledUntilTimestamp > Date.now()) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `**${toMember.user}** est déjà timeout`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        });
+      }
 
       // Save the poll information along with channel ID so we can notify later
       activePolls[id] = {
@@ -645,7 +683,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                   body: {
                     embeds: [
                       {
-                        title: `Le vote pour timeout ${poll.toUsername} pendant ${poll.time_display} a échoué 😔`,
+                        title: `Le vote pour timeout ${poll.toUsername.username} pendant ${poll.time_display} a échoué 😔`,
                         description: `Il manquait **${votesNeeded}** vote(s)`,
                         fields: [
                             {
@@ -826,9 +864,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       activeInventories[id] = {
         akhyId: akhy,
+        userId: userId,
         page: 0,
         amount: invSkins.length,
         endpoint: `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+        timestamp: Date.now(),
       };
 
       if (invSkins.length === 0) {
@@ -902,10 +942,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           ],
         },
       });
-    }
-
-    if (name === 'others_inventory') {
-      // TODO
     }
 
     if (name === 'valorant') {
@@ -1111,6 +1147,51 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       return;
     }
 
+    if (name === 'info') {
+      const guild = await client.guilds.fetch(req.body.guild_id);
+
+      await guild.members.fetch()
+
+      const timedOutMembers = guild.members.cache.filter(
+          (member) =>
+              member.communicationDisabledUntil &&
+              member.communicationDisabledUntil > new Date()
+      );
+
+      if (timedOutMembers.size === 0) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            embeds: [
+              {
+                title: `Membres timeout`,
+                description: "Aucun membre n'est actuellement timeout.",
+                color: 0xF2F3F3,
+              },
+            ],
+          },
+        });
+      }
+
+      const list = timedOutMembers.map(
+          (member) =>
+              `**${member.user.tag}** (jusqu'à ${member.communicationDisabledUntil.toLocaleString()})`
+      ).join("\n");
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [
+            {
+              title: `Membres timeout`,
+              description: `${list}`,
+              color: 0xF2F3F3,
+            },
+          ],
+        },
+      });
+    }
+
     console.error(`unknown command: ${name}`);
     return res.status(400).json({ error: 'unknown command' });
   }
@@ -1150,50 +1231,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         await DiscordRequest(endpoint, { method: 'DELETE' });
       } catch (err) {
         console.error('Error sending message:', err);
-      }
-    }
-    else if (componentId.startsWith('select_choice_')) {
-      // get the associated game ID
-      const gameId = componentId.replace('select_choice_', '');
-
-      if (activeGames[gameId]) {
-        // Interaction context
-        const context = req.body.context;
-        // Get user ID and object choice for responding user
-        // User ID is in user field for (G)DMs, and member for servers
-        const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
-
-        // User's object choice
-        const objectName = data.values[0];
-
-        // Calculate result from helper function
-        const resultStr = getResult(activeGames[gameId], {
-          id: userId,
-          objectName,
-        });
-
-        // Remove game from storage
-        delete activeGames[gameId];
-        // Update message with token in request body
-        const endpoint = `webhooks/${process.env.APP_ID}/${req.body.token}/messages/${req.body.message.id}`;
-
-        try {
-          // Send results
-          await res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: { content: resultStr },
-          });
-          // Update ephemeral message
-          await DiscordRequest(endpoint, {
-            method: 'PATCH',
-            body: {
-              content: 'Nice choice ' + getRandomEmoji(),
-              components: []
-            }
-          });
-        } catch (err) {
-          console.error('Error sending message:', err);
-        }
       }
     }
     else if (componentId.startsWith('vote_')) {
@@ -1366,8 +1403,13 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       // User ID is in user field for (G)DMs, and member for servers
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
 
-      const guild = await client.guilds.fetch(req.body.guild_id);
-      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+      try {
+        const guild = await client.guilds.fetch(req.body.guild_id);
+        const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+      } catch (e) {
+        console.error(e);
+        return
+      }
 
       const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
 
@@ -1407,13 +1449,21 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         })
       })
 
-      if (activeInventories[invId] && activeInventories[invId].akhyId === req.body.member.user.id) {
+      if (activeInventories[invId] && activeInventories[invId].userId === req.body.member.user.id) {
         if (activeInventories[invId].page === 0) {
           activeInventories[invId].page = activeInventories[invId].amount-1
         } else {
           activeInventories[invId].page--
         }
-      } else {return }
+      } else {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'est pas à l'origine de cette commande /inventory`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
 
       const trueSkin = skins.find((s) => s.uuid === invSkins[activeInventories[invId].page].uuid);
       const imageUrl = () => {
@@ -1469,8 +1519,14 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       // User ID is in user field for (G)DMs, and member for servers
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
 
-      const guild = await client.guilds.fetch(req.body.guild_id);
-      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+      try {
+        const guild = await client.guilds.fetch(req.body.guild_id);
+        const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
+      } catch (e) {
+        console.error(e);
+        return
+      }
+
 
       const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
 
@@ -1510,13 +1566,21 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         })
       })
 
-      if (activeInventories[invId] && activeInventories[invId].akhyId === req.body.member.user.id) {
+      if (activeInventories[invId] && activeInventories[invId].userId === req.body.member.user.id) {
         if (activeInventories[invId].page === activeInventories[invId].amount-1) {
           activeInventories[invId].page = 0
         } else {
           activeInventories[invId].page++
         }
-      } else {return }
+      } else {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'est pas à l'origine de cette commande /inventory`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
 
       const trueSkin = skins.find((s) => s.uuid === invSkins[activeInventories[invId].page].uuid);
       const imageUrl = () => {
