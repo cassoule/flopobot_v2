@@ -130,10 +130,10 @@ const TimesChoices = [
     value: 57600,
   },
   {
-    name: '1 journée',
+    name: '1 jour',
     value: 86400,
   },
-  {
+  /*{
     name: '2 journées',
     value: 172800,
   },
@@ -144,7 +144,7 @@ const TimesChoices = [
   {
     name: '2 semaines',
     value: 604800 * 2,
-  },
+  },*/
 ];
 
 export function getRPSChoices() {
