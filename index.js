@@ -1222,7 +1222,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       topSkins.forEach((skin, index) => {
         fields.push({
           name: `#${index+1} - **${skin.displayName}**`,
-          value: `${skin.maxPrice}€\n`,
+          value: `${skin.maxPrice}€ ${skin.user_id ? '| ✅' : ''}\n`,
           inline: false
         });
       })
@@ -1234,6 +1234,70 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             {
               fields: fields,
               color: 0xF2F3F3,
+            },
+          ],
+        },
+      });
+    }
+
+    if (name === 'search') {
+      console.log(req.body.data.options[0].value)
+      const searchValue = req.body.data.options[0].value.toLowerCase();
+
+      let dbSkins = getAllSkins.all()
+
+      let resultSkins = dbSkins.filter((skin) => {
+        return skin.displayName.toLowerCase().includes(searchValue) || skin.tierText.toLowerCase().includes(searchValue);
+      })
+
+      if (resultSkins.length === 0) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Aucun résultat ne correspond à ta recherche',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        })
+      }
+
+      let fields = [
+        {
+          name: `**${resultSkins[0].displayName}**`,
+          value: `${resultSkins[0].maxPrice}€ ${resultSkins[0].user_id ? '| ✅' : ''}`,
+          inline: false,
+        }
+      ]
+
+      const trueSkin = skins.find((s) => s.uuid === resultSkins[0].uuid);
+      const imageUrl = () => {
+        let res;
+        if (resultSkins[0].currentLvl === trueSkin.levels.length) {
+          if (resultSkins[0].currentChroma === 1) {
+            res = trueSkin.chromas[0].displayIcon
+
+          } else {
+            res = trueSkin.chromas[resultSkins[0].currentChroma-1].fullRender ?? trueSkin.chromas[resultSkins[0].currentChroma-1].displayIcon
+          }
+        } else if (resultSkins[0].currentLvl === 1) {
+          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+        } else if (resultSkins[0].currentLvl === 2 || resultSkins[0].currentLvl === 3) {
+          res = trueSkin.displayIcon
+        }
+        if (res) return res;
+        return trueSkin.displayIcon
+      };
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [
+            {
+              title: `Résultat de recherche`,
+              description: `🔎 ${searchValue}`,
+              fields: fields,
+              color: 0xF2F3F3,
+              image: { url: imageUrl() },
+              footer: { text: `${resultSkins.length-1} autre(s) résultat(s)` },
             },
           ],
         },

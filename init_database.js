@@ -42,7 +42,7 @@ export const getAllUsers = flopoDB.prepare('SELECT * FROM users');
 export const insertSkin = flopoDB.prepare('INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText, basePrice, currentLvl, currentChroma, currentPrice, maxPrice) VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText, @basePrice, @currentLvl, @currentChroma, @currentPrice, @maxPrice)');
 export const updateSkin = flopoDB.prepare('UPDATE skins SET user_id = @user_id, currentLvl = @currentLvl, currentChroma = @currentChroma, currentPrice = @currentPrice WHERE uuid = @uuid');
 export const getSkin = flopoDB.prepare('SELECT * FROM skins WHERE uuid = ?');
-export const getAllSkins = flopoDB.prepare('SELECT * FROM skins');
+export const getAllSkins = flopoDB.prepare('SELECT * FROM skins ORDER BY maxPrice DESC');
 export const getAllAvailableSkins = flopoDB.prepare('SELECT * FROM skins WHERE user_id IS NULL');
 export const getUserInventory = flopoDB.prepare('SELECT * FROM skins WHERE user_id = @user_id');
 export const getTopSkins = flopoDB.prepare('SELECT * FROM skins ORDER BY maxPrice DESC LIMIT 10');
