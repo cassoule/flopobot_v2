@@ -116,6 +116,30 @@ const INFO_COMMAND = {
   contexts: [0, 2],
 }
 
-const ALL_COMMANDS = [TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND, INFO_COMMAND];
+const SKINS_COMMAND = {
+  name: 'skins',
+  description: 'Le top 10 des skins les plus chers.',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
+const SEARCH_SKIN_COMMAND = {
+  name: 'search',
+  description: 'Chercher un skin',
+  options: [
+    {
+      type: 3,
+      name: 'recherche',
+      description: 'Tu cherches quoi ?',
+      required: true,
+    },
+  ],
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
+const ALL_COMMANDS = [TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND, INFO_COMMAND, SKINS_COMMAND, SEARCH_SKIN_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
