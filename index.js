@@ -35,7 +35,8 @@ import { flopoDB,
         getAllSkins,
         getSkin,
         getAllAvailableSkins,
-        getUserInventory
+        getUserInventory,
+        getTopSkins,
       } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 
@@ -138,7 +139,6 @@ async function getAkhys() {
 
     let newSkinCount = 0;
     for (const skin of skins) {
-
       try {
         if (skin.contentTierUuid !== null) {
           const tierRank = () => {
@@ -175,6 +175,8 @@ async function getAkhys() {
                 return 'Pas de tier'
             }
             res += skin.displayName.includes('VCT') ? ' | Esports Edition' : ''
+            res += skin.displayName.toLowerCase().includes('champions') ? ' | Champions' : ''
+            res += skin.displayName.toLowerCase().includes('arcane') ? ' | Arcane' : ''
             return res
           }
           const basePrice = () => {
@@ -221,9 +223,24 @@ async function getAkhys() {
 
             res *= (1 + (tierRank()))
             res *= skin.displayName.includes('VCT') ? 1.25 : 1;
+            res *= skin.displayName.toLowerCase().includes('champions') ? 2 : 1;
+            res *= skin.displayName.toLowerCase().includes('arcane') ? 1.5 : 1;
+            res *= 1+(Math.random()/100) // [1 to 1.01]
 
             return (res/111).toFixed(2);
           }
+
+          const skinBasePrice = basePrice();
+
+          const maxPrice = (price) => {
+            let res = price
+
+            res *= (1 + (skin.levels.length / Math.max(skin.levels.length, 2)))
+            res *= (1 + (skin.chromas.length / 4))
+
+            return res.toFixed(2);
+          }
+
           await insertSkin.run(
               {
                 uuid: skin.uuid,
@@ -234,10 +251,11 @@ async function getAkhys() {
                 tierRank: tierRank(),
                 tierColor: tierColor(),
                 tierText: tierText(),
-                basePrice: basePrice(),
+                basePrice: skinBasePrice,
                 currentLvl: null,
                 currentChroma: null,
                 currentPrice: null,
+                maxPrice: maxPrice(skinBasePrice),
               });
           newSkinCount++;
         }
@@ -1187,6 +1205,34 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             {
               title: `Membres timeout`,
               description: `${list}`,
+              color: 0xF2F3F3,
+            },
+          ],
+        },
+      });
+    }
+
+    if (name === 'skins') {
+      const topSkins = getTopSkins.all()
+
+      console.log(topSkins)
+
+      let fields = []
+
+      topSkins.forEach((skin, index) => {
+        fields.push({
+          name: `#${index+1} - **${skin.displayName}**`,
+          value: `${skin.maxPrice}€\n`,
+          inline: false
+        });
+      })
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [
+            {
+              fields: fields,
               color: 0xF2F3F3,
             },
           ],

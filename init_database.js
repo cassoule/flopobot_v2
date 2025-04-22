@@ -28,7 +28,8 @@ export const stmtSkins = flopoDB.prepare(`
     basePrice TEXT,
     currentLvl INTEGER DEFAULT NULL,
     currentChroma INTEGER DEFAULT NULL,
-    currentPrice INTEGER DEFAULT NULL
+    currentPrice INTEGER DEFAULT NULL,
+    maxPrice INTEGER DEFAULT NULL
   )
 `);
 stmtSkins.run()
@@ -38,12 +39,13 @@ export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, wa
 export const getUser = flopoDB.prepare('SELECT * FROM users WHERE id = ?');
 export const getAllUsers = flopoDB.prepare('SELECT * FROM users');
 
-export const insertSkin = flopoDB.prepare('INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText, basePrice, currentLvl, currentChroma, currentPrice) VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText, @basePrice, @currentLvl, @currentChroma, @currentPrice)');
+export const insertSkin = flopoDB.prepare('INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText, basePrice, currentLvl, currentChroma, currentPrice, maxPrice) VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText, @basePrice, @currentLvl, @currentChroma, @currentPrice, @maxPrice)');
 export const updateSkin = flopoDB.prepare('UPDATE skins SET user_id = @user_id, currentLvl = @currentLvl, currentChroma = @currentChroma, currentPrice = @currentPrice WHERE uuid = @uuid');
 export const getSkin = flopoDB.prepare('SELECT * FROM skins WHERE uuid = ?');
 export const getAllSkins = flopoDB.prepare('SELECT * FROM skins');
 export const getAllAvailableSkins = flopoDB.prepare('SELECT * FROM skins WHERE user_id IS NULL');
 export const getUserInventory = flopoDB.prepare('SELECT * FROM skins WHERE user_id = @user_id');
+export const getTopSkins = flopoDB.prepare('SELECT * FROM skins ORDER BY maxPrice DESC LIMIT 10');
 
 export const insertManyUsers = flopoDB.transaction(async (users) => {
   for (const user of users) try { await insertUser.run(user) } catch (e) { console.log('user insert failed') }
