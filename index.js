@@ -506,6 +506,8 @@ client.once('ready', async () => {
     // clean 5 minutes old inventories
     for (const id in activeInventories) {
       const inventory = activeInventories[id];
+      console.log(Date.now())
+      console.log(inventory.timestamp + FIVE_MINUTES)
       if (Date.now() >= inventory.timestamp + FIVE_MINUTES) {
         console.log(`Removing expired inventory : ${id}`);
         delete activeInventories[id];
@@ -1403,13 +1405,17 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       // User ID is in user field for (G)DMs, and member for servers
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
 
-      try {
-        const guild = await client.guilds.fetch(req.body.guild_id);
-        const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
-      } catch (e) {
-        console.error(e);
-        return
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      if (!activeInventories[invId]) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Oups, cet inventaire n'est plus actif.\nRelance la commande pour avoir un nouvel inventaire interactif`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
       }
+      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
 
       const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
 
@@ -1519,14 +1525,17 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       // User ID is in user field for (G)DMs, and member for servers
       const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
 
-      try {
-        const guild = await client.guilds.fetch(req.body.guild_id);
-        const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
-      } catch (e) {
-        console.error(e);
-        return
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      if (!activeInventories[invId]) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Oups, cet inventaire n'est plus actif.\nRelance la commande pour avoir un nouvel inventaire interactif`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
       }
-
+      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
 
       const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
 
