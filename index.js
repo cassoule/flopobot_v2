@@ -48,6 +48,7 @@ const PORT = process.env.PORT || 25578;
 const activeGames = {};
 const activePolls = {};
 const activeInventories = {};
+const activeSearchs = {};
 let todaysHydrateCron = ''
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
@@ -524,11 +525,16 @@ client.once('ready', async () => {
     // clean 5 minutes old inventories
     for (const id in activeInventories) {
       const inventory = activeInventories[id];
-      console.log(Date.now())
-      console.log(inventory.timestamp + FIVE_MINUTES)
       if (Date.now() >= inventory.timestamp + FIVE_MINUTES) {
         console.log(`Removing expired inventory : ${id}`);
         delete activeInventories[id];
+      }
+    }
+    for (const id in activeSearchs) {
+      const search = activeSearchs[id];
+      if (Date.now() >= search.timestamp + FIVE_MINUTES) {
+        console.log(`Removing expired searchs : ${id}`);
+        delete activeSearchs[id];
       }
     }
   });
@@ -1214,15 +1220,17 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
     if (name === 'skins') {
       const topSkins = getTopSkins.all()
+      const guild = await client.guilds.fetch(req.body.guild_id)
 
       console.log(topSkins)
 
       let fields = []
 
       topSkins.forEach((skin, index) => {
+        const owner = guild.members.fetch(skin.user_id);
         fields.push({
           name: `#${index+1} - **${skin.displayName}**`,
-          value: `${skin.maxPrice}€ ${skin.user_id ? '| ✅' : ''}\n`,
+          value: `${skin.maxPrice}€ ${skin.user_id ? '| **@'+ owner.user.username+'** ✅' : ''}\n`,
           inline: false
         });
       })
@@ -1241,8 +1249,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     }
 
     if (name === 'search') {
-      console.log(req.body.data.options[0].value)
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
       const searchValue = req.body.data.options[0].value.toLowerCase();
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
 
       let dbSkins = getAllSkins.all()
 
@@ -1260,32 +1272,64 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         })
       }
 
+      const owner = await guild.members.fetch(resultSkins[0].user_id)
       let fields = [
         {
-          name: `**${resultSkins[0].displayName}**`,
-          value: `${resultSkins[0].maxPrice}€ ${resultSkins[0].user_id ? '| ✅' : ''}`,
+          name: `**${resultSkins[0].displayName}** | ${resultSkins[0].tierText}`,
+          value: `${resultSkins[0].maxPrice}€ ${resultSkins[0].user_id ? '| **@'+ owner.user.username +'** ✅' : ''}`,
           inline: false,
         }
       ]
 
+      activeSearchs[id] = {
+        userId: userId,
+        page: 0,
+        amount: resultSkins.length,
+        resultSkins: resultSkins,
+        endpoint: `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+        timestamp: Date.now(),
+        searchValue: searchValue,
+      };
+
       const trueSkin = skins.find((s) => s.uuid === resultSkins[0].uuid);
       const imageUrl = () => {
         let res;
-        if (resultSkins[0].currentLvl === trueSkin.levels.length) {
-          if (resultSkins[0].currentChroma === 1) {
-            res = trueSkin.chromas[0].displayIcon
-
-          } else {
-            res = trueSkin.chromas[resultSkins[0].currentChroma-1].fullRender ?? trueSkin.chromas[resultSkins[0].currentChroma-1].displayIcon
-          }
-        } else if (resultSkins[0].currentLvl === 1) {
-          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
-        } else if (resultSkins[0].currentLvl === 2 || resultSkins[0].currentLvl === 3) {
+        if (trueSkin.chromas[trueSkin.chromas.length-1].displayIcon) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].displayIcon
+        } else if (trueSkin.levels[trueSkin.levels.length-1].displayIcon) {
+          res = trueSkin.levels[trueSkin.levels.length-1].displayIcon
+        } else {
           res = trueSkin.displayIcon
         }
-        if (res) return res;
-        return trueSkin.displayIcon
+        return res
       };
+
+      const videoUrl = () => {
+        let res;
+        if (trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo
+        } else if (trueSkin.levels[trueSkin.levels.length-1].streamedVideo) {
+          res = trueSkin.levels[trueSkin.levels.length-1].streamedVideo
+        } else {
+          res = null
+        }
+        return res
+      };
+
+      const originalComponents = [
+        {
+          type: MessageComponentTypes.BUTTON,
+          custom_id: `prev_search_page_${req.body.id}`,
+          label: '⏮️ Préc.',
+          style: ButtonStyleTypes.SECONDARY,
+        },
+        {
+          type: MessageComponentTypes.BUTTON,
+          custom_id: `next_search_page_${req.body.id}`,
+          label: 'Suiv. ⏭️',
+          style: ButtonStyleTypes.SECONDARY,
+        },
+      ];
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1295,9 +1339,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               title: `Résultat de recherche`,
               description: `🔎 ${searchValue}`,
               fields: fields,
-              color: 0xF2F3F3,
+              color: parseInt(resultSkins[0].tierColor, 16),
               image: { url: imageUrl() },
-              footer: { text: `${resultSkins.length-1} autre(s) résultat(s)` },
+              footer: { text: `1/${resultSkins.length} résultat(s)` },
+            },
+          ],
+          components: [
+            {
+              type: MessageComponentTypes.ACTION_ROW,
+              components: originalComponents,
             },
           ],
         },
@@ -1520,11 +1570,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `Oups, cet inventaire n'est plus actif.\nRelance la commande pour avoir un nouvel inventaire interactif`,
+            content: `Oups, cet affichage n'est plus actif.\nRelance la commande pour avoir un nouvel élément intéractif`,
             flags: InteractionResponseFlags.EPHEMERAL,
           },
         });
       }
+
       const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId);
 
       const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId});
@@ -1739,6 +1790,246 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                   },
                 ],
                 components: req.body.message.components,
+              },
+            }
+        );
+      } catch (err) {
+        console.log('Pas trouvé : ', err)
+      }
+      return res.send({
+        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+      });
+    }
+    else if (componentId.startsWith('prev_search_page')) {
+      let searchId = componentId.replace('prev_search_page_', '');
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      if (!activeSearchs[searchId]) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Oups, cet affichage n'est plus actif.\nRelance la commande pour avoir un nouvel élément intéractif`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const chromaText = (skin) => {
+        let res = ""
+        for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
+          res += skin.currentChroma === i ? '💠 ' : '◾ '
+        }
+        return res
+      }
+      const chromaName = (skin) => {
+        if (skin.currentChroma >= 2) {
+          const name = skins.find((s) => s.uuid === skin.uuid).chromas[skin.currentChroma-1].displayName.replace(/[\r\n]+/g, '').replace(skin.displayName, '')
+          const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+          const result = match ? match[2] : null;
+          if (match) {
+            return match[1].trim()
+          } else {
+            return name
+          }
+        }
+        if (skin.currentChroma === 1) {
+          return 'Base'
+        }
+        return ''
+      };
+
+      if (activeSearchs[searchId] && activeSearchs[searchId].userId === req.body.member.user.id) {
+        if (activeSearchs[searchId].page === 0) {
+          activeSearchs[searchId].page = activeSearchs[searchId].amount-1
+        } else {
+          activeSearchs[searchId].page--
+        }
+      } else {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'est pas à l'origine de cette commande /search`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const trueSkin = skins.find((s) => s.uuid === activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].uuid);
+      const imageUrl = () => {
+        let res;
+        if (trueSkin.chromas[trueSkin.chromas.length-1].displayIcon) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].displayIcon
+        } else if (trueSkin.levels[trueSkin.levels.length-1].displayIcon) {
+          res = trueSkin.levels[trueSkin.levels.length-1].displayIcon
+        } else {
+          res = trueSkin.displayIcon
+        }
+        return res
+      };
+
+      const videoUrl = () => {
+        let res;
+        if (trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo
+        } else if (trueSkin.levels[trueSkin.levels.length-1].streamedVideo) {
+          res = trueSkin.levels[trueSkin.levels.length-1].streamedVideo
+        } else {
+          res = null
+        }
+        return res
+      };
+
+      const owner = await guild.members.fetch(activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].user_id)
+      let fields = [
+        {
+          name: `**${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].displayName}** | ${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].tierText}`,
+          value: `${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].maxPrice}€ ${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].user_id ? '| **@'+ owner.user.username +'** ✅' : ''}`,
+          inline: false,
+        }
+      ]
+
+      try {
+        const originalComponents = req.body.message.components || [];
+
+        await DiscordRequest(
+            activeSearchs[searchId].endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Résultat de recherche`,
+                    description: `🔎 ${activeSearchs[searchId].searchValue}`,
+                    fields: fields,
+                    color: parseInt(activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].tierColor, 16),
+                    image: { url: imageUrl() },
+                    footer: { text: `${activeSearchs[searchId].page+1}/${activeSearchs[searchId].resultSkins.length} résultat(s)` },
+                  },
+                ],
+                components: originalComponents,
+              },
+            }
+        );
+      } catch (err) {
+        console.log('Pas trouvé : ', err)
+      }
+      return res.send({
+        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+      });
+    }
+    else if (componentId.startsWith('next_search_page')) {
+      let searchId = componentId.replace('next_search_page_', '');
+      const context = req.body.context;
+      // User ID is in user field for (G)DMs, and member for servers
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id;
+
+      const guild = await client.guilds.fetch(req.body.guild_id);
+      if (!activeSearchs[searchId]) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Oups, cet affichage n'est plus actif.\nRelance la commande pour avoir un nouvel élément intéractif`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const chromaText = (skin) => {
+        let res = ""
+        for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
+          res += skin.currentChroma === i ? '💠 ' : '◾ '
+        }
+        return res
+      }
+      const chromaName = (skin) => {
+        if (skin.currentChroma >= 2) {
+          const name = skins.find((s) => s.uuid === skin.uuid).chromas[skin.currentChroma-1].displayName.replace(/[\r\n]+/g, '').replace(skin.displayName, '')
+          const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+          const result = match ? match[2] : null;
+          if (match) {
+            return match[1].trim()
+          } else {
+            return name
+          }
+        }
+        if (skin.currentChroma === 1) {
+          return 'Base'
+        }
+        return ''
+      };
+
+      if (activeSearchs[searchId] && activeSearchs[searchId].userId === req.body.member.user.id) {
+        if (activeSearchs[searchId].page === activeSearchs[searchId].amount-1) {
+          activeSearchs[searchId].page = 0
+        } else {
+          activeSearchs[searchId].page++
+        }
+      } else {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'est pas à l'origine de cette commande /search`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const trueSkin = skins.find((s) => s.uuid === activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].uuid);
+      const imageUrl = () => {
+        let res;
+        if (trueSkin.chromas[trueSkin.chromas.length-1].displayIcon) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].displayIcon
+        } else if (trueSkin.levels[trueSkin.levels.length-1].displayIcon) {
+          res = trueSkin.levels[trueSkin.levels.length-1].displayIcon
+        } else {
+          res = trueSkin.displayIcon
+        }
+        return res
+      };
+
+      const videoUrl = () => {
+        let res;
+        if (trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo) {
+          res = trueSkin.chromas[trueSkin.chromas.length-1].streamedVideo
+        } else if (trueSkin.levels[trueSkin.levels.length-1].streamedVideo) {
+          res = trueSkin.levels[trueSkin.levels.length-1].streamedVideo
+        } else {
+          res = null
+        }
+        return res
+      };
+
+      const owner = await guild.members.fetch(activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].user_id)
+      let fields = [
+        {
+          name: `**${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].displayName}** | ${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].tierText}`,
+          value: `${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].maxPrice}€ ${activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].user_id ? '| **@'+ owner.user.username +'** ✅' : ''}`,
+          inline: false,
+        }
+      ]
+
+      try {
+        const originalComponents = req.body.message.components || [];
+
+        await DiscordRequest(
+            activeSearchs[searchId].endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Résultat de recherche`,
+                    description: `🔎 ${activeSearchs[searchId].searchValue}`,
+                    fields: fields,
+                    color: parseInt(activeSearchs[searchId].resultSkins[activeSearchs[searchId].page].tierColor, 16),
+                    image: { url: imageUrl() },
+                    footer: { text: `${activeSearchs[searchId].page+1}/${activeSearchs[searchId].resultSkins.length} résultat(s)` },
+                  },
+                ],
+                components: originalComponents,
               },
             }
         );
