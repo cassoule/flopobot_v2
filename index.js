@@ -14,7 +14,9 @@ import {
   //getOnlineUsersWithRole,
   formatTime,
   gork,
-  getRandomHydrateText
+  getRandomHydrateText,
+  getAPOUsers,
+  postAPOBuy
 } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -506,6 +508,14 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`${content}`)
         .catch(console.error);
   }
+  else if (message.content.toLowerCase().startsWith('?u')) {
+    console.log(await getAPOUsers())
+  }
+  else if (message.content.toLowerCase().startsWith('?b')) {
+    const amount = message.content.replace('?b ', '')
+    console.log(amount)
+    console.log(await postAPOBuy('650338922874011648', amount))
+  }
 });
 
 // Once bot is ready
@@ -544,6 +554,7 @@ client.once('ready', async () => {
     const randomMinute = Math.floor(Math.random() * 60);
     const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
     todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
+    console.log(todaysHydrateCron)
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
