@@ -5,7 +5,7 @@ Below is a basic overview of the project structure:
 
 ```
 ├── .env.sample
-├── inde.js      -> main entrypoint for app
+├── index.js      -> main entrypoint for app
 ├── commands.js -> slash command payloads + helpers
 ├── game.js     -> some stuff and data
 ├── utils.js    -> utility functions and enums
