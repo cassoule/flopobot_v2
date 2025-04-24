@@ -185,6 +185,6 @@ export async function postAPOBuy(userId, amount) {
     return await fetch(fetchUrl, {
         method: 'POST',
     })
-        .then(response => response.status + ': ' + response.statusText + ' - ' + response.ok)
+        .then(response => response)
         .catch(error => console.log('Post error:', error))
 }
