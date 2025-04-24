@@ -85,7 +85,7 @@ const TIMEOUT_COMMAND = {
 // Valorant
 const VALORANT_COMMAND = {
   name: 'valorant',
-  description: 'Ouvrir une caisse valorant',
+  description: `Ouvrir une caisse valorant (${process.env.VALO_PRICE}€)`,
   type: 1,
   integration_types: [0, 1],
   contexts: [0, 2],

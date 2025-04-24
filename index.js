@@ -14,7 +14,9 @@ import {
   //getOnlineUsersWithRole,
   formatTime,
   gork,
-  getRandomHydrateText
+  getRandomHydrateText,
+  getAPOUsers,
+  postAPOBuy
 } from './utils.js';
 import { getShuffledOptions, getResult } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -506,6 +508,14 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`${content}`)
         .catch(console.error);
   }
+  else if (message.content.toLowerCase().startsWith('?u')) {
+    console.log(await getAPOUsers())
+  }
+  else if (message.content.toLowerCase().startsWith('?b')) {
+    const amount = message.content.replace('?b ', '')
+    console.log(amount)
+    console.log(await postAPOBuy('650338922874011648', amount))
+  }
 });
 
 // Once bot is ready
@@ -544,6 +554,7 @@ client.once('ready', async () => {
     const randomMinute = Math.floor(Math.random() * 60);
     const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
     todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
+    console.log(todaysHydrateCron)
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
@@ -893,9 +904,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         userId: userId,
         page: 0,
         amount: invSkins.length,
+        reqBodyId: req.body.id,
         endpoint: `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
         timestamp: Date.now(),
       };
+
+      console.log(activeInventories[id].reqBodyId);
 
       if (invSkins.length === 0) {
         return res.send({
@@ -932,6 +946,30 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return trueSkin.displayIcon
       };
 
+      let components = [
+            {
+              type: MessageComponentTypes.BUTTON,
+              custom_id: `prev_page_${req.body.id}`,
+              label: '⏮️ Préc.',
+              style: ButtonStyleTypes.SECONDARY,
+            },
+            {
+              type: MessageComponentTypes.BUTTON,
+              custom_id: `next_page_${req.body.id}`,
+              label: 'Suiv. ⏭️',
+              style: ButtonStyleTypes.SECONDARY,
+            },
+          ]
+
+      if ((invSkins[0].currentLvl < trueSkin.levels.length || invSkins[0].currentChroma < trueSkin.chromas.length) && akhy === userId) {
+          components.push({
+            type: MessageComponentTypes.BUTTON,
+            custom_id: `upgrade_${req.body.id}`,
+            label: `Upgrade ⏫`,
+            style: ButtonStyleTypes.PRIMARY,
+          })
+      }
+
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
         data: {
@@ -950,20 +988,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           components: [
             {
               type: MessageComponentTypes.ACTION_ROW,
-              components: [
-                {
-                  type: MessageComponentTypes.BUTTON,
-                  custom_id: `prev_page_${req.body.id}`,
-                  label: '⏮️ Préc.',
-                  style: ButtonStyleTypes.SECONDARY,
-                },
-                {
-                  type: MessageComponentTypes.BUTTON,
-                  custom_id: `next_page_${req.body.id}`,
-                  label: 'Suiv. ⏭️',
-                  style: ButtonStyleTypes.SECONDARY,
-                },
-              ],
+              components: components,
             },
           ],
         },
@@ -971,6 +996,18 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     }
 
     if (name === 'valorant') {
+      const buyResponse = await postAPOBuy(req.body.member.user.id, process.env.VALO_PRICE ?? 150)
+
+      if (buyResponse.status === 500 || buyResponse.ok === false) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'as pas assez d'argent...`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        });
+      }
+
       // First, send the initial response immediately
       const initialEmbed = new EmbedBuilder()
           .setTitle(`\t`)
@@ -1008,14 +1045,12 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       // Generate random level and chroma
       const randomLevel = Math.floor(Math.random() * randomSkin.levels.length + 1);
-      const randomChroma = randomLevel === randomSkin.levels.length
+      let randomChroma = randomLevel === randomSkin.levels.length
           ? Math.floor(Math.random() * randomSkin.chromas.length + 1)
           : 1;
-
+      if (randomChroma === randomSkin.chromas.length && randomSkin.chromas.length >= 2) randomChroma--
       const selectedLevel = randomSkin.levels[randomLevel - 1]
       const selectedChroma = randomSkin.chromas[randomChroma - 1]
-
-      //TODO : add currentLevel, currentChroma (null by default then set when opening) so I can calculate the real price in inventory
 
       // console.log(randomSkin.chromas)
       // console.log(randomIndex)
@@ -1168,7 +1203,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         } catch (err) {
           console.error('Error editing message:', err);
         }
-      }, 5500);
+      }, 5000);
 
       return;
     }
@@ -1651,6 +1686,23 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return trueSkin.displayIcon
       };
 
+      let components = req.body.message.components;
+
+      if ((invSkins[activeInventories[invId].page].currentLvl < trueSkin.levels.length || invSkins[activeInventories[invId].page].currentChroma < trueSkin.chromas.length) && activeInventories[invId].akhyId === activeInventories[invId].userId) {
+        if (components[0].components.length === 2) {
+          components[0].components.push({
+            type: MessageComponentTypes.BUTTON,
+            custom_id: `upgrade_${activeInventories[invId].reqBodyId}`,
+            label: `Upgrade ⏫`,
+            style: ButtonStyleTypes.PRIMARY,
+          })
+        }
+      } else {
+        if (components[0].components.length === 3) {
+          components[0].components.pop()
+        }
+      }
+
       try {
         await DiscordRequest(
             activeInventories[invId].endpoint,
@@ -1669,7 +1721,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                     }
                   },
                 ],
-                components: req.body.message.components,
+                components: components,
               },
             }
         );
@@ -1771,6 +1823,23 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         return trueSkin.displayIcon
       };
 
+      let components = req.body.message.components;
+
+      if ((invSkins[activeInventories[invId].page].currentLvl < trueSkin.levels.length || invSkins[activeInventories[invId].page].currentChroma < trueSkin.chromas.length) && activeInventories[invId].akhyId === activeInventories[invId].userId) {
+        if (components[0].components.length === 2) {
+          components[0].components.push({
+            type: MessageComponentTypes.BUTTON,
+            custom_id: `upgrade_${activeInventories[invId].reqBodyId}`,
+            label: `Upgrade ⏫`,
+            style: ButtonStyleTypes.PRIMARY,
+          })
+        }
+      } else {
+        if (components[0].components.length === 3) {
+          components[0].components.pop()
+        }
+      }
+
       try {
         await DiscordRequest(
             activeInventories[invId].endpoint,
@@ -1789,7 +1858,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                     }
                   },
                 ],
-                components: req.body.message.components,
+                components: components,
               },
             }
         );
@@ -1799,6 +1868,292 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       return res.send({
         type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
       });
+    }
+    else if (componentId.startsWith('upgrade_')) {
+      let invId = componentId.replace('upgrade_', '')
+      const context = req.body.context
+      const userId = context === 0 ? req.body.member.user.id : req.body.user.id
+
+      const guild = await client.guilds.fetch(req.body.guild.id)
+      if (!activeInventories[invId]) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Oups, cet inventaire n'est plus actif.\nRelance la commande pour avoir un nouvel inventaire interactif`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+      const completeAkhy = await guild.members.fetch(activeInventories[invId].akhyId)
+
+      const invSkins = getUserInventory.all({user_id: activeInventories[invId].akhyId})
+
+      if (!activeInventories[invId] || activeInventories[invId].userId !== req.body.member.user.id) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'est pas à l'origine de cette commande /inventory`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      console.log(`upgrade price : ${invSkins[activeInventories[invId].page].maxPrice/8}`)
+      const buyResponse = await postAPOBuy(req.body.member.user.id, process.env.VALO_UPGRADE_PRICE ?? invSkins[activeInventories[invId].page].maxPrice/8)
+
+      if (buyResponse.status === 500 || buyResponse.ok === false) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Tu n'as pas assez d'argent...`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        });
+      }
+
+      const skin = invSkins[activeInventories[invId].page];
+      const trueSkin = skins.find((s) => s.uuid === invSkins[activeInventories[invId].page].uuid);
+
+      const lvlNb = trueSkin.levels.length
+      const chromaNb = trueSkin.chromas.length
+      const tierRank = trueSkin.tierRank
+      const currentLvl = skin.currentLvl
+      const currentChroma = skin.currentChroma
+
+      let succeeded = false
+
+      if (currentLvl < lvlNb) {
+        let prob = (currentLvl/lvlNb)
+        if (tierRank) prob *= ((tierRank+1)/4)+.1
+        let rand = Math.random()
+        console.log(`lvl upgrade prob : ${prob} | ${rand}`)
+        succeeded = rand >= prob
+        //amélioration du lvl
+        if (succeeded) {
+          let newLvl = skin.currentLvl + 1
+          const price = () => {
+            let res = skin.basePrice;
+
+            res *= (1 + (newLvl / Math.max(trueSkin.levels.length, 2)))
+            res *= (1 + (skin.currentChroma / 4))
+
+            return res.toFixed(2);
+          }
+          try {
+            await updateSkin.run({
+              uuid: skin.uuid,
+              user_id: skin.user_id,
+              currentLvl: newLvl,
+              currentChroma: skin.currentChroma,
+              currentPrice: price()
+            });
+          } catch (e) {
+            console.log('Database error', e);
+          }
+        }
+      }
+      else if (currentChroma < chromaNb) {
+        let prob = (currentChroma/chromaNb)
+        if (tierRank) prob *= ((tierRank+1)/4)+.1
+        let rand = Math.random()
+        console.log(`lvl upgrade prob : ${prob} | ${rand}`)
+        succeeded = rand >= prob
+        //amélioration du chroma
+        if (succeeded) {
+          let newChroma = skin.currentChroma + 1
+          const price = () => {
+            let res = skin.basePrice;
+
+            res *= (1 + (skin.currentLvl / Math.max(trueSkin.levels.length, 2)))
+            res *= (1 + (newChroma / 4))
+
+            return res.toFixed(2);
+          }
+          try {
+            await updateSkin.run({
+              uuid: skin.uuid,
+              user_id: skin.user_id,
+              currentLvl: skin.currentLvl,
+              currentChroma: newChroma,
+              currentPrice: price()
+            });
+          } catch (e) {
+            console.log('Database error', e);
+          }
+        }
+      } else {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Ce skin n'est pas améliorable`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      // gif
+      const initialEmbed = new EmbedBuilder()
+          .setTitle(`Amélioration en cours...`)
+          .setImage('https://media.tenor.com/HD8nVN2QP9MAAAAC/thoughts-think.gif')
+          .setColor(0xF2F3F3);
+
+      // Send the initial response and store the reply object
+      await res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { embeds: [initialEmbed] }
+      });
+
+      // then result
+      setTimeout(async () => {
+        // Prepare the final embed
+        let updatedSkin = await getSkin.get(trueSkin.uuid)
+        const randomLevel = updatedSkin.currentLvl
+        const randomChroma = updatedSkin.currentChroma
+        const selectedChroma = trueSkin.chromas[randomChroma-1]
+
+        // Helper functions (unchanged from your original code)
+        const videoUrl = () => {
+          let res;
+          if (randomLevel === trueSkin.levels.length) {
+            if (randomChroma === 1) {
+              res = trueSkin.levels[trueSkin.levels.length - 1].streamedVideo ?? trueSkin.chromas[0].streamedVideo
+            } else {
+              res = trueSkin.chromas[randomChroma-1].streamedVideo
+            }
+          } else {
+            res = trueSkin.levels[randomLevel-1].streamedVideo
+          }
+          return res;
+        };
+        const imageUrl = () => {
+          let res;
+          if (randomLevel === trueSkin.levels.length) {
+            if (randomChroma === 1) {
+              res = trueSkin.chromas[0].displayIcon
+
+            } else {
+              res = trueSkin.chromas[randomChroma-1].fullRender ?? trueSkin.chromas[randomChroma-1].displayIcon
+            }
+          } else if (randomLevel === 1) {
+            res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+          } else if (randomLevel === 2 || randomLevel === 3) {
+            res = trueSkin.displayIcon
+          }
+          if (res) return res;
+          console.log('default')
+          return trueSkin.displayIcon
+        };
+        const chromaName = () => {
+          if (randomChroma >= 2) {
+            const name = selectedChroma.displayName.replace(/[\r\n]+/g, '').replace(trueSkin.displayName, '')
+            const match = name.match(/variante\s+[1-4]\s+([^)]+)/)
+            const result = match ? match[2] : null;
+            if (match) {
+              return match[1].trim()
+            } else {
+              return name
+            }
+          }
+          if (randomChroma === 1) {
+            return 'Base'
+          }
+          return ''
+        };
+        const lvlText = () => {
+          let res = ""
+          if (randomLevel >= 1) {
+            res += '1️⃣ '
+          }
+          if (randomLevel >= 2) {
+            res += '2️⃣ '
+          }
+          if (randomLevel >= 3) {
+            res += '3️⃣ '
+          }
+          if (randomLevel >= 4) {
+            res += '4️⃣ '
+          }
+          if (randomLevel >= 5) {
+            res += '5️⃣ '
+          }
+          for (let i = 0; i < trueSkin.levels.length - randomLevel; i++) {
+            res += '◾ '
+          }
+          return res
+        }
+        const chromaText = () => {
+          let res = ""
+          for (let i = 1; i <= trueSkin.chromas.length; i++) {
+            res += randomChroma === i ? '💠 ' : '◾ '
+          }
+          return res
+        }
+
+        // Build the final embed
+        let finalEmbed;
+        if (succeeded) {
+          finalEmbed = new EmbedBuilder()
+              .setTitle(`L'amélioration a réussi ! 🎉`)
+              .setFields([
+                { name: '', value: `${updatedSkin.displayName} | ${chromaName()}`, inline: false },
+                { name: '', value: `**Lvl** | ${lvlText()}`, inline: true },
+                { name: '', value: `**Chroma** | ${chromaText()}`, inline: true },
+                { name: '', value: `**Prix** | ${updatedSkin.currentPrice} <:vp:1362964205808128122>`, inline: true },
+              ])
+              .setDescription(updatedSkin.tierText)
+              .setImage(imageUrl())
+              .setColor(0x00FF00);
+        }
+        else {
+          finalEmbed = new EmbedBuilder()
+              .setTitle(`L'amélioration a râté... ❌`)
+              .setFields([
+                { name: '', value: `${updatedSkin.displayName} | ${chromaName()}`, inline: false },
+              ])
+              .setDescription(updatedSkin.tierText)
+              .setImage(imageUrl())
+              .setColor(0xFF0000);
+        }
+
+
+        // Prepare components if video exists
+        const video = videoUrl();
+        const components = [];
+
+        if (!succeeded) {
+          components.push(new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                  .setLabel('Réessayer 🔄️')
+                  .setStyle(ButtonStyle.Primary)
+                  .setCustomId(`upgrade_${activeInventories[invId].reqBodyId}`)
+          ))
+        } else if (video) {
+          components.push(
+              new ActionRowBuilder().addComponents(
+                  new ButtonBuilder()
+                      .setLabel('🎬 Aperçu vidéo')
+                      .setStyle(ButtonStyle.Link)
+                      .setURL(video)
+              )
+          );
+        }
+
+        // Edit the original message
+        try {
+          await DiscordRequest(
+              `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
+              {
+                method: 'PATCH',
+                body: {
+                  embeds: [finalEmbed],
+                  components: components
+                }
+              }
+          );
+        } catch (err) {
+          console.error('Error editing message:', err);
+        }
+      }, 500);
     }
     else if (componentId.startsWith('prev_search_page')) {
       let searchId = componentId.replace('prev_search_page_', '');

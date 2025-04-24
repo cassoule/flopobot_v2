@@ -163,3 +163,28 @@ export async function gork(messageHistory) {
     return "Pas d'IA"
   }
 }
+
+export async function getAPOUsers() {
+    const fetchUrl = process.env.APO_BASE_URL + '/users?serverId=' + (process.env.T12_GUILD_ID ?? process.env.GUILD_ID)
+    console.log(fetchUrl)
+    return await fetch(fetchUrl)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error fetching APO users')
+            }
+            return response.json()
+        })
+        .catch(error => {
+            console.error('There was a problem with the fetch operation:', error);
+        });
+}
+
+export async function postAPOBuy(userId, amount) {
+    const fetchUrl = process.env.APO_BASE_URL + '/buy?serverId=' + (process.env.T12_GUILD_ID ?? process.env.GUILD_ID) + '&userId=' + userId + '&amount=' + amount
+    console.log(fetchUrl)
+    return await fetch(fetchUrl, {
+        method: 'POST',
+    })
+        .then(response => response)
+        .catch(error => console.log('Post error:', error))
+}
