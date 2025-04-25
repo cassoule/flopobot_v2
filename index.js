@@ -230,7 +230,7 @@ async function getAkhys() {
             res *= skin.displayName.toLowerCase().includes('arcane') ? 1.5 : 1;
             res *= 1+(Math.random()/100) // [1 to 1.01]
 
-            return (res/111).toFixed(2);
+            return (res/1111).toFixed(2);
           }
 
           const skinBasePrice = basePrice();
@@ -267,15 +267,6 @@ async function getAkhys() {
       }
     }
     console.log(`New skins : ${newSkinCount}`);
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
-    const generalChannel = guild.channels.cache.find(
-        ch => ch.name === 'général' || ch.name === 'general'
-    );
-    if (generalChannel && generalChannel.isTextBased() && newSkinCount > 0) {
-      generalChannel.send(
-          `🔫 ${newSkinCount} nouveau(x) skin(s)`
-      );
-    }
   } catch (e) {
     console.error('Error while fetching skins:', e);
   }
