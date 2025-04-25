@@ -1898,14 +1898,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         });
       }
 
-      console.log(`upgrade price : ${invSkins[activeInventories[invId].page].maxPrice/8}`)
-      const buyResponse = await postAPOBuy(req.body.member.user.id, process.env.VALO_UPGRADE_PRICE ?? invSkins[activeInventories[invId].page].maxPrice/8)
+      const upgradePrice = process.env.VALO_UPGRADE_PRICE ?? invSkins[activeInventories[invId].page].maxPrice/10
+      console.log(`upgrade price : ${upgradePrice}`)
+      const buyResponse = await postAPOBuy(req.body.member.user.id, upgradePrice)
 
       if (buyResponse.status === 500 || buyResponse.ok === false) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: `Tu n'as pas assez d'argent...`,
+            content: `Tu n'as pas assez d'argent, cette amélioration coûte ${upgradePrice}€`,
             flags: InteractionResponseFlags.EPHEMERAL,
           }
         });
