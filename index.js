@@ -375,98 +375,93 @@ client.on('messageCreate', async (message) => {
 
       // Map to OpenAI/Gemini format
       console.log(process.env.MODEL)
-      let formatted = messagesArray.map(msg => ({
-        role: msg.author.bot ? "assistant" : "user",
-        content: `${msg.author.id} | ${msg.content} | ${msg.id}`,
-      }));
       const allAkhys = await getAllUsers.all()
+      let allAkhysText = ''
+      allAkhys.forEach(akhy => {
+        allAkhysText += `<@${akhy.id}> alias ${akhy.globalName}, `
+      })
+      let convo = 'Voici les derniers messages de la conversation pour contexte (du plus vieux au plus récent) :\n'
+      messagesArray.forEach(msg => {
+        convo += `<@${msg.author.id}> a dit : ${msg.content}.\n`
+      })
+      let formatted = [];
       if (process.env.MODEL === 'OpenAI' || process.env.MODEL === 'Gemini') {
           formatted.push({
             role: 'developer',
-            content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
+            content: `${convo}`,
+          });
+          formatted.push({
+            role: 'developer',
+            content: `Voici la liste des différents utilisateurs présents : ${allAkhysText}`,
           })
-          allAkhys.forEach(akhy => {
-            formatted.push({
-              role: 'developer',
-              content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
-            })
+          formatted.push({
+            role: 'developer',
+            content: `Voici une liste de quelques emojis que tu peux utiliser sur le serveur: <:CAUGHT:1323810730155446322> quand tu te fais prendre la main dans le sac ou que tu a un avis divergent ou risqué, <:hinhinhin:1072510144933531758> pour le rire ou quand tu es moqueur, <:o7:1290773422451986533> pour payer respect ou remercier ou dire au revoir, <:zhok:1115221772623683686> pour quand quelquechose manque de sens, <:nice:1154049521110765759> pour quelquechose de bien, <:nerd~1:1087658195603951666> pour une explication technique ou une attitude nerd, <:peepSelfie:1072508131839594597> pour à peu près n\'importe quelle situation quand tu es blazé`
           })
 
-          // Add a final user prompt to clarify the request
           formatted.push(
               {
                 role: "developer",
-                content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum "
-              },
-              {
-                role: "developer",
-                content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots`
-              },
-              {
-                role: "user",
-                content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation. Sans prendre en compte mon dernier message vide',
+                content: "Adopte une attitude détendue et répond comme si tu participais à la conversation, pas trop long, pas de retour à la ligne, simple et utilise les emojis du serveur. N'hésites pas à utiliser des abréviations mais sans en abuser."
               },
               {
                 role: 'developer',
-                content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}, l'id du message est : ${message.reference?.messageId}` : '',
+                content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}` : '',
               },
-              {
+              /*{
                 role: "developer",
                 content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
+              },*/
+              {
+                role: "developer",
+                content: `Ton id est : <@${process.env.APP_ID}>, évite de l'utiliser. Ton username et global_name sont : ${process.env.APP_NAME}`
               },
               {
                 role: "developer",
-                content: 'En te basant sur la liste des utilisateurs et des id utilisateurs présent au début de chaque message, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
+                content: `L'utilisateur qui s'adresse a toi est : <@${akhyAuthor.id}>`
               },
               {
-                role: "developer",
-                content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
+                role: "user",
+                content: requestMessage.length > 1 ? requestMessage : 'Salut',
               });
       }
       else if (process.env.MODEL === 'Mistral') {
         // Map to Mistral format
         formatted.push({
           role: 'system',
-          content: `Les prochaines entrées sont les différents utilisateurs présents. Chaque entrée comporte l'id, le nom sur le serveur et le nom sur discord d'un utilisateur`,
+          content: `${convo}`,
         });
 
-        allAkhys.forEach(akhy => {
-          formatted.push({
-            role: 'system',
-            content: `${akhy.id} : ${akhy.globalName}, ${akhy.username}`,
-          });
+        formatted.push({
+          role: 'system',
+          content: `Voici la liste des différents utilisateurs présents : ${allAkhysText}`,
         });
 
         formatted.push(
-          {
-            role: "system",
-            content: "Sachant que chaque message d'utilisateur comporte l'id de l'utilisateur ayant écrit le message au début de l'entrée, le contenu du message, et l'id du message pour finir (formaté comme suit : user_id | content | message_id, par contre ne formatte jamais tes réponses ainsi, met juste la partie content). Adopte une attitude détendue et répond comme si tu participais à la conversation, essaye d'imiter au mieux la façon de parler des utilisateurs et/ou d'un utilisateur de twitter (X). N'hésites pas à utiliser des abréviations mais sans en abuser. Fait plutôt court, une ou deux phrases maximum."
-          },
-          {
-            role: "system",
-            content: `L'utilisateur qui s'adresse a toi dans la prochaine phrase est : ${akhyAuthor.id}, si le message de l'utilisateur est vide et/ou ne comporte que ton ID, agis comme s'il voulait savoir si tu es présent, et réponds de manière très très courte dans ce cas, 2 ou 3 mots.`
-          },
-          {
-            role: "user",
-            content: requestMessage.length > 1 ? requestMessage : 'Répond de manière approprié aux derniers messages de cette conversation. Sans prendre en compte mon dernier message vide',
-          },
-          {
-            role: 'system',
-            content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}, l'id du message est : ${message.reference?.messageId}` : '',
-          },
-          {
-            role: "system",
-            content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
-          },
-          {
-            role: "system",
-            content: 'En te basant sur la liste des utilisateurs et des id utilisateurs présent au début de chaque message, lorsque tu parles d\'un utilisateur présent dans cette liste que ce soit via son \'user.global_name\', son \'user.username\' ou son \'user.id\' , identifie le avec son \'user.id\' plutôt que d\'utiliser son \'user.global_name\', ça doit ressembler à ça en remplaçant \'ID\' <@ID>. Fait le la première fois que tu évoques l\'utilisateur mais donne juste son \'user.global_name\' ensuite',
-          },
-          {
-            role: "system",
-            content: `Ton id est : ${process.env.APP_ID}, évite de l'utiliser et ne formatte pas tes messages avec ton propre id, si jamais tu utilises un id formatte le comme suit : <@ID>, en remplacant ID par l'id. Ton username et global_name sont : ${process.env.APP_NAME}`
-          }
-        );
+            {
+              role: "system",
+              content: "Adopte une attitude détendue et répond comme si tu participais à la conversation, pas trop long, pas de retour à la ligne, simple. N'hésites pas à utiliser des abréviations mais sans en abuser."
+            },
+            {
+              role: 'system',
+              content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}` : '',
+            },
+            /*{
+              role: "developer",
+              content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
+            },*/
+            {
+              role: "system",
+              content: `Ton id est : <@${process.env.APP_ID}>, évite de l'utiliser. Ton username et global_name sont : ${process.env.APP_NAME}`
+            },
+            {
+              role: "system",
+              content: `L'utilisateur qui s'adresse a toi est : <@${akhyAuthor.id}>`
+            },
+            {
+              role: "user",
+              content: requestMessage.length > 1 ? requestMessage : 'Salut',
+            });
       }
 
       // 'Je chill zbi (ntm a vouloir gaspiller les token)' // IA en pause
