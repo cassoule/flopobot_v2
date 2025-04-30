@@ -507,6 +507,10 @@ client.on('messageCreate', async (message) => {
     console.log(amount)
     console.log(await postAPOBuy('650338922874011648', amount))
   }
+  else if (message.content.toLowerCase().startsWith('?v')) {
+    console.log('active polls :')
+    console.log(activePolls)
+  }
 });
 
 // Once bot is ready
@@ -735,7 +739,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           } catch (err) {
             console.error('Error sending message', err);
           }
+          console.log('clear poll')
           clearInterval(countdownInterval);
+          delete activePolls[id];
           return;
         }
 
