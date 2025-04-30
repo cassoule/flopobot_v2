@@ -592,7 +592,7 @@ client.once('ready', async () => {
 
       if (generalChannel && generalChannel.isTextBased()) {
         generalChannel.send(
-            `${getRandomHydrateText()} <@&${process.env.VOTING_ROLE_ID}> ${getRandomEmoji(1)}`
+            `${getRandomHydrateText()} ${getRandomEmoji(1)}`
         );
       }
 
