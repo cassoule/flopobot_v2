@@ -269,7 +269,7 @@ async function getAkhys() {
       }
     }
     console.log(`New skins : ${newSkinCount}`);
-    if (newSkinCount <= 30) console.log(`New skins : ${newSkinCount}`);
+    if (newSkinCount <= 30 && newSkinCount > 0) console.log(newSkinText);
   } catch (e) {
     console.error('Error while fetching skins:', e);
   }
