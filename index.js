@@ -141,6 +141,7 @@ async function getAkhys() {
     })
 
     let newSkinCount = 0;
+    let newSkinText = '';
     for (const skin of skins) {
       try {
         if (skin.contentTierUuid !== null) {
@@ -261,12 +262,14 @@ async function getAkhys() {
                 maxPrice: maxPrice(skinBasePrice),
               });
           newSkinCount++;
+          newSkinText += skin.displayName + ' | ';
         }
       } catch (e) {
        //
       }
     }
     console.log(`New skins : ${newSkinCount}`);
+    if (newSkinCount <= 30) console.log(`New skins : ${newSkinCount}`);
   } catch (e) {
     console.error('Error while fetching skins:', e);
   }
@@ -518,8 +521,8 @@ client.once('ready', async () => {
   await getAkhys();
   console.log('Ready')
 
-  // every 5 minutes
-  cron.schedule('*/5 * * * *', async () => {
+  // every 10 minutes
+  cron.schedule('*/10 * * * *', async () => {
     const FIVE_MINUTES = 5 * 60 * 1000;
 
     // clean 5 minutes old inventories
@@ -601,6 +604,13 @@ client.once('ready', async () => {
       console.error('Message hydratation:', err);
     }
   });
+
+  // users/skins dayly fetch at 7am
+  cron.schedule('0 7 * * *', async() => {
+    // fetch eventual new users/skins
+    await getAkhys();
+    console.log('Users and skins fetched')
+  })
 });
 
 /**
