@@ -305,7 +305,7 @@ client.on('messageCreate', async (message) => {
     const now = Date.now();
     const timestamps = requestTimestamps.get(message.author.id) || [];
 
-// Remove timestamps older than SPAM_INTERVAL seconds
+    // Remove timestamps older than SPAM_INTERVAL seconds
     const updatedTimestamps = timestamps.filter(ts => now - ts < SPAM_INTERVAL);
 
     if (updatedTimestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
@@ -315,9 +315,6 @@ client.on('messageCreate', async (message) => {
       } else if (akhyAuthor.warns === Math.max(1, process.env.MAX_WARNS - 3)) {
         await message.author.send("Attention si tu continues de spam tu vas te faire timeout 🤯")
       }
-      // akhyAuthor.warned = true;
-      // akhyAuthor.warns++;
-      // akhyAuthor.allTimeWarns++;
       await updateManyUsers([
         { 
           id: akhyAuthor.id, 
@@ -352,7 +349,7 @@ client.on('messageCreate', async (message) => {
     }
     
 
-// Track this new usage
+    // Track this new usage
     updatedTimestamps.push(now);
     requestTimestamps.set(akhyAuthor.id, updatedTimestamps);
     await updateManyUsers([
@@ -411,10 +408,6 @@ client.on('messageCreate', async (message) => {
                 role: 'developer',
                 content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}` : '',
               },
-              /*{
-                role: "developer",
-                content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
-              },*/
               {
                 role: "developer",
                 content: `Ton id est : <@${process.env.APP_ID}>, évite de l'utiliser. Ton username et global_name sont : ${process.env.APP_NAME}`
@@ -449,10 +442,7 @@ client.on('messageCreate', async (message) => {
               role: 'system',
               content: message.mentions.repliedUser?.id ? `La phrase de l'utilisateur répond à un message de ${message.mentions.repliedUser?.id === process.env.APP_ID ? 'toi-même' : message.mentions.repliedUser?.id}` : '',
             },
-            /*{
-              role: "developer",
-              content: "Considère chaque messages d'utilisateurs afin d'établir un contexte de la situation, si tu ne comprends pas le dernière demande utilisateur analyse le reste des demandes."
-            },*/
+
             {
               role: "system",
               content: `Ton id est : <@${process.env.APP_ID}>, évite de l'utiliser. Ton username et global_name sont : ${process.env.APP_NAME}`
@@ -467,7 +457,6 @@ client.on('messageCreate', async (message) => {
             });
       }
 
-      // 'Je chill zbi (ntm a vouloir gaspiller les token)' // IA en pause
       // await gork(formatted); IA en marche
       const reply = await gork(formatted);
 
