@@ -1248,18 +1248,19 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const topSkins = getTopSkins.all()
       const guild = await client.guilds.fetch(req.body.guild_id)
 
-      console.log(topSkins)
-
       let fields = []
 
-      topSkins.forEach((skin, index) => {
-        const owner = guild.members.fetch(skin.user_id);
+      for (const skin of topSkins) {
+        const index = topSkins.indexOf(skin);
+        const owner = await guild.members.fetch(skin.user_id);
+        console.log('owner:')
+        console.log(owner)
         fields.push({
           name: `#${index+1} - **${skin.displayName}**`,
           value: `${skin.maxPrice}€ ${skin.user_id ? '| **@'+ owner.user.username+'** ✅' : ''}\n`,
           inline: false
         });
-      })
+      }
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
