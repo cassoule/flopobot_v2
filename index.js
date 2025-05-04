@@ -1252,7 +1252,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       for (const skin of topSkins) {
         const index = topSkins.indexOf(skin);
-        const owner = await guild.members.fetch(skin.user_id);
+        const owner = skin.user_id ? await guild.members.fetch(skin.user_id) : null;
         console.log('owner:')
         console.log(owner)
         fields.push({
