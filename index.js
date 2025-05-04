@@ -1253,8 +1253,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       for (const skin of topSkins) {
         const index = topSkins.indexOf(skin);
         const owner = skin.user_id ? await guild.members.fetch(skin.user_id) : null;
-        console.log('owner:')
-        console.log(owner)
         fields.push({
           name: `#${index+1} - **${skin.displayName}**`,
           value: `${skin.maxPrice}€ ${skin.user_id ? '| **@'+ owner.user.username+'** ✅' : ''}\n`,
