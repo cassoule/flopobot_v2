@@ -18,9 +18,10 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import { getShuffledOptions, getResult } from './game.js';
+import { channelPointsHandler } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
+import Database from "better-sqlite3";
 import { flopoDB,
         insertUser,
         insertManyUsers,
@@ -294,7 +295,11 @@ client.login(process.env.BOT_TOKEN);
 client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
-  if (message.guildId !== process.env.GUILD_ID) return;
+  // UNCOMMENT FOR DEV
+  //if (message.guildId !== process.env.GUILD_ID) return;
+
+  // coins méchanique
+  channelPointsHandler(message)
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
@@ -486,17 +491,37 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`${content}`)
         .catch(console.error);
   }
-  else if (message.content.toLowerCase().startsWith('?u')) {
-    console.log(await getAPOUsers())
-  }
-  else if (message.content.toLowerCase().startsWith('?b')) {
-    const amount = message.content.replace('?b ', '')
-    console.log(amount)
-    console.log(await postAPOBuy('650338922874011648', amount))
-  }
-  else if (message.content.toLowerCase().startsWith('?v')) {
-    console.log('active polls :')
-    console.log(activePolls)
+  else if (message.guildId === process.env.DEV_GUILD_ID) {
+    // ADMIN COMMANDS
+    if (message.content.toLowerCase().startsWith('?u')) {
+      console.log(await getAPOUsers())
+    }
+    else if (message.content.toLowerCase().startsWith('?b')) {
+      const amount = message.content.replace('?b ', '')
+      console.log(amount)
+      console.log(await postAPOBuy('650338922874011648', amount))
+    }
+    else if (message.content.toLowerCase().startsWith('?v')) {
+      console.log('active polls :')
+      console.log(activePolls)
+    }
+    else if (message.content === 'flopo:add-users-coins') {
+      if (message.author.id === process.env.DEV_ID) {
+        console.log(message.author.id)
+        try {
+          const stmtUpdateUsers = flopoDB.prepare(`
+            ALTER TABLE users
+              ADD coins INTEGER DEFAULT 0
+          `);
+          stmtUpdateUsers.run()
+        } catch (e) {
+          console.log(e)
+        }
+      }
+    }
+    else if (message.content === 'flopo:cancel') {
+      message.delete()
+    }
   }
 });
 
