@@ -49,6 +49,12 @@ import {sleep} from "openai/core";
 const app = express();
 // Get port, or default to 25578
 const PORT = process.env.PORT || 25578;
+app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', process.env.BASE_URL);
+  res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key');
+  next();
+});
 // To keep track of our active games
 const activeGames = {};
 const activePolls = {};
@@ -538,6 +544,19 @@ client.on('messageCreate', async (message) => {
         } else {
           console.log('invalid user')
         }
+      }
+      else if (message.content.startsWith('flopo:send-message')) {
+        const msg = message.content.replace('flopo:send-message ', '')
+        await fetch(process.env.BASE_URL + '/send-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            channelId: '1368908514545631262',
+            message: msg,
+          })
+        });
       }
     }
   }
@@ -2436,6 +2455,38 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
-app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
+app.get('/users', (req, res) => {
+  const users = getAllUsers.all();
+  res.json(users);
 });
+
+app.post('/send-message', (req, res) => {
+  const { channelId, message } = req.body;
+  const channel = client.channels.cache.get(channelId);
+
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  channel.send(message)
+      .then(() => res.json({ success: true }))
+      .catch(err => res.status(500).json({ error: err.message }));
+});
+
+import http from 'http';
+import { Server } from 'socket.io';
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    Origin: process.env.BASE_URL,
+    methods: ['GET', 'POST', 'PUT'],
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('FlopoSite connected via WebSocket');
+});
+
+server.listen(PORT, () => {
+  console.log(`Express+Socket.IO listening on port ${PORT}`);
+});
+
