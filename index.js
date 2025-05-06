@@ -22,25 +22,26 @@ import { channelPointsHandler } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
-import { flopoDB,
-        insertUser,
-        insertManyUsers,
-        updateUser,
-        updateManyUsers,
-        getUser,
-        getAllUsers,
-        stmtUsers,
-        stmtSkins,
-        updateManySkins,
-        insertSkin,
-        updateSkin,
-        insertManySkins,
-        getAllSkins,
-        getSkin,
-        getAllAvailableSkins,
-        getUserInventory,
-        getTopSkins,
-      } from './init_database.js';
+import {
+  flopoDB,
+  insertUser,
+  insertManyUsers,
+  updateUser,
+  updateManyUsers,
+  getUser,
+  getAllUsers,
+  stmtUsers,
+  stmtSkins,
+  updateManySkins,
+  insertSkin,
+  updateSkin,
+  insertManySkins,
+  getAllSkins,
+  getSkin,
+  getAllAvailableSkins,
+  getUserInventory,
+  getTopSkins, updateUserCoins,
+} from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 
 // Create an express app
@@ -295,11 +296,9 @@ client.login(process.env.BOT_TOKEN);
 client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
-  // UNCOMMENT FOR DEV
-  //if (message.guildId !== process.env.GUILD_ID) return;
 
-  // coins méchanique
-  channelPointsHandler(message)
+  // coins mecanich
+  if (message.guildId === process.env.GUILD_ID) channelPointsHandler(message)
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
@@ -483,14 +482,6 @@ client.on('messageCreate', async (message) => {
           .catch(console.error);
     }
   }
-  else if (message.content.toLowerCase().startsWith('membres')) {
-    let content = ``
-    const allAkhys = await getAllUsers.all()
-    allAkhys.forEach((akhy) => content += `> ### ${akhy.globalName} \n > **${akhy.totalRequests}** requests \n > **${akhy.warns}** warns \n > **${akhy.allTimeWarns}** all-time warns \n\n`);
-
-    message.channel.send(`${content}`)
-        .catch(console.error);
-  }
   else if (message.guildId === process.env.DEV_GUILD_ID) {
     // ADMIN COMMANDS
     if (message.content.toLowerCase().startsWith('?u')) {
@@ -519,8 +510,26 @@ client.on('messageCreate', async (message) => {
         }
       }
     }
+    else if (message.content === 'flopo:all-users') {
+      let content = ``
+      const allAkhys = getAllUsers.all()
+      console.log(allAkhys)
+    }
     else if (message.content === 'flopo:cancel') {
-      message.delete()
+      await message.delete()
+    }
+    else if (message.content.startsWith('flopo:reset-user-coins')) {
+      const userId = message.content.replace('flopo:reset-user-coins ', '')
+      const authorDB = getUser.get(userId)
+      if (authorDB) {
+        updateUserCoins.run({
+          id: userId,
+          coins: 0,
+        })
+        console.log(`${authorDB.username}'s coins were reset to 0`)
+      } else {
+        console.log('invalid user')
+      }
     }
   }
 });
