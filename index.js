@@ -18,29 +18,32 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import { getShuffledOptions, getResult } from './game.js';
+import { channelPointsHandler } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
-import { flopoDB,
-        insertUser,
-        insertManyUsers,
-        updateUser,
-        updateManyUsers,
-        getUser,
-        getAllUsers,
-        stmtUsers,
-        stmtSkins,
-        updateManySkins,
-        insertSkin,
-        updateSkin,
-        insertManySkins,
-        getAllSkins,
-        getSkin,
-        getAllAvailableSkins,
-        getUserInventory,
-        getTopSkins,
-      } from './init_database.js';
+import Database from "better-sqlite3";
+import {
+  flopoDB,
+  insertUser,
+  insertManyUsers,
+  updateUser,
+  updateManyUsers,
+  getUser,
+  getAllUsers,
+  stmtUsers,
+  stmtSkins,
+  updateManySkins,
+  insertSkin,
+  updateSkin,
+  insertManySkins,
+  getAllSkins,
+  getSkin,
+  getAllAvailableSkins,
+  getUserInventory,
+  getTopSkins, updateUserCoins,
+} from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
+import {sleep} from "openai/core";
 
 // Create an express app
 const app = express();
@@ -294,7 +297,18 @@ client.login(process.env.BOT_TOKEN);
 client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
-  if (message.guildId !== process.env.GUILD_ID) return;
+
+  // hihihiha
+  if (message.author.id === process.env.PATA_ID) {
+    if (message.content.startsWith('feur')
+        || message.content.startsWith('rati')) {
+      await sleep(1000)
+      await message.delete()
+    }
+  }
+
+  // coins mecanich
+  if (message.guildId === process.env.GUILD_ID) channelPointsHandler(message)
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
@@ -478,25 +492,54 @@ client.on('messageCreate', async (message) => {
           .catch(console.error);
     }
   }
-  else if (message.content.toLowerCase().startsWith('membres')) {
-    let content = ``
-    const allAkhys = await getAllUsers.all()
-    allAkhys.forEach((akhy) => content += `> ### ${akhy.globalName} \n > **${akhy.totalRequests}** requests \n > **${akhy.warns}** warns \n > **${akhy.allTimeWarns}** all-time warns \n\n`);
-
-    message.channel.send(`${content}`)
-        .catch(console.error);
-  }
-  else if (message.content.toLowerCase().startsWith('?u')) {
-    console.log(await getAPOUsers())
-  }
-  else if (message.content.toLowerCase().startsWith('?b')) {
-    const amount = message.content.replace('?b ', '')
-    console.log(amount)
-    console.log(await postAPOBuy('650338922874011648', amount))
-  }
-  else if (message.content.toLowerCase().startsWith('?v')) {
-    console.log('active polls :')
-    console.log(activePolls)
+  else if (message.guildId === process.env.DEV_GUILD_ID) {
+    // ADMIN COMMANDS
+    if (message.content.toLowerCase().startsWith('?u')) {
+      console.log(await getAPOUsers())
+    }
+    else if (message.content.toLowerCase().startsWith('?b')) {
+      const amount = message.content.replace('?b ', '')
+      console.log(amount)
+      console.log(await postAPOBuy('650338922874011648', amount))
+    }
+    else if (message.content.toLowerCase().startsWith('?v')) {
+      console.log('active polls :')
+      console.log(activePolls)
+    }
+    else if (message.author.id === process.env.DEV_ID) {
+      if (message.content === 'flopo:add-coins-to-users') {
+        console.log(message.author.id)
+        try {
+          const stmtUpdateUsers = flopoDB.prepare(`
+            ALTER TABLE users
+              ADD coins INTEGER DEFAULT 0
+          `);
+          stmtUpdateUsers.run()
+        } catch (e) {
+          console.log(e)
+        }
+      }
+      else if (message.content === 'flopo:users') {
+        const allAkhys = getAllUsers.all()
+        console.log(allAkhys)
+      }
+      else if (message.content === 'flopo:cancel') {
+        await message.delete()
+      }
+      else if (message.content.startsWith('flopo:reset-user-coins')) {
+        const userId = message.content.replace('flopo:reset-user-coins ', '')
+        const authorDB = getUser.get(userId)
+        if (authorDB) {
+          updateUserCoins.run({
+            id: userId,
+            coins: 0,
+          })
+          console.log(`${authorDB.username}'s coins were reset to 0`)
+        } else {
+          console.log('invalid user')
+        }
+      }
+    }
   }
 });
 
