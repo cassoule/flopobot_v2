@@ -1,5 +1,7 @@
 import { capitalize } from './utils.js';
 
+import { updateUserCoins, getUser } from './init_database.js'
+
 const messagesTimestamps = new Map();
 
 const TimesChoices = [
@@ -74,21 +76,30 @@ export function getTimesChoices() {
 }
 
 export function channelPointsHandler(msg) {
-  console.log(msg.createdTimestamp)
   const author = msg.author
+  const authorDB = getUser.get(author.id)
+
+  if (!authorDB) {
+    console.log("message from an unknown user")
+    return
+  }
 
   const now = Date.now();
   const timestamps = messagesTimestamps.get(author.id) || [];
 
-  // Remove timestamps older than SPAM_INTERVAL seconds
-  const updatedTimestamps = timestamps.filter(ts => now - ts < 300000); // 5 minutes
+  // Remove all timestamps if first one is older than 15 minutes
+  const updatedTimestamps = now - timestamps[0] < 900000 ? timestamps : [];
 
   updatedTimestamps.push(now);
   messagesTimestamps.set(author.id, updatedTimestamps);
 
-  if (messagesTimestamps.get(author.id).length === 1) {
-    // +50 coins
-  } else if (messagesTimestamps.get(author.id).length <= 5) {
-    // +10 coins
+  if (messagesTimestamps.get(author.id).length <= 10) {
+    // +10 or +50 coins
+    updateUserCoins.run({
+      id: author.id,
+      coins: messagesTimestamps.get(author.id).length === 10
+          ? authorDB.coins + 50
+          : authorDB.coins + 10,
+    })
   }
 }
