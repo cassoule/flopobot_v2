@@ -43,6 +43,7 @@ import {
   getTopSkins, updateUserCoins,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
+import {sleep} from "openai/core";
 
 // Create an express app
 const app = express();
@@ -297,6 +298,15 @@ client.on('messageCreate', async (message) => {
   // Ignore messages from bots to avoid feedback loops
   if (message.author.bot) return;
 
+  // hihihiha
+  if (message.author.id === process.env.PATA_ID) {
+    if (message.content.startsWith('feur')
+        || message.content.startsWith('rati')) {
+      await sleep(1000)
+      await message.delete()
+    }
+  }
+
   // coins mecanich
   if (message.guildId === process.env.GUILD_ID) channelPointsHandler(message)
 
@@ -496,8 +506,8 @@ client.on('messageCreate', async (message) => {
       console.log('active polls :')
       console.log(activePolls)
     }
-    else if (message.content === 'flopo:add-users-coins') {
-      if (message.author.id === process.env.DEV_ID) {
+    else if (message.author.id === process.env.DEV_ID) {
+      if (message.content === 'flopo:add-coins-to-users') {
         console.log(message.author.id)
         try {
           const stmtUpdateUsers = flopoDB.prepare(`
@@ -509,26 +519,25 @@ client.on('messageCreate', async (message) => {
           console.log(e)
         }
       }
-    }
-    else if (message.content === 'flopo:all-users') {
-      let content = ``
-      const allAkhys = getAllUsers.all()
-      console.log(allAkhys)
-    }
-    else if (message.content === 'flopo:cancel') {
-      await message.delete()
-    }
-    else if (message.content.startsWith('flopo:reset-user-coins')) {
-      const userId = message.content.replace('flopo:reset-user-coins ', '')
-      const authorDB = getUser.get(userId)
-      if (authorDB) {
-        updateUserCoins.run({
-          id: userId,
-          coins: 0,
-        })
-        console.log(`${authorDB.username}'s coins were reset to 0`)
-      } else {
-        console.log('invalid user')
+      else if (message.content === 'flopo:users') {
+        const allAkhys = getAllUsers.all()
+        console.log(allAkhys)
+      }
+      else if (message.content === 'flopo:cancel') {
+        await message.delete()
+      }
+      else if (message.content.startsWith('flopo:reset-user-coins')) {
+        const userId = message.content.replace('flopo:reset-user-coins ', '')
+        const authorDB = getUser.get(userId)
+        if (authorDB) {
+          updateUserCoins.run({
+            id: userId,
+            coins: 0,
+          })
+          console.log(`${authorDB.username}'s coins were reset to 0`)
+        } else {
+          console.log('invalid user')
+        }
       }
     }
   }
