@@ -2473,7 +2473,7 @@ app.get('/user/:id/avatar', async (req, res) => {
     res.json({ avatarUrl });
 
   } catch (error) {
-    console.error('Error fetching user avatar:', error);
+    console.error('Error fetching user avatar');
     res.status(500).json({ error: 'Failed to fetch avatar' });
   }
 })
