@@ -39,7 +39,7 @@ export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, glob
 export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, warns = @warns, allTimeWarns = @allTimeWarns, totalRequests = @totalRequests WHERE id = @id');
 export const updateUserCoins = flopoDB.prepare('UPDATE users SET coins = @coins WHERE id = @id');
 export const getUser = flopoDB.prepare('SELECT * FROM users WHERE id = ?');
-export const getAllUsers = flopoDB.prepare('SELECT * FROM users');
+export const getAllUsers = flopoDB.prepare('SELECT * FROM users ORDER BY coins DESC');
 
 export const insertSkin = flopoDB.prepare('INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText, basePrice, currentLvl, currentChroma, currentPrice, maxPrice) VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText, @basePrice, @currentLvl, @currentChroma, @currentPrice, @maxPrice)');
 export const updateSkin = flopoDB.prepare('UPDATE skins SET user_id = @user_id, currentLvl = @currentLvl, currentChroma = @currentChroma, currentPrice = @currentPrice WHERE uuid = @uuid');

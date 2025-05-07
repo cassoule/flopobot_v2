@@ -2460,6 +2460,24 @@ app.get('/users', (req, res) => {
   res.json(users);
 });
 
+app.get('/user/:id/avatar', async (req, res) => {
+  try {
+    const userId = req.params.id; // Get the ID from route parameters
+    const user = await client.users.fetch(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const avatarUrl = user.displayAvatarURL({ format: 'png', size: 256 });
+    res.json({ avatarUrl });
+
+  } catch (error) {
+    console.error('Error fetching user avatar:', error);
+    res.status(500).json({ error: 'Failed to fetch avatar' });
+  }
+})
+
 app.post('/send-message', (req, res) => {
   const { channelId, message } = req.body;
   const channel = client.channels.cache.get(channelId);
