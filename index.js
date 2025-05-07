@@ -51,8 +51,8 @@ const app = express();
 const PORT = process.env.PORT || 25578;
 app.use(express.json());
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.BASE_URL);
-  res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key');
+  res.header('Access-Control-Allow-Origin', process.env.FLAPI_URL);
+  res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key, ngrok-skip-browser-warning');
   next();
 });
 // To keep track of our active games
