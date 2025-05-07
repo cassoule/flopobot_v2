@@ -314,7 +314,10 @@ client.on('messageCreate', async (message) => {
   }
 
   // coins mecanich
-  if (message.guildId === process.env.GUILD_ID) channelPointsHandler(message)
+  if (message.guildId === process.env.GUILD_ID) {
+    channelPointsHandler(message)
+    io.emit('data-updated', { table: 'users', action: 'update' });
+  }
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
@@ -2495,8 +2498,8 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    Origin: process.env.BASE_URL,
-    methods: ['GET', 'POST', 'PUT'],
+    Origin: process.env.FLAPI_URL,
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
   }
 });
 
