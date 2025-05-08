@@ -49,9 +49,10 @@ import {sleep} from "openai/core";
 const app = express();
 // Get port, or default to 25578
 const PORT = process.env.PORT || 25578;
+const FLAPI_URL = process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL
 app.use(express.json());
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', process.env.FLAPI_URL);
+  res.header('Access-Control-Allow-Origin', FLAPI_URL);
   res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key, ngrok-skip-browser-warning');
   next();
 });
@@ -568,6 +569,7 @@ client.on('messageCreate', async (message) => {
 // Once bot is ready
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  console.log(`[Connected with ${FLAPI_URL}]`)
   const randomMinute = Math.floor(Math.random() * 60);
   const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
   todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
@@ -2498,13 +2500,13 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    Origin: process.env.FLAPI_URL,
+    Origin: FLAPI_URL,
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
   }
 });
 
 io.on('connection', (socket) => {
-  console.log('FlopoSite connected via WebSocket');
+  console.log(`${FLAPI_URL} connected via WebSocket`);
 });
 
 server.listen(PORT, () => {
