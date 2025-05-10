@@ -49,6 +49,13 @@ import {sleep} from "openai/core";
 const app = express();
 // Get port, or default to 25578
 const PORT = process.env.PORT || 25578;
+const FLAPI_URL = process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL
+app.use(express.json());
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', FLAPI_URL);
+  res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key, ngrok-skip-browser-warning');
+  next();
+});
 // To keep track of our active games
 const activeGames = {};
 const activePolls = {};
@@ -308,7 +315,10 @@ client.on('messageCreate', async (message) => {
   }
 
   // coins mecanich
-  if (message.guildId === process.env.GUILD_ID) channelPointsHandler(message)
+  if (message.guildId === process.env.GUILD_ID) {
+    channelPointsHandler(message)
+    io.emit('data-updated', { table: 'users', action: 'update' });
+  }
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
@@ -539,6 +549,19 @@ client.on('messageCreate', async (message) => {
           console.log('invalid user')
         }
       }
+      else if (message.content.startsWith('flopo:send-message')) {
+        const msg = message.content.replace('flopo:send-message ', '')
+        await fetch(process.env.BASE_URL + '/send-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            channelId: '1368908514545631262',
+            message: msg,
+          })
+        });
+      }
     }
   }
 });
@@ -546,6 +569,7 @@ client.on('messageCreate', async (message) => {
 // Once bot is ready
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  console.log(`[Connected with ${FLAPI_URL}]`)
   const randomMinute = Math.floor(Math.random() * 60);
   const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
   todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
@@ -2436,6 +2460,56 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
-app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
+app.get('/users', (req, res) => {
+  const users = getAllUsers.all();
+  res.json(users);
 });
+
+app.get('/user/:id/avatar', async (req, res) => {
+  try {
+    const userId = req.params.id; // Get the ID from route parameters
+    const user = await client.users.fetch(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const avatarUrl = user.displayAvatarURL({ format: 'png', size: 256 });
+    res.json({ avatarUrl });
+
+  } catch (error) {
+    console.error('Error fetching user avatar');
+    res.status(500).json({ error: 'Failed to fetch avatar' });
+  }
+})
+
+app.post('/send-message', (req, res) => {
+  const { channelId, message } = req.body;
+  const channel = client.channels.cache.get(channelId);
+
+  if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  channel.send(message)
+      .then(() => res.json({ success: true }))
+      .catch(err => res.status(500).json({ error: err.message }));
+});
+
+import http from 'http';
+import { Server } from 'socket.io';
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    Origin: FLAPI_URL,
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log(`${FLAPI_URL} connected via WebSocket`);
+});
+
+server.listen(PORT, () => {
+  console.log(`Express+Socket.IO listening on port ${PORT}`);
+});
+
