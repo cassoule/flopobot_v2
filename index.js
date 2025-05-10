@@ -692,6 +692,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     const { name } = data;
     console.log(name)
 
+
     // 'timeout' command
     if (name === 'timeout') {
       // Interaction context
@@ -758,6 +759,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         if (!poll) {
           clearInterval(countdownInterval);
+          io.emit('new-poll', { action: 'timeout cleared' });
           return;
         }
 
@@ -803,6 +805,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           console.log('clear poll')
           clearInterval(countdownInterval);
           delete activePolls[id];
+          io.emit('new-poll', { action: 'timeout cleared' });
           return;
         }
 
@@ -862,6 +865,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const minutes = Math.floor(remaining / 60);
       const seconds = remaining % 60;
       const countdownText = `**${minutes}m ${seconds}s** restantes`;
+
+      // web site update
+      io.emit('new-poll', { action: 'timeout command' });
 
       return res.send({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -2460,11 +2466,13 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
+// Get all users ordered by coins
 app.get('/users', (req, res) => {
   const users = getAllUsers.all();
   res.json(users);
 });
 
+// Get user's avatar
 app.get('/user/:id/avatar', async (req, res) => {
   try {
     const userId = req.params.id; // Get the ID from route parameters
@@ -2483,11 +2491,53 @@ app.get('/user/:id/avatar', async (req, res) => {
   }
 })
 
+// Get user's inventory
+app.get('/user/:id/inventory', async (req, res) => {
+  try {
+    const userId = req.params.id; // Get the ID from route parameters
+    const user = await client.users.fetch(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const inventory = getUserInventory.all({user_id: userId});
+    res.json({ inventory });
+
+  } catch (error) {
+    console.error('Error fetching user avatar');
+    res.status(500).json({ error: 'Failed to fetch avatar' });
+  }
+})
+
+// Get active polls
+app.get('/polls', async (req, res) => {
+  try {
+    res.json({ activePolls });
+
+  } catch (error) {
+    console.error('Error fetching active polls');
+    res.status(500).json({ error: 'Failed to fetch active polls' });
+  }
+})
+
 app.post('/send-message', (req, res) => {
-  const { channelId, message } = req.body;
+  const { userId, channelId, message } = req.body;
   const channel = client.channels.cache.get(channelId);
 
+  const user = getUser.get(userId);
+
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
   if (!channel) return res.status(404).json({ error: 'Channel not found' });
+
+  if (user.coins < 10) return res.status(403).json({ error: 'Pas assez de coins' });
+
+  updateUserCoins.run({
+    id: userId,
+    coins: user.coins - 10,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
 
   channel.send(message)
       .then(() => res.json({ success: true }))
