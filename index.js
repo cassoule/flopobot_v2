@@ -2468,6 +2468,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
+// Check flAPI
+app.get('/check', (req, res) => {
+  res.status(200).json({ check: true, status: 'OK' });
+});
+
 // Get all users ordered by coins
 app.get('/users', (req, res) => {
   const users = getAllUsers.all();
@@ -2523,6 +2528,7 @@ app.get('/polls', async (req, res) => {
   }
 })
 
+// Send a custom message in the admin command channel
 app.post('/send-message', (req, res) => {
   const { userId, channelId, message } = req.body;
   const channel = client.channels.cache.get(channelId);
@@ -2544,6 +2550,50 @@ app.post('/send-message', (req, res) => {
   channel.send(message)
       .then(() => res.json({ success: true }))
       .catch(err => res.status(500).json({ error: err.message }));
+});
+
+// Change user's server specific username
+app.post('/change-nickname', async (req, res) => {
+  const { userId, nickname, commandUserId } = req.body;
+
+  const commandUser = getUser.get(commandUserId);
+
+  if (!commandUser) return res.status(404).json({ message: 'Oups petit soucis' });
+
+  if (commandUser.coins < 1000) return res.status(403).json({ message: 'Pas assez de coins' });
+
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const member = await guild.members.fetch(userId);
+    await member.setNickname(nickname);
+    let message = nickname ? `Le pseudo de '${member.user.tag}' a été changé en '${nickname}'` : `Le pseudo de '${member.user.tag}' a été remis par défaut`
+    res.status(200).json({ message : message });
+    updateUserCoins.run({
+      id: commandUserId,
+      coins: commandUser.coins - 1000,
+    })
+    io.emit('data-updated', { table: 'users', action: 'update' });
+  } catch (error) {
+    res.status(500).json({ message : `J'ai pas réussi à changer le pseudo` });
+  }
+})
+
+// ADMIN Add coins
+app.post('/add-coins', (req, res) => {
+  const { commandUserId } = req.body;
+
+  const commandUser = getUser.get(commandUserId);
+
+  if (!commandUser) return res.status(404).json({ error: 'User not found' });
+  if (commandUserId !== process.env.DEV_ID) return res.status(404).json({ error: 'Not admin' });
+
+  updateUserCoins.run({
+    id: commandUserId,
+    coins: commandUser.coins + 100,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
+
+  res.status(200).json({ message : `+100` });
 });
 
 import http from 'http';
