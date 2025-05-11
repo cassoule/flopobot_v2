@@ -2578,6 +2578,39 @@ app.post('/change-nickname', async (req, res) => {
   }
 })
 
+app.post('/spam-ping', async (req, res) => {
+  const { userId, commandUserId } = req.body;
+
+  const user = getUser.get(userId);
+  const commandUser = getUser.get(commandUserId);
+
+  if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
+
+  if (commandUser.coins < 10000) return res.status(403).json({ message: 'Pas assez de coins' });
+
+  try {
+    const discordUser = await client.users.fetch(userId);
+
+    await discordUser.send(`<@${userId}>`)
+
+    res.status(200).json({ message : 'C\'est parti ehehe' });
+
+    updateUserCoins.run({
+      id: commandUserId,
+      coins: commandUser.coins - 10000,
+    })
+    io.emit('data-updated', { table: 'users', action: 'update' });
+
+    for (let i = 0; i < 29; i++) {
+      await discordUser.send(`<@${userId}>`)
+      await sleep(1000);
+    }
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({ message : "Oups ça n'a pas marché" });
+  }
+})
+
 // ADMIN Add coins
 app.post('/add-coins', (req, res) => {
   const { commandUserId } = req.body;
@@ -2589,11 +2622,11 @@ app.post('/add-coins', (req, res) => {
 
   updateUserCoins.run({
     id: commandUserId,
-    coins: commandUser.coins + 100,
+    coins: commandUser.coins + 1000,
   })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
-  res.status(200).json({ message : `+100` });
+  res.status(200).json({ message : `+1000` });
 });
 
 import http from 'http';
