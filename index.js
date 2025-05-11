@@ -1540,6 +1540,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           poll.against++;
         }
 
+        io.emit('new-poll', { action: 'new vote' });
+
         // Retrieve online eligible users (ensure your bot has the necessary intents)
         const guildId = req.body.guild_id;
         const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
