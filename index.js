@@ -18,7 +18,7 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import { channelPointsHandler } from './game.js';
+import { channelPointsHandler, slowmodesHandler } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -61,6 +61,7 @@ const activeGames = {};
 const activePolls = {};
 const activeInventories = {};
 const activeSearchs = {};
+const activeSlowmodes = {};
 let todaysHydrateCron = ''
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
@@ -314,10 +315,12 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // coins mecanich
+  // coins mecanich and slowmodes check
   if (message.guildId === process.env.GUILD_ID) {
     channelPointsHandler(message)
     io.emit('data-updated', { table: 'users', action: 'update' });
+    const deletedSlowmode = await slowmodesHandler(message, activeSlowmodes)
+    if (deletedSlowmode) io.emit('new-slowmode', { action: 'deleted slowmode' });
   }
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
@@ -739,7 +742,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         time_display: formatTime(time),
         for: 0,
         against: 0,
-        voters: new Set(),
+        voters: [],
         channelId: req.body.channel_id,  // Capture channel for follow-up notification
         endpoint: `webhooks/${process.env.APP_ID}/${req.body.token}/messages/@original`,
       };
@@ -1506,7 +1509,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
       if (activePolls[gameId]) {
         const poll = activePolls[gameId];
-        poll.voters = poll.voters || new Set();
+        poll.voters = poll.voters || [];
         const voterId = req.body.member.user.id;
 
         // Check if the voter has the required voting role
@@ -1522,7 +1525,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         // Enforce one vote per eligible user
-        if (poll.voters.has(voterId)) {
+        if (poll.voters.find(u => u === voterId)) {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
@@ -1533,7 +1536,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         // Record the vote
-        poll.voters.add(voterId);
+        poll.voters.push(voterId);
+        console.log(poll)
         if (isVotingFor) {
           poll.for++;
         } else {
@@ -2479,6 +2483,14 @@ app.get('/users', (req, res) => {
   res.json(users);
 });
 
+app.post('/timedout', async (req, res) => {
+  const { userId } = req.body
+  const guild = await client.guilds.fetch(process.env.GUILD_ID);
+  const member = await guild.members.fetch(userId);
+
+  return res.status(200).json({ isTimedOut: member?.communicationDisabledUntilTimestamp > Date.now()})
+})
+
 // Get user's avatar
 app.get('/user/:id/avatar', async (req, res) => {
   try {
@@ -2609,6 +2621,189 @@ app.post('/spam-ping', async (req, res) => {
     console.log(err)
     res.status(500).json({ message : "Oups ça n'a pas marché" });
   }
+})
+
+app.post('/timeout/vote', async (req, res) => {
+  const { commandUserId, voteKey, voteFor } = req.body;
+
+  const commandUser = getUser.get(commandUserId);
+  const poll = activePolls[voteKey];
+  const isVotingFor = voteFor;
+
+  if (!commandUser) return res.status(404).json({ message: 'Oups petit soucis' });
+  if (!poll) return res.status(404).json({ message: 'Vote de timeout introuvable' });
+
+  if (activePolls[voteKey]) {
+    const poll = activePolls[voteKey];
+    poll.voters = poll.voters || [];
+    const voterId = commandUserId;
+
+    const guild = await client.guilds.fetch(process.env.GUILD_ID)
+    const commandMember = await guild.members.fetch(commandUserId);
+    console.log(commandMember.roles.cache.map(role => role.id))
+    // Check if the voter has the required voting role
+    const voterRoles = commandMember.roles.cache.map(role => role.id) || [];
+    if (!voterRoles.includes(process.env.VOTING_ROLE_ID)) {
+      return res.status(403).json({ message: 'Tu n\'as pas le rôle requis pour voter'})
+    }
+
+    // Enforce one vote per eligible user
+    if (poll.voters.find(u => u === voterId)) {
+      return res.status(403).json({ message: 'Tu as déjà voté'})
+    }
+
+    // Record the vote
+    poll.voters.push(voterId);
+    console.log(poll)
+    if (isVotingFor) {
+      poll.for++;
+    } else {
+      poll.against++;
+    }
+
+    io.emit('new-poll', { action: 'new vote' });
+
+    // Retrieve online eligible users (ensure your bot has the necessary intents)
+    const guildId = process.env.GUILD_ID;
+    const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
+    const onlineEligibleUsers = await getOnlineUsersWithRole(guildId, roleId);
+    const votesNeeded = Math.max(0, poll.requiredMajority - poll.for);
+
+    // Check if the majority is reached
+    if (poll.for >= poll.requiredMajority) {
+      try {
+        // Build the updated poll message content
+        await DiscordRequest(
+            poll.endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Timeout`,
+                    description: `Proposition de timeout **${poll.toUsername}** pendant ${poll.time_display}`,
+                    fields: [
+                      {
+                        name: 'Votes totaux',
+                        value: '✅ ' + poll.for,
+                        inline: true,
+                      },
+                    ],
+                    color: 0xF2F3F3, // You can set the color of the embed
+                  },
+                ],
+                components: [], // remove buttons
+              },
+            }
+        );
+      } catch (err) {
+        console.error('Error updating poll message:', err);
+      }
+      // Clear the poll so the setTimeout callback doesn't fire later
+      delete activePolls[voteKey];
+
+      // **Actual Timeout Action**
+      try {
+        // Calculate the ISO8601 timestamp to disable communications until now + poll.time seconds
+        const timeoutUntil = new Date(Date.now() + poll.time * 1000).toISOString();
+        const endpointTimeout = `guilds/${process.env.GUILD_ID}/members/${poll.toUserId}`;
+        await DiscordRequest(endpointTimeout, {
+          method: 'PATCH',
+          body: { communication_disabled_until: timeoutUntil },
+        });
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `<@${poll.toUserId}> a été timeout pendant ${poll.time_display} par décision démocratique 👊`,
+          },
+        });
+      } catch (err) {
+        console.error('Error timing out user:', err);
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Impossible de timeout <@${poll.toUserId}>, désolé... 😔`,
+          },
+        });
+      }
+    }
+
+    // If the vote is "for", update the original poll message to reflect the new vote count.
+    if (isVotingFor) {
+      const remaining = Math.max(0, Math.floor((poll.endTime - Date.now()) / 1000));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      const countdownText = `**${minutes}m ${seconds}s** restantes`;
+      try {
+        // Build the updated poll message content
+        await DiscordRequest(
+            poll.endpoint,
+            {
+              method: 'PATCH',
+              body: {
+                embeds: [
+                  {
+                    title: `Timeout`,
+                    description: `**${poll.username}** propose de timeout **${poll.toUsername}** pendant ${poll.time_display}\nIl manque **${votesNeeded}** vote(s)`,
+                    fields: [
+                      {
+                        name: 'Pour',
+                        value: '✅ ' + poll.for,
+                        inline: true,
+                      },
+                      {
+                        name: 'Temps restant',
+                        value: '⏳ ' + countdownText,
+                        inline: false,
+                      },
+                    ],
+                    color: 0xF2F3F3, // You can set the color of the embed
+                  },
+                ],
+                components: req.body.message.components, // preserve the buttons
+              },
+            }
+        );
+      } catch (err) {
+        console.error('Error updating poll message:', err);
+      }
+    }
+
+    return res.status(200).json({ message: 'Vote enregistré !'})
+  }
+})
+
+app.post('/slowmode', async (req, res) => {
+  let { userId, commandUserId} = req.body
+
+  const user = getUser.get(userId)
+
+  if (!user) return res.status(403).send({ message: 'Oups petit problème'})
+
+  if (activeSlowmodes[userId]) {
+    if (userId === commandUserId) {
+      delete activeSlowmodes[userId];
+      return res.status(200).json({ message: 'Slowmode retiré'})
+    } else {
+      let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
+      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed().toString() + 'min' : timeLeft.toFixed().toString() + 'sec'
+      return res.status(403).json({ message: `${user.globalName} est déjà en slowmode (${timeLeft})`})
+    }
+  } else if (userId === commandUserId) {
+    return res.status(403).json({ message: 'Impossible de te mettre toi-même en slowmode'})
+  }
+
+  activeSlowmodes[userId] = {
+    userId: userId,
+    endAt: Date.now() + 60 * 60 * 1000, // 1 heure
+    lastMessage: null,
+  };
+  io.emit('new-slowmode', { action: 'new slowmode' });
+
+  return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
+})
+app.get('/slowmodes', async (req, res) => {
+  res.status(200).json({ slowmodes: activeSlowmodes });
 })
 
 // ADMIN Add coins
