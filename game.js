@@ -103,3 +103,29 @@ export function channelPointsHandler(msg) {
     })
   }
 }
+
+export async function slowmodesHandler(msg, activeSlowmodes) {
+  const author = msg.author
+  const authorDB = getUser.get(author.id)
+  const authorSlowmode = activeSlowmodes[author.id]
+
+  if (!authorDB) return false
+  if (!authorSlowmode) return false
+
+  console.log('Message from a slowmode user')
+
+  const now = Date.now();
+  if (now > authorSlowmode.endAt) {
+    console.log('Slow mode is over')
+    delete activeSlowmodes[author.id]
+    return true
+  }
+
+  if (authorSlowmode.lastMessage && (authorSlowmode.lastMessage + 60 * 1000) > now) {
+    await msg.delete()
+    console.log('Message deleted')
+  } else {
+    authorSlowmode.lastMessage = Date.now()
+  }
+  return false
+}

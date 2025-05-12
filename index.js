@@ -18,7 +18,7 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import { channelPointsHandler } from './game.js';
+import { channelPointsHandler, slowmodesHandler } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -61,6 +61,7 @@ const activeGames = {};
 const activePolls = {};
 const activeInventories = {};
 const activeSearchs = {};
+const activeSlowmodes = {};
 let todaysHydrateCron = ''
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
@@ -314,10 +315,12 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // coins mecanich
+  // coins mecanich and slowmodes check
   if (message.guildId === process.env.GUILD_ID) {
     channelPointsHandler(message)
     io.emit('data-updated', { table: 'users', action: 'update' });
+    const deletedSlowmode = await slowmodesHandler(message, activeSlowmodes)
+    if (deletedSlowmode) io.emit('new-slowmode', { action: 'deleted slowmode' });
   }
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
@@ -2480,6 +2483,14 @@ app.get('/users', (req, res) => {
   res.json(users);
 });
 
+app.post('/timedout', async (req, res) => {
+  const { userId } = req.body
+  const guild = await client.guilds.fetch(process.env.GUILD_ID);
+  const member = await guild.members.fetch(userId);
+
+  return res.status(200).json({ isTimedOut: member?.communicationDisabledUntilTimestamp > Date.now()})
+})
+
 // Get user's avatar
 app.get('/user/:id/avatar', async (req, res) => {
   try {
@@ -2760,6 +2771,39 @@ app.post('/timeout/vote', async (req, res) => {
 
     return res.status(200).json({ message: 'Vote enregistré !'})
   }
+})
+
+app.post('/slowmode', async (req, res) => {
+  let { userId, commandUserId} = req.body
+
+  const user = getUser.get(userId)
+
+  if (!user) return res.status(403).send({ message: 'Oups petit problème'})
+
+  if (activeSlowmodes[userId]) {
+    if (userId === commandUserId) {
+      delete activeSlowmodes[userId];
+      return res.status(200).json({ message: 'Slowmode retiré'})
+    } else {
+      let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
+      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed().toString() + 'min' : timeLeft.toFixed().toString() + 'sec'
+      return res.status(403).json({ message: `${user.globalName} est déjà en slowmode (${timeLeft})`})
+    }
+  } else if (userId === commandUserId) {
+    return res.status(403).json({ message: 'Impossible de te mettre toi-même en slowmode'})
+  }
+
+  activeSlowmodes[userId] = {
+    userId: userId,
+    endAt: Date.now() + 60 * 60 * 1000, // 1 heure
+    lastMessage: null,
+  };
+  io.emit('new-slowmode', { action: 'new slowmode' });
+
+  return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
+})
+app.get('/slowmodes', async (req, res) => {
+  res.status(200).json({ slowmodes: activeSlowmodes });
 })
 
 // ADMIN Add coins
