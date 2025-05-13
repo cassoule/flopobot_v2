@@ -2824,6 +2824,22 @@ app.post('/add-coins', (req, res) => {
   res.status(200).json({ message : `+1000` });
 });
 
+app.post('/buy-coins', (req, res) => {
+  const { commandUserId, coins } = req.body;
+
+  const commandUser = getUser.get(commandUserId);
+
+  if (!commandUser) return res.status(404).json({ error: 'User not found' });
+
+  updateUserCoins.run({
+    id: commandUserId,
+    coins: commandUser.coins + coins,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
+
+  res.status(200).json({ message : `+${coins}` });
+});
+
 import http from 'http';
 import { Server } from 'socket.io';
 const server = http.createServer(app);
