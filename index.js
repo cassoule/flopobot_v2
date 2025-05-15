@@ -62,6 +62,7 @@ const activePolls = {};
 const activeInventories = {};
 const activeSearchs = {};
 const activeSlowmodes = {};
+const activePredis = {};
 let todaysHydrateCron = ''
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
@@ -2804,6 +2805,87 @@ app.post('/slowmode', async (req, res) => {
 })
 app.get('/slowmodes', async (req, res) => {
   res.status(200).json({ slowmodes: activeSlowmodes });
+})
+
+app.post('/start-predi', async (req, res) => {
+  let { commandUserId, label, options, closingTime, payoutTime } = req.body
+
+  const commandUser = getUser.get(commandUserId)
+
+  if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
+
+  /*if (Object.values(activePredis).find(p => p.creatorId === commandUserId)) {
+    return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
+  }*/
+
+  const startTime = Date.now()
+  const newPrediId = commandUserId.toString() + '-' + startTime.toString()
+  const formattedOptions = [
+    { label: options[0], votes: [], total: 0, percent: 0, },
+    { label: options[1], votes: [], total: 0, percent: 0, },
+  ]
+  activePredis[newPrediId] = {
+    creatorId: commandUserId,
+    label: label,
+    options: formattedOptions,
+    startTime: startTime,
+    closingTime: startTime + (closingTime * 1000),
+    endTime: startTime + (closingTime * 1000) + (payoutTime * 1000),
+    closed: false,
+  };
+  io.emit('new-predi', { action: 'new predi' });
+
+  return res.status(200).json({ message: `Ta prédi '${label}' a commencée !`})
+})
+app.get('/predis', async (req, res) => {
+  res.status(200).json({ predis: activePredis });
+})
+
+app.post('/vote-predi', async (req, res) => {
+  const { commandUserId, predi, amount, option } = req.body
+
+  let warning = false;
+
+  let intAmount = parseInt(amount)
+  if (intAmount < 10 || intAmount > 250000) return res.status(403).send({ message: 'Montant invalide'})
+
+  const commandUser = getUser.get(commandUserId)
+  if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+
+  const prediObject = activePredis[predi]
+  if (!prediObject) return res.status(403).send({ message: 'Prédiction introuvable'})
+
+  if (prediObject.endTime < Date.now()) return res.status(403).send({ message: 'Les votes de cette prédiction sont clos'})
+
+  const otherOption = option === 0 ? 1 : 0;
+  if (prediObject.options[otherOption].votes.find(v => v.id === commandUserId) && commandUserId !== process.env.DEV_ID) return res.status(403).send({ message: 'Tu ne peux pas voter pour les 2 deux options'})
+
+  if (prediObject.options[option].votes.find(v => v.id === commandUserId)) {
+    activePredis[predi].options[option].votes.forEach(v => {
+      if (v.id === commandUserId) {
+        if (v.amount) {
+          return res.status(403).send({ message: 'TU as déjà parié le max (250K)'})
+        }
+        if (v.amount + intAmount > 250000) {
+          intAmount = 250000-v.amount
+          warning = true
+        }
+        v.amount += intAmount
+      }
+    })
+  } else {
+    activePredis[predi].options[option].votes.push({
+      id: commandUserId,
+      amount: intAmount,
+    })
+  }
+  activePredis[predi].options[option].total += intAmount
+
+  activePredis[predi].options[option].percent = (activePredis[predi].options[option].total / (activePredis[predi].options[otherOption].total + activePredis[predi].options[option].total)) * 100
+  activePredis[predi].options[otherOption].percent = 100 - activePredis[predi].options[option].percent
+
+  io.emit('new-predi', { action: 'new vote' });
+  res.status(200).json({ message : `Vote enregistré!` });
 })
 
 // ADMIN Add coins

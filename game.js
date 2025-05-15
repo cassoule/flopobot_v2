@@ -84,6 +84,8 @@ export function channelPointsHandler(msg) {
     return
   }
 
+  if (msg.length < 3) return
+
   const now = Date.now();
   const timestamps = messagesTimestamps.get(author.id) || [];
 
