@@ -579,7 +579,7 @@ client.once('ready', async () => {
   todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
   console.log(todaysHydrateCron)
   await getAkhys();
-  console.log('Ready')
+  console.log('FlopoBOT marked as ready')
 
   // every 10 minutes
   cron.schedule('*/10 * * * *', async () => {
@@ -2813,10 +2813,32 @@ app.post('/start-predi', async (req, res) => {
   const commandUser = getUser.get(commandUserId)
 
   if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
+  if (commandUser.coins < 100) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
 
   /*if (Object.values(activePredis).find(p => p.creatorId === commandUserId)) {
     return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
   }*/
+
+  let msgId;
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const generalChannel = guild.channels.cache.find(
+        ch => ch.name === 'général' || ch.name === 'general'
+    );
+    const embed = new EmbedBuilder()
+        .setTitle(`Prédiction de <@${commandUserId}>`)
+        .setDescription(`**${label}**`)
+        .addFields(
+            { name: 'Choix 1', value: `**${options[0]}**`, inline: true },
+            { name: 'Choix 2', value: `**${options[1]}**`, inline: true }
+        )
+        .setFooter({ text: `${closingTime}s pour aller [voter sur FlopoSite](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)` })
+        .setColor('#0099ff');
+    const msg = await generalChannel.send({ embeds: [embed] });
+    msgId = msg.id;
+  } catch (e) {
+    return res.status(500).send({ message: 'Erreur lors de l\'envoi du message'})
+  }
 
   const startTime = Date.now()
   const newPrediId = commandUserId.toString() + '-' + startTime.toString()
@@ -2832,8 +2854,17 @@ app.post('/start-predi', async (req, res) => {
     closingTime: startTime + (closingTime * 1000),
     endTime: startTime + (closingTime * 1000) + (payoutTime * 1000),
     closed: false,
+    cancelledTime: null,
+    paidTime: null,
+    msgId: msgId,
   };
   io.emit('new-predi', { action: 'new predi' });
+
+  updateUserCoins.run({
+    id: commandUserId,
+    coins: commandUser.coins - 100,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
 
   return res.status(200).json({ message: `Ta prédi '${label}' a commencée !`})
 })
@@ -2851,6 +2882,7 @@ app.post('/vote-predi', async (req, res) => {
 
   const commandUser = getUser.get(commandUserId)
   if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+  if (commandUser.coins < intAmount) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
 
   const prediObject = activePredis[predi]
   if (!prediObject) return res.status(403).send({ message: 'Prédiction introuvable'})
@@ -2863,8 +2895,8 @@ app.post('/vote-predi', async (req, res) => {
   if (prediObject.options[option].votes.find(v => v.id === commandUserId)) {
     activePredis[predi].options[option].votes.forEach(v => {
       if (v.id === commandUserId) {
-        if (v.amount) {
-          return res.status(403).send({ message: 'TU as déjà parié le max (250K)'})
+        if (v.amount === 250000) {
+          return res.status(403).send({ message: 'Tu as déjà parié le max (250K)'})
         }
         if (v.amount + intAmount > 250000) {
           intAmount = 250000-v.amount
@@ -2885,6 +2917,28 @@ app.post('/vote-predi', async (req, res) => {
   activePredis[predi].options[otherOption].percent = 100 - activePredis[predi].options[option].percent
 
   io.emit('new-predi', { action: 'new vote' });
+
+  updateUserCoins.run({
+    id: commandUserId,
+    coins: commandUser.coins - intAmount,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
+
+  try {
+    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const generalChannel = guild.channels.cache.find(
+        ch => ch.name === 'général' || ch.name === 'general'
+    );
+    const message = await generalChannel.messages.fetch(activePredis[predi].msgId)
+    const updatedEmbed = new EmbedBuilder()
+        .setTitle(`Prédiction mise à jour`)
+        .setDescription(`Nouveau contenu ici`)
+        .setColor('#ff0000'); // Example: Red color
+    await message.edit({ embeds: [updatedEmbed] });
+  } catch (err) {
+    console.error('Error updating poll message:', err);
+  }
+
   res.status(200).json({ message : `Vote enregistré!` });
 })
 
@@ -2934,7 +2988,7 @@ const io = new Server(server, {
 });
 
 io.on('connection', (socket) => {
-  console.log(`${FLAPI_URL} connected via WebSocket`);
+  console.log(`socket connection at ${new Date().toLocaleString()}`);
 });
 
 server.listen(PORT, () => {
