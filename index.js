@@ -2815,9 +2815,9 @@ app.post('/start-predi', async (req, res) => {
   if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
   if (commandUser.coins < 100) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
 
-  /*if (Object.values(activePredis).find(p => p.creatorId === commandUserId)) {
+  if (Object.values(activePredis).find(p => p.creatorId === commandUserId && p.endTime > Date.now())) {
     return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
-  }*/
+  }
 
   let msgId;
   try {
@@ -2826,14 +2826,17 @@ app.post('/start-predi', async (req, res) => {
         ch => ch.name === 'général' || ch.name === 'general'
     );
     const embed = new EmbedBuilder()
-        .setTitle(`Prédiction de <@${commandUserId}>`)
+        .setTitle(`Prédiction de ${commandUser.username}`)
         .setDescription(`**${label}**`)
         .addFields(
-            { name: 'Choix 1', value: `**${options[0]}**`, inline: true },
-            { name: 'Choix 2', value: `**${options[1]}**`, inline: true }
+            { name: `${options[0]}`, value: ``, inline: true },
+            { name: ``, value: `ou`, inline: true },
+            { name: `${options[1]}`, value: ``, inline: true },
+            { name: ``, value: `[Aller voter](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)`, inline: false }
         )
-        .setFooter({ text: `${closingTime}s pour aller [voter sur FlopoSite](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)` })
-        .setColor('#0099ff');
+        .setFooter({ text: `${formatTime(closingTime).replaceAll('*', '')} pour aller voter sur FlopoSite` })
+        .setColor('#5865f2')
+        .setTimestamp(new Date());
     const msg = await generalChannel.send({ embeds: [embed] });
     msgId = msg.id;
   } catch (e) {
@@ -2854,6 +2857,7 @@ app.post('/start-predi', async (req, res) => {
     closingTime: startTime + (closingTime * 1000),
     endTime: startTime + (closingTime * 1000) + (payoutTime * 1000),
     closed: false,
+    winning: null,
     cancelledTime: null,
     paidTime: null,
     msgId: msgId,
@@ -2868,6 +2872,7 @@ app.post('/start-predi', async (req, res) => {
 
   return res.status(200).json({ message: `Ta prédi '${label}' a commencée !`})
 })
+
 app.get('/predis', async (req, res) => {
   res.status(200).json({ predis: activePredis });
 })
@@ -2924,6 +2929,65 @@ app.post('/vote-predi', async (req, res) => {
   })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
+  return res.status(200).send({ message : `Vote enregistré!` });
+})
+
+app.post('/end-predi', async (req, res) => {
+  const { commandUserId, predi, confirm, winningOption } = req.body
+
+  const commandUser = getUser.get(commandUserId)
+  if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+  if (commandUserId !== process.env.DEV_ID) return res.status(403).send({ message: 'Tu n\'as pas les permissions requises' })
+
+  const prediObject = activePredis[predi]
+  if (!prediObject) return res.status(403).send({ message: 'Prédiction introuvable'})
+  if (prediObject.closed) return res.status(403).send({ message: 'Prédiction déjà close'})
+
+  if (!confirm) {
+    activePredis[predi].cancelledTime = new Date();
+    activePredis[predi].options[0].votes.forEach((v) => {
+      const tempUser = getUser.get(v.id)
+      try {
+        updateUserCoins.run({
+          id: v.id,
+          coins: tempUser.coins + v.amount
+        })
+      } catch (e) {
+        console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
+      }
+    })
+    activePredis[predi].options[1].votes.forEach((v) => {
+      const tempUser = getUser.get(v.id)
+      try {
+        updateUserCoins.run({
+          id: v.id,
+          coins: tempUser.coins + v.amount
+        })
+      } catch (e) {
+        console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
+      }
+    })
+    activePredis[predi].closed = true;
+  }
+  else {
+    const losingOption = winningOption === 0 ? 1 : 0;
+    activePredis[predi].options[winningOption].votes.forEach((v) => {
+      const tempUser = getUser.get(v.id)
+      const ratio = activePredis[predi].options[winningOption].total === 0 ? 0 : activePredis[predi].options[losingOption].total / activePredis[predi].options[winningOption].total
+      try {
+        updateUserCoins.run({
+          id: v.id,
+          coins: tempUser.coins + (v.amount * (1 + ratio))
+        })
+      } catch (e) {
+        console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`)
+      }
+    })
+    activePredis[predi].paidTime = new Date();
+    activePredis[predi].closed = true;
+    activePredis[predi].winning = winningOption;
+  }
+
   try {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const generalChannel = guild.channels.cache.find(
@@ -2931,15 +2995,23 @@ app.post('/vote-predi', async (req, res) => {
     );
     const message = await generalChannel.messages.fetch(activePredis[predi].msgId)
     const updatedEmbed = new EmbedBuilder()
-        .setTitle(`Prédiction mise à jour`)
-        .setDescription(`Nouveau contenu ici`)
-        .setColor('#ff0000'); // Example: Red color
+        .setTitle(`Prédiction de ${commandUser.username}`)
+        .setDescription(`**${activePredis[predi].label}**`)
+        .setFields({ name: `${activePredis[predi].options[0].label}`, value: ``, inline: true },
+            { name: ``, value: `ou`, inline: true },
+            { name: `${activePredis[predi].options[1].label}`, value: ``, inline: true },
+            { name: ``, value: `[Plus de détails](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)`, inline: false })
+        .setFooter({ text: `${activePredis[predi].cancelledTime !== null ? 'Prédi annulée' : 'Prédi confirmée !' }` })
+        .setTimestamp(new Date());
     await message.edit({ embeds: [updatedEmbed] });
   } catch (err) {
-    console.error('Error updating poll message:', err);
+    console.error('Error updating prédi message:', err);
   }
 
-  res.status(200).json({ message : `Vote enregistré!` });
+  io.emit('new-predi', { action: 'closed predi' });
+  io.emit('data-updated', { table: 'users', action: 'fin predi' });
+
+  return res.status(200).json({ message: 'Prédi close' });
 })
 
 // ADMIN Add coins
