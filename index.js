@@ -600,6 +600,18 @@ client.once('ready', async () => {
         delete activeSearchs[id];
       }
     }
+    for (const id in activePredis) {
+      const predi = activePredis[id];
+      if (predi.closed) {
+        if (predi.paidTime && Date.now() >= predi.paidTime + (24 * 60 * 60 * 1000)) {
+          console.log(`Removing expired paid predi : ${id}`);
+          delete activePredis[id];
+        } else if (Date.now() >= predi.cancelledTime + (24 * 60 * 60 * 1000)) {
+          console.log(`Removing expired cancelled predi : ${id}`);
+          delete activePredis[id];
+        }
+      }
+    }
   });
 
   // ─── 💀 Midnight Chaos Timer ──────────────────────
@@ -2815,7 +2827,7 @@ app.post('/start-predi', async (req, res) => {
   if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
   if (commandUser.coins < 100) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
 
-  if (Object.values(activePredis).find(p => p.creatorId === commandUserId && p.endTime > Date.now())) {
+  if (Object.values(activePredis).find(p => p.creatorId === commandUserId && (p.endTime > Date.now() && !p.closed))) {
     return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
   }
 
@@ -2874,8 +2886,23 @@ app.post('/start-predi', async (req, res) => {
 })
 
 app.get('/predis', async (req, res) => {
-  res.status(200).json({ predis: activePredis });
-})
+  const reversedPredis = Object.entries(activePredis).reverse();
+
+  const openEntries = [];
+  const closedEntries = [];
+
+  for (const [key, value] of reversedPredis) {
+    if (value.closed === true) {
+      closedEntries.push([key, value]);
+    } else {
+      openEntries.push([key, value]);
+    }
+  }
+
+  const reorderedPredis = Object.fromEntries([...openEntries, ...closedEntries]);
+
+  res.status(200).json({ predis: reorderedPredis });
+});
 
 app.post('/vote-predi', async (req, res) => {
   const { commandUserId, predi, amount, option } = req.body
