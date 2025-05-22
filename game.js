@@ -84,7 +84,7 @@ export function channelPointsHandler(msg) {
     return
   }
 
-  if (msg.content.length < 3) return
+  if (msg.content.length < 3 || msg.content.startsWith('.')) return
 
   const now = Date.now();
   const timestamps = messagesTimestamps.get(author.id) || [];
