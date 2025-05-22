@@ -2481,25 +2481,113 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     else if (componentId.startsWith('option_')) {
       const optionId = parseInt(componentId.replace('option_', '')[0]);
       const prediId = componentId.replace(`option_${optionId}_`, '');
+      let intAmount = 10;
 
-      const predi = activePredis[prediId]
-
-      const context = req.body.context;
-
-      try {
+      const commandUserId = req.body.member.user.id
+      const commandUser = getUser.get(commandUserId);
+      if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+      if (commandUser.coins < intAmount) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
-            content: predi.toString(), // [Object object]
+            content: 'Tu n\'as pas assez de FlopoCoins',
             flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const prediObject = activePredis[prediId]
+      if (!prediObject) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Prédiction introuvable',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      if (prediObject.endTime < Date.now()) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Les votes de cette prédiction sont clos',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      const otherOption = optionId === 0 ? 1 : 0;
+      if (prediObject.options[otherOption].votes.find(v => v.id === commandUserId) && commandUserId !== process.env.DEV_ID) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Tu ne peux pas voter pour les 2 deux options',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      let stopMaxCoins = false
+      if (prediObject.options[optionId].votes.find(v => v.id === commandUserId)) {
+        activePredis[prediId].options[optionId].votes.forEach(v => {
+          if (v.id === commandUserId) {
+            if (v.amount >= 250000) {
+              stopMaxCoins = true
+              return
+            }
+            if (v.amount + intAmount > 250000) {
+              intAmount = 250000-v.amount
+            }
+            v.amount += intAmount
           }
+        })
+      } else {
+        activePredis[prediId].options[optionId].votes.push({
+          id: commandUserId,
+          amount: intAmount,
+        })
+      }
+
+      if (stopMaxCoins) {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: 'Tu as déjà parié le max (250K)',
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
+        });
+      }
+
+      activePredis[prediId].options[optionId].total += intAmount
+
+      activePredis[prediId].options[optionId].percent = (activePredis[prediId].options[optionId].total / (activePredis[prediId].options[otherOption].total + activePredis[prediId].options[optionId].total)) * 100
+      activePredis[prediId].options[otherOption].percent = 100 - activePredis[prediId].options[optionId].percent
+
+      io.emit('new-predi', { action: 'new vote' });
+
+      updateUserCoins.run({
+        id: commandUserId,
+        coins: commandUser.coins - intAmount,
+      })
+      io.emit('data-updated', { table: 'users', action: 'update' });
+
+      try {
+        const totalAmount = activePredis[prediId].options[optionId].votes.find(v => v.id === commandUserId)?.amount;
+        const optionLabel = activePredis[prediId].options[optionId].label;
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Vote enregistré, **${intAmount}** Flopocoins sur **"${optionLabel}"** (**${totalAmount}** au total)`,
+            flags: InteractionResponseFlags.EPHEMERAL,
+          },
         });
       } catch (err) {
         console.log('Pas trouvé : ', err)
+        return res.send({
+          type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+        });
       }
-      return res.send({
-        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
-      });
     }
     return;
   }
@@ -2890,7 +2978,7 @@ app.post('/start-predi', async (req, res) => {
     const row2 = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
-                .setLabel('Voter sur le site')
+                .setLabel('Voter sur FlopoSite')
                 .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard`)
                 .setStyle(ButtonStyle.Link)
         )
@@ -3071,10 +3159,17 @@ app.post('/end-predi', async (req, res) => {
         .setFields({ name: `${activePredis[predi].options[0].label}`, value: ``, inline: true },
             { name: ``, value: `ou`, inline: true },
             { name: `${activePredis[predi].options[1].label}`, value: ``, inline: true },
-            { name: ``, value: `[Plus de détails](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)`, inline: false })
+        )
         .setFooter({ text: `${activePredis[predi].cancelledTime !== null ? 'Prédi annulée' : 'Prédi confirmée !' }` })
         .setTimestamp(new Date());
-    await message.edit({ embeds: [updatedEmbed] });
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setLabel('Voir')
+                .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard`)
+                .setStyle(ButtonStyle.Link)
+        )
+    await message.edit({ embeds: [updatedEmbed], components: [row] });
   } catch (err) {
     console.error('Error updating prédi message:', err);
   }
@@ -3132,6 +3227,9 @@ const io = new Server(server, {
 
 io.on('connection', (socket) => {
   console.log(`socket connection at ${new Date().toLocaleString()}`);
+  socket.on('user-connected', (user) => {
+    console.log(`user connected: ${getUser.get(user).globalName}`);
+  })
 });
 
 server.listen(PORT, () => {
