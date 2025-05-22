@@ -600,6 +600,18 @@ client.once('ready', async () => {
         delete activeSearchs[id];
       }
     }
+    for (const id in activePredis) {
+      const predi = activePredis[id];
+      if (predi.closed) {
+        if (predi.paidTime && Date.now() >= predi.paidTime + (24 * 60 * 60 * 1000)) {
+          console.log(`Removing expired paid predi : ${id}`);
+          delete activePredis[id];
+        } else if (Date.now() >= predi.cancelledTime + (24 * 60 * 60 * 1000)) {
+          console.log(`Removing expired cancelled predi : ${id}`);
+          delete activePredis[id];
+        }
+      }
+    }
   });
 
   // ─── 💀 Midnight Chaos Timer ──────────────────────
@@ -2466,6 +2478,29 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
       });
     }
+    else if (componentId.startsWith('option_')) {
+      const optionId = parseInt(componentId.replace('option_', '')[0]);
+      const prediId = componentId.replace(`option_${optionId}_`, '');
+
+      const predi = activePredis[prediId]
+
+      const context = req.body.context;
+
+      try {
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: predi.toString(), // [Object object]
+            flags: InteractionResponseFlags.EPHEMERAL,
+          }
+        });
+      } catch (err) {
+        console.log('Pas trouvé : ', err)
+      }
+      return res.send({
+        type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE,
+      });
+    }
     return;
   }
 
@@ -2815,9 +2850,12 @@ app.post('/start-predi', async (req, res) => {
   if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
   if (commandUser.coins < 100) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
 
-  if (Object.values(activePredis).find(p => p.creatorId === commandUserId && p.endTime > Date.now())) {
+  if (Object.values(activePredis).find(p => p.creatorId === commandUserId && (p.endTime > Date.now() && !p.closed))) {
     return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
   }
+
+  const startTime = Date.now()
+  const newPrediId = commandUserId.toString() + '-' + startTime.toString()
 
   let msgId;
   try {
@@ -2831,20 +2869,38 @@ app.post('/start-predi', async (req, res) => {
         .addFields(
             { name: `${options[0]}`, value: ``, inline: true },
             { name: ``, value: `ou`, inline: true },
-            { name: `${options[1]}`, value: ``, inline: true },
-            { name: ``, value: `[Aller voter](${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard)`, inline: false }
+            { name: `${options[1]}`, value: ``, inline: true }
         )
-        .setFooter({ text: `${formatTime(closingTime).replaceAll('*', '')} pour aller voter sur FlopoSite` })
+        .setFooter({ text: `${formatTime(closingTime).replaceAll('*', '')} pour voter` })
         .setColor('#5865f2')
         .setTimestamp(new Date());
-    const msg = await generalChannel.send({ embeds: [embed] });
+
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`option_0_${newPrediId}`)
+                .setLabel(`+10 sur '${options[0]}'`)
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`option_1_${newPrediId}`)
+                .setLabel(`+10 sur '${options[1]}'`)
+                .setStyle(ButtonStyle.Primary)
+        );
+
+    const row2 = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setLabel('Voter sur le site')
+                .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard`)
+                .setStyle(ButtonStyle.Link)
+        )
+
+    const msg = await generalChannel.send({ embeds: [embed], components: [row, row2] });
     msgId = msg.id;
   } catch (e) {
     return res.status(500).send({ message: 'Erreur lors de l\'envoi du message'})
   }
 
-  const startTime = Date.now()
-  const newPrediId = commandUserId.toString() + '-' + startTime.toString()
   const formattedOptions = [
     { label: options[0], votes: [], total: 0, percent: 0, },
     { label: options[1], votes: [], total: 0, percent: 0, },
@@ -2874,8 +2930,23 @@ app.post('/start-predi', async (req, res) => {
 })
 
 app.get('/predis', async (req, res) => {
-  res.status(200).json({ predis: activePredis });
-})
+  const reversedPredis = Object.entries(activePredis).reverse();
+
+  const openEntries = [];
+  const closedEntries = [];
+
+  for (const [key, value] of reversedPredis) {
+    if (value.closed === true) {
+      closedEntries.push([key, value]);
+    } else {
+      openEntries.push([key, value]);
+    }
+  }
+
+  const reorderedPredis = Object.fromEntries([...openEntries, ...closedEntries]);
+
+  res.status(200).json({ predis: reorderedPredis });
+});
 
 app.post('/vote-predi', async (req, res) => {
   const { commandUserId, predi, amount, option } = req.body
