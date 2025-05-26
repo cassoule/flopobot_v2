@@ -64,14 +64,18 @@ export const updateManySkins = flopoDB.transaction(async (skins) => {
 });
 
 
-// insertManyUsers([
-//   { id: '1234', username: 'Username', globalName: 'GlobalName', warned: 0, warns: 0, allTimeWarns: 0, totalRequests: 0 },
-//   { id: '12345', username: 'Username', globalName: 'GlobalName', warned: 0, warns: 0, allTimeWarns: 0, totalRequests: 0 },
-// ]);
+export const stmtLogs = flopoDB.prepare(`
+  CREATE TABLE IF NOT EXISTS logs (
+    id PRIMARY KEY,
+    user_id TEXT REFERENCES users,
+    action TEXT,
+    target_user_id TEXT REFERENCES users,
+    coins_amount INTEGER,
+    user_new_amount INTEGER
+  )
+`);
+stmtLogs.run()
 
-
-// updateManyUsers([
-//   { id: '1234', username: 'Username', globalName: 'GlobalName', warned: 0, warns: 0, allTimeWarns: 0, totalRequests: 0 },
-// ]);
-
-//console.log(getUser.get('12345'))
+export const insertLog = flopoDB.prepare('INSERT INTO logs (id, user_id, action, target_user_id, coins_amount, user_new_amount) VALUES (@id, @user_id, @action, @target_user_id, @coins_amount, @user_new_amount)');
+export const getLogs = flopoDB.prepare('SELECT * FROM logs');
+export const getUserLogs = flopoDB.prepare('SELECT * FROM logs WHERE user_id = @user_id');

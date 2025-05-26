@@ -41,6 +41,8 @@ import {
   getAllAvailableSkins,
   getUserInventory,
   getTopSkins, updateUserCoins,
+  insertLog, stmtLogs,
+  getLogs, getUserLogs,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -285,6 +287,11 @@ async function getAkhys() {
   } catch (e) {
     console.error('Error while fetching skins:', e);
   }
+  try {
+    stmtLogs.run()
+  } catch (e) {
+    console.log('Logs table init error')
+  }
 }
 
 async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=process.env.VOTING_ROLE_ID) {
@@ -316,7 +323,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // coins mecanich and slowmodes check
+  // coins mechanic and slowmodes check
   if (message.guildId === process.env.GUILD_ID) {
     channelPointsHandler(message)
     io.emit('data-updated', { table: 'users', action: 'update' });
@@ -2570,6 +2577,14 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         id: commandUserId,
         coins: commandUser.coins - intAmount,
       })
+      insertLog.run({
+        id: commandUserId + '-' + Date.now(),
+        user_id: commandUserId,
+        action: 'PREDI_VOTE',
+        target_user_id: null,
+        coins_amount: -intAmount,
+        user_new_amount: commandUser.coins - intAmount,
+      })
       io.emit('data-updated', { table: 'users', action: 'update' });
 
       try {
@@ -2607,6 +2622,10 @@ app.get('/users', (req, res) => {
   res.json(users);
 });
 
+app.get('/logs', (req, res) => {
+  return res.status(200).json(getLogs.all())
+})
+
 app.post('/timedout', async (req, res) => {
   const { userId } = req.body
   const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -2634,6 +2653,20 @@ app.get('/user/:id/avatar', async (req, res) => {
   }
 })
 
+app.get('/user/:id/sparkline', async (req, res) => {
+  try {
+    const userId = req.params.id
+
+    const user = getUser.get(userId)
+
+    if (!user) return res.status(404).send({ message: 'Utilisateur introuvable'})
+
+    return res.status(200).json({ sparkline: getUserLogs.all({user_id: userId}) })
+  } catch (e) {
+    return res.status(500).send({ message: 'erreur'})
+  }
+})
+
 // Get user's inventory
 app.get('/user/:id/inventory', async (req, res) => {
   try {
@@ -2649,7 +2682,7 @@ app.get('/user/:id/inventory', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching user avatar');
-    res.status(500).json({ error: 'Failed to fetch avatar' });
+    res.status(500).json({ error: 'Failed to fetch inventory' });
   }
 })
 
@@ -2681,6 +2714,14 @@ app.post('/send-message', (req, res) => {
     id: userId,
     coins: user.coins - 10,
   })
+  insertLog.run({
+    id: userId + '-' + Date.now(),
+    user_id: userId,
+    action: 'SEND_MESSAGE',
+    target_user_id: null,
+    coins_amount: -10,
+    user_new_amount: user.coins - 10,
+  })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
   channel.send(message)
@@ -2708,6 +2749,14 @@ app.post('/change-nickname', async (req, res) => {
       id: commandUserId,
       coins: commandUser.coins - 1000,
     })
+    insertLog.run({
+      id: commandUserId + '-' + Date.now(),
+      user_id: commandUserId,
+      action: 'CHANGE_NICKNAME',
+      target_user_id: userId,
+      coins_amount: -1000,
+      user_new_amount: commandUser.coins - 1000,
+    })
     io.emit('data-updated', { table: 'users', action: 'update' });
   } catch (error) {
     res.status(500).json({ message : `J'ai pas réussi à changer le pseudo` });
@@ -2734,6 +2783,14 @@ app.post('/spam-ping', async (req, res) => {
     updateUserCoins.run({
       id: commandUserId,
       coins: commandUser.coins - 10000,
+    })
+    insertLog.run({
+      id: commandUserId + '-' + Date.now(),
+      user_id: commandUserId,
+      action: 'SPAM_PING',
+      target_user_id: userId,
+      coins_amount: -10000,
+      user_new_amount: commandUser.coins - 10000,
     })
     io.emit('data-updated', { table: 'users', action: 'update' });
 
@@ -2901,6 +2958,11 @@ app.post('/slowmode', async (req, res) => {
   let { userId, commandUserId} = req.body
 
   const user = getUser.get(userId)
+  const commandUser = getUser.get(commandUserId);
+
+  if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
+
+  if (commandUser.coins < 10000) return res.status(403).json({ message: 'Pas assez de coins' });
 
   if (!user) return res.status(403).send({ message: 'Oups petit problème'})
 
@@ -2923,6 +2985,20 @@ app.post('/slowmode', async (req, res) => {
     lastMessage: null,
   };
   io.emit('new-slowmode', { action: 'new slowmode' });
+
+  updateUserCoins.run({
+    id: commandUserId,
+    coins: commandUser.coins - 10000,
+  })
+  insertLog.run({
+    id: commandUserId + '-' + Date.now(),
+    user_id: commandUserId,
+    action: 'SLOWMODE',
+    target_user_id: userId,
+    coins_amount: -10000,
+    user_new_amount: commandUser.coins - 10000,
+  })
+  io.emit('data-updated', { table: 'users', action: 'update' });
 
   return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
 })
@@ -3012,6 +3088,14 @@ app.post('/start-predi', async (req, res) => {
     id: commandUserId,
     coins: commandUser.coins - 100,
   })
+  insertLog.run({
+    id: commandUserId + '-' + Date.now(),
+    user_id: commandUserId,
+    action: 'START_PREDI',
+    target_user_id: null,
+    coins_amount: -100,
+    user_new_amount: commandUser.coins - 100,
+  })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
   return res.status(200).json({ message: `Ta prédi '${label}' a commencée !`})
@@ -3086,6 +3170,14 @@ app.post('/vote-predi', async (req, res) => {
     id: commandUserId,
     coins: commandUser.coins - intAmount,
   })
+  insertLog.run({
+    id: commandUserId + '-' + Date.now(),
+    user_id: commandUserId,
+    action: 'PREDI_VOTE',
+    target_user_id: null,
+    coins_amount: -intAmount,
+    user_new_amount: commandUser.coins - intAmount,
+  })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
   return res.status(200).send({ message : `Vote enregistré!` });
@@ -3111,6 +3203,14 @@ app.post('/end-predi', async (req, res) => {
           id: v.id,
           coins: tempUser.coins + v.amount
         })
+        insertLog.run({
+          id: v.id + '-' + Date.now(),
+          user_id: v.id,
+          action: 'PREDI_REFUND',
+          target_user_id: v.id,
+          coins_amount: v.amount,
+          user_new_amount: tempUser.coins + v.amount,
+        })
       } catch (e) {
         console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
       }
@@ -3121,6 +3221,14 @@ app.post('/end-predi', async (req, res) => {
         updateUserCoins.run({
           id: v.id,
           coins: tempUser.coins + v.amount
+        })
+        insertLog.run({
+          id: v.id + '-' + Date.now(),
+          user_id: v.id,
+          action: 'PREDI_REFUND',
+          target_user_id: v.id,
+          coins_amount: v.amount,
+          user_new_amount: tempUser.coins + v.amount,
         })
       } catch (e) {
         console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
@@ -3137,6 +3245,14 @@ app.post('/end-predi', async (req, res) => {
         updateUserCoins.run({
           id: v.id,
           coins: tempUser.coins + (v.amount * (1 + ratio))
+        })
+        insertLog.run({
+          id: v.id + '-' + Date.now(),
+          user_id: v.id,
+          action: 'PREDI_RESULT',
+          target_user_id: v.id,
+          coins_amount: v.amount * (1 + ratio),
+          user_new_amount: tempUser.coins + (v.amount * (1 + ratio)),
         })
       } catch (e) {
         console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`)
@@ -3193,6 +3309,14 @@ app.post('/add-coins', (req, res) => {
     id: commandUserId,
     coins: commandUser.coins + 1000,
   })
+  insertLog.run({
+    id: commandUserId + '-' + Date.now(),
+    user_id: commandUserId,
+    action: 'ADD_COINS',
+    target_user_id: commandUserId,
+    coins_amount: 1000,
+    user_new_amount: commandUser.coins + 1000,
+  })
   io.emit('data-updated', { table: 'users', action: 'update' });
 
   res.status(200).json({ message : `+1000` });
@@ -3208,6 +3332,14 @@ app.post('/buy-coins', (req, res) => {
   updateUserCoins.run({
     id: commandUserId,
     coins: commandUser.coins + coins,
+  })
+  insertLog.run({
+    id: commandUserId + '-' + Date.now(),
+    user_id: commandUserId,
+    action: 'ADD_COINS',
+    target_user_id: commandUserId,
+    coins_amount: coins,
+    user_new_amount: commandUser.coins + coins,
   })
   io.emit('data-updated', { table: 'users', action: 'update' });
 

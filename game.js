@@ -1,6 +1,6 @@
 import { capitalize } from './utils.js';
 
-import { updateUserCoins, getUser } from './init_database.js'
+import { updateUserCoins, getUser, insertLog } from './init_database.js'
 
 const messagesTimestamps = new Map();
 
@@ -97,11 +97,20 @@ export function channelPointsHandler(msg) {
 
   if (messagesTimestamps.get(author.id).length <= 10) {
     // +10 or +50 coins
+    let coins = messagesTimestamps.get(author.id).length === 10
+            ? 50
+            : 10
     updateUserCoins.run({
       id: author.id,
-      coins: messagesTimestamps.get(author.id).length === 10
-          ? authorDB.coins + 50
-          : authorDB.coins + 10,
+      coins: authorDB.coins + coins,
+    })
+    insertLog.run({
+      id: author.id + '-' + Date.now(),
+      user_id: author.id,
+      action: 'AUTOCOINS',
+      target_user_id: null,
+      coins_amount: coins,
+      user_new_amount: authorDB.coins + coins,
     })
   }
 }
