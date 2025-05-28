@@ -3360,7 +3360,8 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log(`socket connection at ${new Date().toLocaleString()}`);
   socket.on('user-connected', (user) => {
-    console.log(`user connected: ${getUser.get(user).globalName}`);
+    const username = getUser.get(user)
+    console.log(`user connected: ${username?.username ?? '-'}`);
   })
 });
 
