@@ -2629,7 +2629,13 @@ app.get('/logs', (req, res) => {
 app.post('/timedout', async (req, res) => {
   const { userId } = req.body
   const guild = await client.guilds.fetch(process.env.GUILD_ID);
-  const member = await guild.members.fetch(userId);
+
+  let member;
+  try {
+    member = await guild.members.fetch(userId);
+  } catch (e) {
+    return res.status(404).send({ message: 'Unknown member' })
+  }
 
   return res.status(200).json({ isTimedOut: member?.communicationDisabledUntilTimestamp > Date.now()})
 })
@@ -3357,11 +3363,104 @@ const io = new Server(server, {
   }
 });
 
+let queue = []
+let playingArray = []
+
 io.on('connection', (socket) => {
   console.log(`socket connection at ${new Date().toLocaleString()}`);
-  socket.on('user-connected', (user) => {
+
+  socket.on('user-connected', async (user) => {
     const username = getUser.get(user)
     console.log(`user connected: ${username?.username ?? '-'}`);
+
+    queue = queue.filter(obj => obj !== user)
+    let names = [];
+    for (const n of queue) {
+      let name = await client.users.fetch(n)
+      names.push(name?.username)
+    }
+    io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
+  })
+
+  socket.on('tictactoeconnection', async (e) => {
+    queue = queue.filter(obj => obj !== e.id)
+    let names = [];
+    for (const n of queue) {
+      let name = await client.users.fetch(n)
+      names.push(name?.username)
+    }
+    io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
+  })
+
+  socket.on('tictactoequeue', async (e) => {
+    console.log(`tictactoequeue: ${e.playerId}`);
+    queue.push(e.playerId)
+
+    if (queue.length >= 2) {
+      let p1 = await client.users.fetch(queue[0])
+      let p2 = await client.users.fetch(queue[1])
+
+      let p1obj = {
+        id: queue[0],
+        name: p1.username,
+        val: 'X',
+        move: "",
+      }
+      let p2obj = {
+        id: queue[1],
+        name: p2.username,
+        val: 'O',
+        move: "",
+      }
+
+      let lobby = {
+        p1: p1obj,
+        p2: p2obj,
+        sum: 1,
+        xs: [],
+        os: [],
+        lastmove: Date.now(),
+      }
+
+      playingArray.push(lobby)
+
+      queue.splice(0, 2)
+    }
+
+    let names = [];
+    for (const n of queue) {
+      let name = await client.users.fetch(n)
+      names.push(name?.username)
+    }
+
+    io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
+  })
+
+  socket.on('tictactoeplaying', (e) => {
+    if (e.value === 'X') {
+      let lobbyToChange = playingArray.find(obj => obj.p1.id === e.playerId)
+
+      lobbyToChange.p2.move = ''
+      lobbyToChange.p1.move = e.boxId
+      lobbyToChange.sum++
+      lobbyToChange.xs.push(e.boxId)
+      lobbyToChange.lastmove = Date.now()
+    }
+    else if (e.value === 'O') {
+      let lobbyToChange = playingArray.find(obj => obj.p2.id === e.playerId)
+
+      lobbyToChange.p1.move = ''
+      lobbyToChange.p2.move = e.boxId
+      lobbyToChange.sum++
+      lobbyToChange.os.push(e.boxId)
+      lobbyToChange.lastmove = Date.now()
+    }
+
+    io.emit('tictactoeplaying', { allPlayers: playingArray })
+  })
+
+  socket.on('tictactoegameOver', (e) => {
+    playingArray = playingArray.filter(obj => obj.p1.id !== e.playerId)
   })
 });
 
