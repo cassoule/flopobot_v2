@@ -79,3 +79,39 @@ stmtLogs.run()
 export const insertLog = flopoDB.prepare('INSERT INTO logs (id, user_id, action, target_user_id, coins_amount, user_new_amount) VALUES (@id, @user_id, @action, @target_user_id, @coins_amount, @user_new_amount)');
 export const getLogs = flopoDB.prepare('SELECT * FROM logs');
 export const getUserLogs = flopoDB.prepare('SELECT * FROM logs WHERE user_id = @user_id');
+
+
+export const stmtGames = flopoDB.prepare(`
+  CREATE TABLE IF NOT EXISTS games (
+    id PRIMARY KEY,
+    p1 TEXT REFERENCES users,
+    p2 TEXT REFERENCES users,
+    p1_score INTEGER,
+    p2_score INTEGER,
+    p1_elo INTEGER,
+    p2_elo INTEGER,
+    p1_new_elo INTEGER,
+    p2_new_elo INTEGER,
+    type TEXT,
+    timestamp TIMESTAMP
+  )
+`);
+stmtGames.run()
+
+export const insertGame = flopoDB.prepare('INSERT INTO games (id, p1, p2, p1_score, p2_score, p1_elo, p2_elo, p1_new_elo, p2_new_elo, type, timestamp) VALUES (@id, @p1, @p2, @p1_score, @p2_score, @p1_elo, @p2_elo, @p1_new_elo, @p2_new_elo, @type, @timestamp)');
+export const getGames = flopoDB.prepare('SELECT * FROM games');
+export const getUserGames = flopoDB.prepare('SELECT * FROM games WHERE p1 = @user_id OR p2 = @user_id');
+
+
+export const stmtElos = flopoDB.prepare(`
+  CREATE TABLE IF NOT EXISTS elos (
+    id PRIMARY KEY REFERENCES users,
+    elo INTEGER
+  )
+`);
+stmtElos.run()
+
+export const insertElos = flopoDB.prepare(`INSERT INTO elos (id, elo) VALUES (@id, @elo)`);
+export const getElos = flopoDB.prepare(`SELECT * FROM elos`);
+export const getUserElo = flopoDB.prepare(`SELECT * FROM elos WHERE id = @id`);
+export const updateElo = flopoDB.prepare('UPDATE elos SET elo = @elo WHERE id = @id')

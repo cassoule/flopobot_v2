@@ -1,6 +1,6 @@
 import { capitalize } from './utils.js';
 
-import { updateUserCoins, getUser, insertLog } from './init_database.js'
+import {updateUserCoins, getUser, insertLog, insertGame, getUserElo, insertElos, updateElo} from './init_database.js'
 
 const messagesTimestamps = new Map();
 
@@ -139,4 +139,82 @@ export async function slowmodesHandler(msg, activeSlowmodes) {
     authorSlowmode.lastMessage = Date.now()
   }
   return false
+}
+
+export async function eloHandler(p1, p2, p1score, p2score, type) {
+  const p1DB = getUser.get(p1)
+  const p2DB = getUser.get(p2)
+
+  if (!p1DB || !p2DB) return
+
+  let p1elo = await getUserElo.get({ id: p1 })
+  let p2elo = await getUserElo.get({ id: p2 })
+
+  if (!p1elo) {
+    await insertElos.run({
+      id: p1.toString(),
+      elo: 100,
+    })
+    p1elo = await getUserElo.get({ id: p1 })
+  }
+  if (!p2elo) {
+    await insertElos.run({
+      id: p2.toString(),
+      elo: 100,
+    })
+    p2elo = await getUserElo.get({ id: p2 })
+  }
+
+  if (p1score === p2score) {
+    insertGame.run({
+      id: p1.toString() + '-' + p2.toString() + '-' + Date.now().toString(),
+      p1: p1,
+      p2: p2,
+      p1_score: p1score,
+      p2_score: p2score,
+      p1_elo: p1elo.elo,
+      p2_elo: p2elo.elo,
+      p1_new_elo: p1elo.elo,
+      p2_new_elo: p2elo.elo,
+      type: type,
+      timestamp: Date.now(),
+    })
+    return
+  }
+
+  let diff = 5;
+
+  if (p1elo.elo > p2elo.elo) {
+    if (p1score > p2score) {
+      diff = Math.max(Math.floor(5 * (p2elo.elo/p1elo.elo)), 1)
+    } else {
+      diff = Math.max(Math.floor(5 * (1 + (p2elo.elo/p1elo.elo))), 1)
+    }
+  } else if (p1elo.elo < p2elo.elo) {
+    if (p1score < p2score) {
+      diff = Math.max(Math.floor(5 * (p1elo.elo/p2elo.elo)), 1)
+    } else {
+      diff = Math.max(Math.floor(5 * (1 + (p1elo.elo/p2elo.elo))), 1)
+    }
+  }
+  const p1newElo = Math.max(p1elo.elo + (p1score > p2score ? diff : -diff), 0)
+  const p2newElo = Math.max(p2elo.elo + (p1score > p2score ? -diff : diff), 0)
+  console.log(`${p1} elo update : ${p1elo.elo} -> ${p1newElo}`)
+  console.log(`${p2} elo update : ${p2elo.elo} -> ${p2newElo}`)
+  updateElo.run({ id: p1, elo: p1newElo })
+  updateElo.run({ id: p2, elo: p2newElo })
+
+  insertGame.run({
+    id: p1.toString() + '-' + p2.toString() + '-' + Date.now().toString(),
+    p1: p1,
+    p2: p2,
+    p1_score: p1score,
+    p2_score: p2score,
+    p1_elo: p1elo.elo,
+    p2_elo: p2elo.elo,
+    p1_new_elo: p1newElo,
+    p2_new_elo: p2newElo,
+    type: type,
+    timestamp: Date.now(),
+  })
 }

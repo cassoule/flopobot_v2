@@ -18,7 +18,7 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import { channelPointsHandler, slowmodesHandler } from './game.js';
+import {channelPointsHandler, eloHandler, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -42,7 +42,7 @@ import {
   getUserInventory,
   getTopSkins, updateUserCoins,
   insertLog, stmtLogs,
-  getLogs, getUserLogs,
+  getLogs, getUserLogs, getUserElo, getUserGames,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -572,6 +572,20 @@ client.on('messageCreate', async (message) => {
             message: msg,
           })
         });
+      }
+      else if (message.content.startsWith('flopo:sql')) {
+        let sqlCommand = message.content.replace('flopo:sql ', '')
+        try {
+          if (sqlCommand.startsWith('SELECT')) {
+            const stmt = flopoDB.prepare(`${sqlCommand}`).all();
+            console.log(stmt)
+          } else {
+            const stmt = flopoDB.prepare(`${sqlCommand}`).run();
+            console.log(stmt)
+          }
+        } catch (e) {
+          console.log(e)
+        }
       }
     }
   }
@@ -2673,6 +2687,54 @@ app.get('/user/:id/sparkline', async (req, res) => {
   }
 })
 
+app.get('/user/:id/elo', async (req, res) => {
+  try {
+    const userId = req.params.id
+
+    const user = getUser.get(userId)
+
+    if (!user) return res.status(404).send({ message: 'Utilisateur introuvable'})
+
+    const userElo = getUserElo.get({ id: userId })
+
+    if (!userElo) return res.status(200).json({ elo: null })
+
+    return res.status(200).json({ elo: userElo.elo })
+  } catch (e) {
+    return res.status(500).send({ message: 'erreur'})
+  }
+})
+
+app.get('/user/:id/elo-graph', async (req, res) => {
+  try {
+    const userId = req.params.id
+
+    const user = getUser.get(userId)
+
+    if (!user) return res.status(404).send({ message: 'Utilisateur introuvable'})
+
+
+    const games = getUserGames.all({ user_id: userId });
+
+    if (!games) return res.status(404).send({ message: 'Aucune partie'})
+
+    let array = []
+    games.forEach((game, index) => {
+      if (game.p1 === userId) {
+        array.push(game.p1_elo)
+        if (index === games.length - 1) array.push(game.p1_new_elo)
+      } else if (game.p2 === userId) {
+        array.push(game.p2_elo)
+        if (index === games.length - 1) array.push(game.p2_new_elo)
+      }
+    })
+
+    return res.status(200).json({ elo_graph: array })
+  } catch (e) {
+    return res.status(500).send({ message: 'erreur'})
+  }
+})
+
 // Get user's inventory
 app.get('/user/:id/inventory', async (req, res) => {
   try {
@@ -3394,7 +3456,10 @@ io.on('connection', (socket) => {
 
   socket.on('tictactoequeue', async (e) => {
     console.log(`tictactoequeue: ${e.playerId}`);
-    queue.push(e.playerId)
+
+    if (!queue.find(obj => obj === e.playerId)) {
+      queue.push(e.playerId)
+    }
 
     if (queue.length >= 2) {
       let p1 = await client.users.fetch(queue[0])
@@ -3459,7 +3524,16 @@ io.on('connection', (socket) => {
     io.emit('tictactoeplaying', { allPlayers: playingArray })
   })
 
-  socket.on('tictactoegameOver', (e) => {
+  socket.on('tictactoegameOver', async (e) => {
+    const winner = e.winner
+    const game = playingArray.find(obj => obj.p1.id === e.playerId)
+    if (game) {
+      if (winner === null) {
+        await eloHandler(game.p1.id, game.p2.id, 0, 0, 'TICTACTOE')
+      } else {
+        await eloHandler(game.p1.id, game.p2.id, game.p1.id === winner ? 1 : 0, game.p2.id === winner ? 1 : 0, 'TICTACTOE')
+      }
+    }
     playingArray = playingArray.filter(obj => obj.p1.id !== e.playerId)
   })
 });
