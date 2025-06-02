@@ -42,7 +42,7 @@ import {
   getUserInventory,
   getTopSkins, updateUserCoins,
   insertLog, stmtLogs,
-  getLogs, getUserLogs, getUserElo, getUserGames,
+  getLogs, getUserLogs, getUserElo, getUserGames, getUsersByElo,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -2635,6 +2635,11 @@ app.get('/users', (req, res) => {
   const users = getAllUsers.all();
   res.json(users);
 });
+
+app.get('/users/by-elo', (req, res) => {
+  const users = getUsersByElo.all()
+  res.json(users);
+})
 
 app.get('/logs', (req, res) => {
   return res.status(200).json(getLogs.all())

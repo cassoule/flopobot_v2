@@ -114,4 +114,7 @@ stmtElos.run()
 export const insertElos = flopoDB.prepare(`INSERT INTO elos (id, elo) VALUES (@id, @elo)`);
 export const getElos = flopoDB.prepare(`SELECT * FROM elos`);
 export const getUserElo = flopoDB.prepare(`SELECT * FROM elos WHERE id = @id`);
-export const updateElo = flopoDB.prepare('UPDATE elos SET elo = @elo WHERE id = @id')
+export const updateElo = flopoDB.prepare('UPDATE elos SET elo = @elo WHERE id = @id');
+
+
+export const getUsersByElo = flopoDB.prepare('SELECT * FROM users JOIN elos ON elos.id = users.id ORDER BY elos.elo DESC')
