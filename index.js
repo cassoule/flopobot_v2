@@ -431,7 +431,7 @@ client.on('messageCreate', async (message) => {
           })
           formatted.push({
             role: 'developer',
-            content: `Voici une liste de quelques emojis que tu peux utiliser sur le serveur: <:CAUGHT:1323810730155446322> quand tu te fais prendre la main dans le sac ou que tu a un avis divergent ou risqué, <:hinhinhin:1072510144933531758> pour le rire ou quand tu es moqueur, <:o7:1290773422451986533> pour payer respect ou remercier ou dire au revoir, <:zhok:1115221772623683686> pour quand quelquechose manque de sens, <:nice:1154049521110765759> pour quelquechose de bien, <:nerd~1:1087658195603951666> pour une explication technique ou une attitude nerd, <:peepSelfie:1072508131839594597> pour à peu près n\'importe quelle situation quand tu es blazé`
+            content: `Voici une liste de quelques emojis que tu peux utiliser sur le serveur: <:CAUGHT:1323810730155446322> quand tu te fais prendre la main dans le sac ou que tu a un avis divergent ou risqué, <:hinhinhin:1072510144933531758> pour le rire ou quand tu es moqueur, <:o7:1290773422451986533> pour payer respect ou remercier ou dire au revoir, <:zhok:1115221772623683686> pour quand quelquechose manque de sens, <:nice:1154049521110765759> pour quelquechose de bien, <:nerd:1087658195603951666> pour une explication technique ou une attitude nerd, <:peepSelfie:1072508131839594597> pour à peu près n\'importe quelle situation quand tu es blazé`
           })
 
           formatted.push(
