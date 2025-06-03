@@ -18,7 +18,7 @@ import {
   getAPOUsers,
   postAPOBuy
 } from './utils.js';
-import {channelPointsHandler, eloHandler, slowmodesHandler} from './game.js';
+import {channelPointsHandler, eloHandler, pokerTest, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -575,6 +575,7 @@ client.on('messageCreate', async (message) => {
       }
       else if (message.content.startsWith('flopo:sql')) {
         let sqlCommand = message.content.replace('flopo:sql ', '')
+        console.log(sqlCommand)
         try {
           if (sqlCommand.startsWith('SELECT')) {
             const stmt = flopoDB.prepare(`${sqlCommand}`).all();
@@ -586,6 +587,9 @@ client.on('messageCreate', async (message) => {
         } catch (e) {
           console.log(e)
         }
+      }
+      else if (message.content.startsWith('flopo:poker')) {
+        pokerTest()
       }
     }
   }
