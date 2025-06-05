@@ -530,7 +530,8 @@ client.on('messageCreate', async (message) => {
       console.log(activePolls)
     }
     else if (message.author.id === process.env.DEV_ID) {
-      if (message.content === 'flopo:add-coins-to-users') {
+      const prefix = process.env.DEV_SITE === 'true' ? 'test' : 'flopo'
+      if (message.content === prefix + ':add-coins-to-users') {
         console.log(message.author.id)
         try {
           const stmtUpdateUsers = flopoDB.prepare(`
@@ -542,15 +543,15 @@ client.on('messageCreate', async (message) => {
           console.log(e)
         }
       }
-      else if (message.content === 'flopo:users') {
+      else if (message.content === prefix + ':users') {
         const allAkhys = getAllUsers.all()
         console.log(allAkhys)
       }
-      else if (message.content === 'flopo:cancel') {
+      else if (message.content === prefix + ':cancel') {
         await message.delete()
       }
-      else if (message.content.startsWith('flopo:reset-user-coins')) {
-        const userId = message.content.replace('flopo:reset-user-coins ', '')
+      else if (message.content.startsWith(prefix + ':reset-user-coins')) {
+        const userId = message.content.replace(prefix + ':reset-user-coins ', '')
         const authorDB = getUser.get(userId)
         if (authorDB) {
           updateUserCoins.run({
@@ -562,8 +563,8 @@ client.on('messageCreate', async (message) => {
           console.log('invalid user')
         }
       }
-      else if (message.content.startsWith('flopo:send-message')) {
-        const msg = message.content.replace('flopo:send-message ', '')
+      else if (message.content.startsWith(prefix + ':send-message')) {
+        const msg = message.content.replace(prefix + ':send-message ', '')
         await fetch(process.env.BASE_URL + '/send-message', {
           method: 'POST',
           headers: {
@@ -575,8 +576,8 @@ client.on('messageCreate', async (message) => {
           })
         });
       }
-      else if (message.content.startsWith('flopo:sql')) {
-        let sqlCommand = message.content.replace('flopo:sql ', '')
+      else if (message.content.startsWith(prefix + ':sql')) {
+        let sqlCommand = message.content.replace(prefix + ':sql ', '')
         console.log(sqlCommand)
         try {
           if (sqlCommand.startsWith('SELECT')) {
@@ -590,8 +591,8 @@ client.on('messageCreate', async (message) => {
           console.log(e)
         }
       }
-      else if (message.content.startsWith('flopo:poker')) {
-        pokerTest()
+      else if (message.content.startsWith(prefix + ':poker')) {
+        io.emit('message', message.content);
       }
     }
   }
@@ -3426,17 +3427,50 @@ app.post('/buy-coins', (req, res) => {
 });
 
 const pokerRooms = {}
-app.post('/create-poker-room', (req, res) => {
-  console.log('creating poker room')
+app.post('/create-poker-room', async (req, res) => {
   const { creatorId } = req.body
   const id = uuidv4()
-  const name = uniqueNamesGenerator({ dictionaries: [adjectives, languages, animals], separator: ' ', style: 'capital' });
+  const t12names = [
+      'cassoule',
+      'passoule',
+      'kiwiko',
+      'piwiko',
+      'wata',
+      'pata',
+      'apologize',
+      'apologay',
+      'daspoon',
+      'esteban',
+      'edorima',
+      'momozhok',
+      'popozhok',
+      'dodozhok',
+      'flopozhok',
+      'thomas',
+      'poma'
+  ]
+  const name = uniqueNamesGenerator({ dictionaries: [adjectives, t12names], separator: ' ', style: 'capital' });
+
+  const creator = await client.users.fetch(creatorId)
+
+  if (!creator) {
+    return res.status(404).send({message: 'Utilisateur introuvable'})
+  }
+  if (Object.values(pokerRooms).find(room => room.host_id === creatorId)) {
+    return res.status(403).send({message: 'Tu ne peux créer qu\'une seule table à la fois'})
+  }
+
   pokerRooms[id] = {
     id: id,
     host_id: creatorId,
+    host_name: creator.username,
     name: name,
+    created_at: Date.now(),
+    last_move_at: Date.now(),
+    players: {}
   }
   io.emit('new-poker-room')
+  return res.status(200).send({ roomId: id })
 });
 
 app.get('/poker-rooms', (req, res) => {
@@ -3446,6 +3480,20 @@ app.get('/poker-rooms', (req, res) => {
 app.get('/poker-rooms/:id', (req, res) => {
   return res.status(200).send({ room: pokerRooms[req.params.id] })
 })
+
+app.post('/poker-room/join', async (req, res) => {
+  const { userId, roomId } = req.body
+
+  const user = await client.users.fetch(userId)
+
+  try {
+    pokerRooms[roomId].players[userId] = user
+  } catch (e) {
+    //
+  }
+
+  io.emit('player-joined')
+});
 
 import http from 'http';
 import { Server } from 'socket.io';
