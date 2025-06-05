@@ -46,6 +46,8 @@ import {
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
+import { v4 as uuidv4 } from 'uuid';
+import { uniqueNamesGenerator, adjectives, languages, animals } from 'unique-names-generator';
 
 // Create an express app
 const app = express();
@@ -3422,6 +3424,28 @@ app.post('/buy-coins', (req, res) => {
 
   res.status(200).json({ message : `+${coins}` });
 });
+
+const pokerRooms = {}
+app.post('/create-poker-room', (req, res) => {
+  console.log('creating poker room')
+  const { creatorId } = req.body
+  const id = uuidv4()
+  const name = uniqueNamesGenerator({ dictionaries: [adjectives, languages, animals], separator: ' ', style: 'capital' });
+  pokerRooms[id] = {
+    id: id,
+    host_id: creatorId,
+    name: name,
+  }
+  io.emit('new-poker-room')
+});
+
+app.get('/poker-rooms', (req, res) => {
+  return res.status(200).send({ rooms: pokerRooms })
+})
+
+app.get('/poker-rooms/:id', (req, res) => {
+  return res.status(200).send({ room: pokerRooms[req.params.id] })
+})
 
 import http from 'http';
 import { Server } from 'socket.io';
