@@ -25,7 +25,10 @@
     "express": "^4.18.2",
     "node-cron": "^3.0.3",
     "openai": "^4.94.0",
-    "socket.io": "^4.8.1"
+    "pokersolver": "^2.1.4",
+    "socket.io": "^4.8.1",
+    "unique-names-generator": "^4.7.1",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
