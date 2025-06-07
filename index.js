@@ -335,8 +335,6 @@ client.on('messageCreate', async (message) => {
 
   if (message.content.toLowerCase().startsWith(`<@${process.env.APP_ID}>`) || message.mentions.repliedUser?.id === process.env.APP_ID) {
     let startTime = Date.now()
-    console.log('-------------------------------')
-    console.log('Request received : ' + startTime)
     let akhyAuthor = await getUser.get(message.author.id)
 
     const now = Date.now();
@@ -406,12 +404,11 @@ client.on('messageCreate', async (message) => {
       // Fetch last messages from the channel
       const fetched = await message.channel.messages.fetch({ limit: 100 });
       const messagesArray = Array.from(fetched.values()).reverse(); // oldest to newest
-      console.log('after Discord fetch : ' + startTime + ', ' + (Date.now() - startTime))
 
       const requestMessage = message.content.replace(`<@${process.env.APP_ID}>`, '')
 
       // Map to OpenAI/Gemini format
-      console.log(process.env.MODEL)
+      console.log('AI fetch', process.env.MODEL)
       const allAkhys = await getAllUsers.all()
       let allAkhysText = ''
       allAkhys.forEach(akhy => {
@@ -496,8 +493,6 @@ client.on('messageCreate', async (message) => {
 
       // await gork(formatted); IA en marche
       const reply = await gork(formatted);
-
-      console.log('after AI fetch : ' + startTime + ', ' + (Date.now() - startTime))
     
       // Send response to the channel
       await message.reply(reply);
@@ -624,7 +619,7 @@ client.once('ready', async () => {
     for (const id in activeSearchs) {
       const search = activeSearchs[id];
       if (Date.now() >= search.timestamp + FIVE_MINUTES) {
-        console.log(`Removing expired searchs : ${id}`);
+        console.log(`Removing expired search : ${id}`);
         delete activeSearchs[id];
       }
     }
@@ -734,8 +729,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
    */
   if (type === InteractionType.APPLICATION_COMMAND) {
     const { name } = data;
-    console.log(name)
-
 
     // 'timeout' command
     if (name === 'timeout') {
@@ -1017,8 +1010,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         timestamp: Date.now(),
       };
 
-      console.log(activeInventories[id].reqBodyId);
-
       if (invSkins.length === 0) {
         return res.send({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -1160,9 +1151,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const selectedLevel = randomSkin.levels[randomLevel - 1]
       const selectedChroma = randomSkin.chromas[randomChroma - 1]
 
-      // console.log(randomSkin.chromas)
-      // console.log(randomIndex)
-
       // Set timeout for the reveal
       setTimeout(async () => {
         // Prepare the final embed
@@ -1198,7 +1186,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             res = randomSkin.displayIcon
           }
           if (res) return res;
-          console.log('default')
           return randomSkin.displayIcon
         };
         const chromaName = () => {
@@ -1578,7 +1565,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         // Record the vote
         poll.voters.push(voterId);
-        console.log(poll)
         if (isVotingFor) {
           poll.for++;
         } else {
@@ -2009,7 +1995,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       }
 
       const upgradePrice = process.env.VALO_UPGRADE_PRICE ?? invSkins[activeInventories[invId].page].maxPrice/10
-      console.log(`upgrade price : ${upgradePrice}`)
       const buyResponse = await postAPOBuy(req.body.member.user.id, upgradePrice)
 
       if (buyResponse.status === 500 || buyResponse.ok === false) {
@@ -2151,7 +2136,6 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
             res = trueSkin.displayIcon
           }
           if (res) return res;
-          console.log('default')
           return trueSkin.displayIcon
         };
         const chromaName = () => {
@@ -2901,7 +2885,6 @@ app.post('/timeout/vote', async (req, res) => {
 
     const guild = await client.guilds.fetch(process.env.GUILD_ID)
     const commandMember = await guild.members.fetch(commandUserId);
-    console.log(commandMember.roles.cache.map(role => role.id))
     // Check if the voter has the required voting role
     const voterRoles = commandMember.roles.cache.map(role => role.id) || [];
     if (!voterRoles.includes(process.env.VOTING_ROLE_ID)) {
@@ -2915,7 +2898,6 @@ app.post('/timeout/vote', async (req, res) => {
 
     // Record the vote
     poll.voters.push(voterId);
-    console.log(poll)
     if (isVotingFor) {
       poll.for++;
     } else {
@@ -3463,7 +3445,7 @@ app.post('/create-poker-room', async (req, res) => {
   pokerRooms[id] = {
     id: id,
     host_id: creatorId,
-    host_name: creator.username,
+    host_name: creator.globalName,
     name: name,
     created_at: Date.now(),
     last_move_at: Date.now(),
@@ -3510,7 +3492,6 @@ let queue = []
 let playingArray = []
 
 io.on('connection', (socket) => {
-  console.log(`socket connection at ${new Date().toLocaleString()}`);
 
   socket.on('user-connected', async (user) => {
     const username = getUser.get(user)
@@ -3536,25 +3517,77 @@ io.on('connection', (socket) => {
   })
 
   socket.on('tictactoequeue', async (e) => {
-    console.log(`tictactoequeue: ${e.playerId}`);
+    console.log(`${e.playerId} in tic tac toe queue`);
+
+    let msgId;
 
     if (!queue.find(obj => obj === e.playerId)) {
       queue.push(e.playerId)
+
+      if (queue.length === 1) {
+        try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const generalChannel = guild.channels.cache.find(
+              ch => ch.name === 'général' || ch.name === 'general'
+          );
+          const user = await client.users.fetch(e.playerId)
+
+          const embed = new EmbedBuilder()
+              .setTitle(`Tic Tac Toe`)
+              .setDescription(`**${user.username}** est dans la file d'attente`)
+              .setColor('#5865f2')
+              .setTimestamp(new Date());
+
+          const row = new ActionRowBuilder()
+              .addComponents(
+                  new ButtonBuilder()
+                      .setLabel(`Jouer contre ${user.username}`)
+                      .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/tic-tac-toe`)
+                      .setStyle(ButtonStyle.Link)
+              )
+
+          await generalChannel.send({ embeds: [embed], components: [row] });
+        } catch (e) {
+          console.log(e)
+        }
+      }
     }
 
     if (queue.length >= 2) {
       let p1 = await client.users.fetch(queue[0])
       let p2 = await client.users.fetch(queue[1])
 
+      let msgId
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const generalChannel = guild.channels.cache.find(
+            ch => ch.name === 'général' || ch.name === 'general'
+        );
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Tic Tac Toe`)
+            .setDescription(`### **❌ ${p1.globalName}** vs **${p2.globalName} ⭕**\n` +
+                `🟦🟦🟦\n` +
+                `🟦🟦🟦\n` +
+                `🟦🟦🟦\n`)
+            .setColor('#5865f2')
+            .setTimestamp(new Date());
+
+        const msg = await generalChannel.send({ embeds: [embed] });
+        msgId = msg.id
+      } catch (e) {
+        console.log(e)
+      }
+
       let p1obj = {
         id: queue[0],
-        name: p1.username,
+        name: p1.globalName,
         val: 'X',
         move: "",
       }
       let p2obj = {
         id: queue[1],
-        name: p2.username,
+        name: p2.globalName,
         val: 'O',
         move: "",
       }
@@ -3566,6 +3599,7 @@ io.on('connection', (socket) => {
         xs: [],
         os: [],
         lastmove: Date.now(),
+        msgId: msgId,
       }
 
       playingArray.push(lobby)
@@ -3576,15 +3610,16 @@ io.on('connection', (socket) => {
     let names = [];
     for (const n of queue) {
       let name = await client.users.fetch(n)
-      names.push(name?.username)
+      names.push(name?.globalName)
     }
 
     io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
   })
 
-  socket.on('tictactoeplaying', (e) => {
+  socket.on('tictactoeplaying', async (e) => {
+    let lobbyToChange;
     if (e.value === 'X') {
-      let lobbyToChange = playingArray.find(obj => obj.p1.id === e.playerId)
+      lobbyToChange = playingArray.find(obj => obj.p1.id === e.playerId)
 
       lobbyToChange.p2.move = ''
       lobbyToChange.p1.move = e.boxId
@@ -3593,7 +3628,7 @@ io.on('connection', (socket) => {
       lobbyToChange.lastmove = Date.now()
     }
     else if (e.value === 'O') {
-      let lobbyToChange = playingArray.find(obj => obj.p2.id === e.playerId)
+      lobbyToChange = playingArray.find(obj => obj.p2.id === e.playerId)
 
       lobbyToChange.p1.move = ''
       lobbyToChange.p2.move = e.boxId
@@ -3602,19 +3637,107 @@ io.on('connection', (socket) => {
       lobbyToChange.lastmove = Date.now()
     }
 
+    let gridText = ''
+    for (let i = 1; i <= 9; i++) {
+      if (lobbyToChange.os.includes(i)) {
+        gridText += '⭕'
+      } else if (lobbyToChange.xs.includes(i)) {
+        gridText += '❌'
+      } else {
+        gridText += '🟦'
+      }
+      if (i%3 === 0) {
+        gridText += '\n'
+      }
+    }
+
+    try {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const generalChannel = await guild.channels.cache.find(
+          ch => ch.name === 'général' || ch.name === 'general'
+      );
+
+      const message = await generalChannel.messages.fetch(lobbyToChange.msgId)
+
+      const embed = new EmbedBuilder()
+          .setTitle(`Tic Tac Toe`)
+          .setDescription(`### **❌ ${lobbyToChange.p1.name}** vs **${lobbyToChange.p2.name} ⭕**\n` + gridText)
+          .setColor('#5865f2')
+          .setTimestamp(new Date());
+
+      await message.edit({ embeds: [embed] });
+    } catch (e) {
+      console.log(e)
+    }
+
     io.emit('tictactoeplaying', { allPlayers: playingArray })
   })
 
   socket.on('tictactoegameOver', async (e) => {
     const winner = e.winner
     const game = playingArray.find(obj => obj.p1.id === e.playerId)
+
     if (game) {
+      let gridText = ''
+      for (let i = 1; i <= 9; i++) {
+        if (game.os.includes(i)) {
+          gridText += '⭕'
+        } else if (game.xs.includes(i)) {
+          gridText += '❌'
+        } else {
+          gridText += '🟦'
+        }
+        if (i%3 === 0) {
+          gridText += '\n'
+        }
+      }
+
       if (winner === null) {
         await eloHandler(game.p1.id, game.p2.id, 0, 0, 'TICTACTOE')
+
+        try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const generalChannel = await guild.channels.cache.find(
+              ch => ch.name === 'général' || ch.name === 'general'
+          );
+
+          const message = await generalChannel.messages.fetch(game.msgId)
+
+          const embed = new EmbedBuilder()
+              .setTitle(`Tic Tac Toe`)
+              .setDescription(`### **❌ ${game.p1.name}** vs **${game.p2.name} ⭕**\n` + gridText + `\n### Égalité`)
+              .setColor('#5865f2')
+              .setTimestamp(new Date());
+
+          await message.edit({ embeds: [embed] });
+        } catch (e) {
+          console.log(e)
+        }
       } else {
         await eloHandler(game.p1.id, game.p2.id, game.p1.id === winner ? 1 : 0, game.p2.id === winner ? 1 : 0, 'TICTACTOE')
+
+        try {
+          const guild = await client.guilds.fetch(process.env.GUILD_ID);
+          const generalChannel = await guild.channels.cache.find(
+              ch => ch.name === 'général' || ch.name === 'general'
+          );
+
+          const message = await generalChannel.messages.fetch(game.msgId)
+
+          const embed = new EmbedBuilder()
+              .setTitle(`Tic Tac Toe`)
+              .setDescription(`### **❌ ${game.p1.name}** vs **${game.p2.name} ⭕**\n` + gridText + `\n### Victoire de ${game.p1.id === winner ? game.p1.name : game.p2.name}`)
+              .setColor('#5865f2')
+              .setTimestamp(new Date());
+
+          await message.edit({ embeds: [embed] });
+        } catch (e) {
+          console.log(e)
+        }
+
       }
     }
+
     playingArray = playingArray.filter(obj => obj.p1.id !== e.playerId)
   })
 });
