@@ -184,23 +184,12 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
     return
   }
 
-  let diff = 5;
+  const prob1 = 1 / (1 + Math.pow(10, (p2elo.elo - p1elo.elo)/400))
+  const prob2 = 1 / (1 + Math.pow(10, (p1elo.elo - p2elo.elo)/400))
 
-  if (p1elo.elo > p2elo.elo) {
-    if (p1score > p2score) {
-      diff = Math.max(Math.floor(5 * (p2elo.elo/p1elo.elo)), 1)
-    } else {
-      diff = Math.max(Math.floor(5 * (1 + (p2elo.elo/p1elo.elo))), 1)
-    }
-  } else if (p1elo.elo < p2elo.elo) {
-    if (p1score < p2score) {
-      diff = Math.max(Math.floor(5 * (p1elo.elo/p2elo.elo)), 1)
-    } else {
-      diff = Math.max(Math.floor(5 * (1 + (p1elo.elo/p2elo.elo))), 1)
-    }
-  }
-  const p1newElo = Math.max(p1elo.elo + (p1score > p2score ? diff : -diff), 0)
-  const p2newElo = Math.max(p2elo.elo + (p1score > p2score ? -diff : diff), 0)
+  const p1newElo = Math.max(Math.floor(p1elo.elo + 10 * (p1score - prob1)), 0)
+  const p2newElo = Math.max(Math.floor(p2elo.elo + 10 * (p2score - prob2)), 0)
+
   console.log(`${p1} elo update : ${p1elo.elo} -> ${p1newElo}`)
   console.log(`${p2} elo update : ${p2elo.elo} -> ${p2newElo}`)
   updateElo.run({ id: p1, elo: p1newElo })

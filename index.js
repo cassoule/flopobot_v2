@@ -525,7 +525,7 @@ client.on('messageCreate', async (message) => {
       console.log(activePolls)
     }
     else if (message.author.id === process.env.DEV_ID) {
-      const prefix = process.env.DEV_SITE === 'true' ? 'test' : 'flopo'
+      const prefix = process.env.DEV_SITE === 'true' ? 'dev' : 'flopo'
       if (message.content === prefix + ':add-coins-to-users') {
         console.log(message.author.id)
         try {
@@ -588,6 +588,20 @@ client.on('messageCreate', async (message) => {
       }
       else if (message.content.startsWith(prefix + ':poker')) {
         io.emit('message', message.content);
+      }
+      else if (message.content.startsWith(prefix + ':elo-test')) {
+        const numbers = message.content.match(/\d+/g);
+
+        const score1 = parseInt(numbers[0]);
+        const score2 = parseInt(numbers[1]);
+
+        const prob1 = 1 / (1 + Math.pow(10, (score2 - score1)/400))
+        const prob2 = 1 / (1 + Math.pow(10, (score1 - score2)/400))
+
+        const res1 = Math.floor(score1 + 10 * (1 - prob1))
+        const res2 = Math.floor(score2 + 10 * (0 - prob2))
+
+        console.log(res1, res2)
       }
     }
   }
@@ -965,11 +979,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const invSkins = getUserInventory.all({user_id: akhy});
 
       const chromaText = (skin) => {
-        let res = ""
+        let result = ""
         for (let i = 1; i <= skins.find((s) => s.uuid === skin.uuid).chromas.length; i++) {
-          res += skin.currentChroma === i ? '💠 ' : '◾ '
+          result += skin.currentChroma === i ? '💠 ' : '◾ '
         }
-        return res
+        return result
       }
       const chromaName = (skin) => {
         if (skin.currentChroma >= 2) {
@@ -1028,20 +1042,20 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const trueSkin = skins.find((s) => s.uuid === invSkins[0].uuid);
 
       const imageUrl = () => {
-        let res;
+        let result;
         if (invSkins[0].currentLvl === trueSkin.levels.length) {
           if (invSkins[0].currentChroma === 1) {
-            res = trueSkin.chromas[0].displayIcon
+            result = trueSkin.chromas[0].displayIcon
 
           } else {
-            res = trueSkin.chromas[invSkins[0].currentChroma-1].fullRender ?? trueSkin.chromas[invSkins[0].currentChroma-1].displayIcon
+            result = trueSkin.chromas[invSkins[0].currentChroma-1].fullRender ?? trueSkin.chromas[invSkins[0].currentChroma-1].displayIcon
           }
         } else if (invSkins[0].currentLvl === 1) {
-          res = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
+          result = trueSkin.levels[0].displayIcon ?? trueSkin.chromas[0].fullRender
         } else if (invSkins[0].currentLvl === 2 || invSkins[0].currentLvl === 3) {
-          res = trueSkin.displayIcon
+          result = trueSkin.displayIcon
         }
-        if (res) return res;
+        if (result) return result;
         return trueSkin.displayIcon
       };
 
@@ -1159,33 +1173,33 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         // Helper functions (unchanged from your original code)
         const videoUrl = () => {
-          let res;
+          let result;
           if (randomLevel === randomSkin.levels.length) {
             if (randomChroma === 1) {
-              res = randomSkin.levels[randomSkin.levels.length - 1].streamedVideo ?? randomSkin.chromas[0].streamedVideo
+              result = randomSkin.levels[randomSkin.levels.length - 1].streamedVideo ?? randomSkin.chromas[0].streamedVideo
             } else {
-              res = randomSkin.chromas[randomChroma-1].streamedVideo
+              result = randomSkin.chromas[randomChroma-1].streamedVideo
             }
           } else {
-            res = randomSkin.levels[randomLevel-1].streamedVideo
+            result = randomSkin.levels[randomLevel-1].streamedVideo
           }
-          return res;
+          return result;
         };
         const imageUrl = () => {
-          let res;
+          let result;
           if (randomLevel === randomSkin.levels.length) {
             if (randomChroma === 1) {
-              res = randomSkin.chromas[0].displayIcon
+              result = randomSkin.chromas[0].displayIcon
 
             } else {
-              res = randomSkin.chromas[randomChroma-1].fullRender ?? randomSkin.chromas[randomChroma-1].displayIcon
+              result = randomSkin.chromas[randomChroma-1].fullRender ?? randomSkin.chromas[randomChroma-1].displayIcon
             }
           } else if (randomLevel === 1) {
-            res = randomSkin.levels[0].displayIcon ?? randomSkin.chromas[0].fullRender
+            result = randomSkin.levels[0].displayIcon ?? randomSkin.chromas[0].fullRender
           } else if (randomLevel === 2 || randomLevel === 3) {
-            res = randomSkin.displayIcon
+            result = randomSkin.displayIcon
           }
-          if (res) return res;
+          if (result) return result;
           return randomSkin.displayIcon
         };
         const chromaName = () => {
@@ -1205,41 +1219,41 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return ''
         };
         const lvlText = () => {
-          let res = ""
+          let result = ""
           if (randomLevel >= 1) {
-            res += '1️⃣ '
+            result += '1️⃣ '
           }
           if (randomLevel >= 2) {
-            res += '2️⃣ '
+            result += '2️⃣ '
           }
           if (randomLevel >= 3) {
-            res += '3️⃣ '
+            result += '3️⃣ '
           }
           if (randomLevel >= 4) {
-            res += '4️⃣ '
+            result += '4️⃣ '
           }
           if (randomLevel >= 5) {
-            res += '5️⃣ '
+            result += '5️⃣ '
           }
           for (let i = 0; i < randomSkin.levels.length - randomLevel; i++) {
-            res += '◾ '
+            result += '◾ '
           }
-          return res
+          return result
         }
         const chromaText = () => {
-          let res = ""
+          let result = ""
           for (let i = 1; i <= randomSkin.chromas.length; i++) {
-            res += randomChroma === i ? '💠 ' : '◾ '
+            result += randomChroma === i ? '💠 ' : '◾ '
           }
-          return res
+          return result
         }
         const price = () => {
-          let res = dbSkins[randomIndex].basePrice;
+          let result = dbSkins[randomIndex].basePrice;
 
-          res *= (1 + (randomLevel / Math.max(randomSkin.levels.length, 2)))
-          res *= (1 + (randomChroma / 4))
+          result *= (1 + (randomLevel / Math.max(randomSkin.levels.length, 2)))
+          result *= (1 + (randomChroma / 4))
 
-          return res.toFixed(2);
+          return result.toFixed(2);
         }
 
         // Update the database
@@ -3693,7 +3707,7 @@ io.on('connection', (socket) => {
       }
 
       if (winner === null) {
-        await eloHandler(game.p1.id, game.p2.id, 0, 0, 'TICTACTOE')
+        await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, 'TICTACTOE')
 
         try {
           const guild = await client.guilds.fetch(process.env.GUILD_ID);
