@@ -16,7 +16,7 @@ import {
   gork,
   getRandomHydrateText,
   getAPOUsers,
-  postAPOBuy
+  postAPOBuy, initialShuffledCards
 } from './utils.js';
 import {channelPointsHandler, eloHandler, pokerTest, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -48,6 +48,8 @@ import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
 import { v4 as uuidv4 } from 'uuid';
 import { uniqueNamesGenerator, adjectives, languages, animals } from 'unique-names-generator';
+import pkg from 'pokersolver';
+const { Hand } = pkg;
 
 // Create an express app
 const app = express();
@@ -647,6 +649,14 @@ client.once('ready', async () => {
           console.log(`Removing expired cancelled predi : ${id}`);
           delete activePredis[id];
         }
+      }
+    }
+    for (const roomId in Object.keys(pokerRooms)) {
+      const room = pokerRooms[roomId];
+      if (Object.keys(room.players)?.length === 0) {
+        delete pokerRooms[roomId];
+        console.log(`Removing empty poker room : ${roomId}`);
+        io.emit('new-poker-room')
       }
     }
   });
@@ -3463,7 +3473,9 @@ app.post('/create-poker-room', async (req, res) => {
     name: name,
     created_at: Date.now(),
     last_move_at: Date.now(),
-    players: {}
+    players: {},
+    pioche: initialShuffledCards(),
+    tapis: [],
   }
   io.emit('new-poker-room')
   return res.status(200).send({ roomId: id })
@@ -3482,14 +3494,73 @@ app.post('/poker-room/join', async (req, res) => {
 
   const user = await client.users.fetch(userId)
 
+  const player = {
+    id: user.id,
+    globalName: user.globalName,
+    hand: [],
+    bank: 100,
+    bet: null,
+    solve: null,
+  }
+
   try {
-    pokerRooms[roomId].players[userId] = user
+    pokerRooms[roomId].players[userId] = player
+    pokerRooms[roomId].last_move_at = Date.now()
   } catch (e) {
     //
   }
 
   io.emit('player-joined')
+  io.emit('new-poker-room')
+  return res.status(200)
 });
+
+app.post('/poker-room/leave', async (req, res) => {
+  const { userId, roomId } = req.body
+
+  try {
+    delete pokerRooms[roomId].players[userId]
+    pokerRooms[roomId].last_move_at = Date.now()
+  } catch (e) {
+    //
+  }
+
+  io.emit('player-joined')
+  io.emit('new-poker-room')
+  return res.status(200)
+});
+
+app.post('/poker-room/start', async (req, res) => {
+  const { roomId } = req.body
+
+  try {
+    for (const playerId in pokerRooms[roomId].players) {
+      const player = pokerRooms[roomId].players[playerId]
+      for (let i = 0; i < 2; i++) {
+        if (pokerRooms[roomId].pioche.length > 0) {
+          player.hand.push(pokerRooms[roomId].pioche[0])
+          pokerRooms[roomId].pioche.shift()
+        }
+      }
+    }
+    if (pokerRooms[roomId].pioche.length > 0) {
+      pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
+      pokerRooms[roomId].pioche.shift()
+    }
+    for (const playerId in pokerRooms[roomId].players) {
+      const player = pokerRooms[roomId].players[playerId]
+      let fullHand = pokerRooms[roomId].tapis
+      player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false).descr
+    }
+  } catch (e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].last_move_at = Date.now()
+  io.emit('poker-room-started')
+  io.emit('new-poker-room')
+  return res.status(200)
+})
 
 import http from 'http';
 import { Server } from 'socket.io';
