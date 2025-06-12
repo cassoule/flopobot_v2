@@ -3476,6 +3476,12 @@ app.post('/create-poker-room', async (req, res) => {
     players: {},
     pioche: initialShuffledCards(),
     tapis: [],
+    dealer: null,
+    sb: null,
+    bb: null,
+    current_player: null,
+    playing: false,
+    fakeMoney: false,
   }
   io.emit('new-poker-room')
   return res.status(200).send({ roomId: id })
@@ -3494,17 +3500,27 @@ app.post('/poker-room/join', async (req, res) => {
 
   const user = await client.users.fetch(userId)
 
+  let amount = getUser.get(userId).coins
+  let fakeMoney = false
+
+  if (!amount || amount < 100) {
+    amount = 100
+    fakeMoney = true
+  }
+
   const player = {
     id: user.id,
     globalName: user.globalName,
     hand: [],
-    bank: 100,
+    bank: amount,
     bet: null,
     solve: null,
+    folded: false,
   }
 
   try {
     pokerRooms[roomId].players[userId] = player
+    if (fakeMoney) pokerRooms[roomId].fakeMoney = true
     pokerRooms[roomId].last_move_at = Date.now()
   } catch (e) {
     //
@@ -3521,6 +3537,14 @@ app.post('/poker-room/leave', async (req, res) => {
   try {
     delete pokerRooms[roomId].players[userId]
     pokerRooms[roomId].last_move_at = Date.now()
+    if (userId === pokerRooms[roomId].host_id) {
+      const newHostId = Object.keys(pokerRooms[roomId].players).find(id => id !== userId)
+      if (!newHostId) {
+        delete pokerRooms[roomId]
+      } else {
+        pokerRooms[roomId].host_id = newHostId
+      }
+    }
   } catch (e) {
     //
   }
@@ -3543,9 +3567,11 @@ app.post('/poker-room/start', async (req, res) => {
         }
       }
     }
-    if (pokerRooms[roomId].pioche.length > 0) {
-      pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
-      pokerRooms[roomId].pioche.shift()
+    for (let i = 0; i < 3; i++) {
+      if (pokerRooms[roomId].pioche.length > 0) {
+        pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
+        pokerRooms[roomId].pioche.shift()
+      }
     }
     for (const playerId in pokerRooms[roomId].players) {
       const player = pokerRooms[roomId].players[playerId]
@@ -3556,6 +3582,14 @@ app.post('/poker-room/start', async (req, res) => {
     console.log(e)
   }
 
+  pokerRooms[roomId].dealer = Object.keys(pokerRooms[roomId].players)[0]
+  pokerRooms[roomId].sb = Object.keys(pokerRooms[roomId].players)[1]
+  pokerRooms[roomId].bb = Object.keys(pokerRooms[roomId].players)[2 % Object.keys(pokerRooms[roomId].players).length]
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[1]].bet = 10 //SB
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[2 % Object.keys(pokerRooms[roomId].players).length]].bet = 20 //BB
+  pokerRooms[roomId].current_player = Object.keys(pokerRooms[roomId].players)[3 % Object.keys(pokerRooms[roomId].players).length]
+
+  pokerRooms[roomId].playing = true
   pokerRooms[roomId].last_move_at = Date.now()
   io.emit('poker-room-started')
   io.emit('new-poker-room')
