@@ -198,3 +198,50 @@ export async function postAPOBuy(userId, amount) {
         .then(response => response)
         .catch(error => console.log('Post error:', error))
 }
+
+export function getFirstActivePlayerAfterDealer(room) {
+    const players = Object.values(room.players);
+    const dealerPosition = players.findIndex((p) => p.id === room.dealer);
+    for (let i = 1; i < players.length; i++) {
+        const nextPos = (dealerPosition + i) % players.length;
+        if (!players[nextPos].folded && !players[nextPos].allin) {
+            return players[nextPos].id;
+        }
+    }
+    return null;
+}
+
+export function getNextActivePlayer(room) {
+    const players = Object.values(room.players);
+    const currentPlayerPosition = players.findIndex((p) => p.id === room.current_player);
+    for (let i = 1; i < players.length; i++) {
+        const nextPos = (currentPlayerPosition + i) % players.length;
+        if (!players[nextPos].folded && !players[nextPos].allin) {
+            return players[nextPos].id;
+        }
+    }
+    return null;
+}
+
+export function isPreFlopDone(room) {
+    const players = Object.values(room.players);
+    const currentBet = room.highest_bet;
+
+    const activePlayers = players.filter((p) => !p.folded && !p.allin);
+
+    if (activePlayers.length < 2) return true
+
+    const allCalledOrChecked = activePlayers.every(player => {
+        return player.bet === currentBet || currentBet === 0;
+    })
+
+    const lastRaiser = players.find(p => p.is_last_raiser)
+    if (lastRaiser) {
+        const raiserIndex = players.indexOf(lastRaiser);
+        const playersAfterRaiser = players.slice(raiserIndex + 1).concat(players.slice(0, raiserIndex));
+        const allAfterRaiserActed = playersAfterRaiser.every(p => p.folded || p.allin || p.bet === currentBet);
+        return allCalledOrChecked && allAfterRaiserActed;
+    }
+
+    return allCalledOrChecked;
+}
