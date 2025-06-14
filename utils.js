@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import OpenAI from "openai";
-import { GoogleGenAI } from "@google/genai";
-import { Mistral } from '@mistralai/mistralai';
+import {GoogleGenAI} from "@google/genai";
+import {Mistral} from '@mistralai/mistralai';
+import pkg from 'pokersolver';
+
+const { Hand } = pkg;
 
 export async function DiscordRequest(endpoint, options) {
   // append endpoint to root API URL
@@ -197,4 +200,86 @@ export async function postAPOBuy(userId, amount) {
     })
         .then(response => response)
         .catch(error => console.log('Post error:', error))
+}
+
+export function getFirstActivePlayerAfterDealer(room) {
+    const players = Object.values(room.players);
+    const dealerPosition = players.findIndex((p) => p.id === room.dealer);
+    for (let i = 1; i < players.length; i++) {
+        const nextPos = (dealerPosition + i) % players.length;
+        if (!players[nextPos].folded && !players[nextPos].allin) {
+            return players[nextPos].id;
+        }
+    }
+    return null;
+}
+
+export function getNextActivePlayer(room) {
+    const players = Object.values(room.players);
+    const currentPlayerPosition = players.findIndex((p) => p.id === room.current_player);
+    for (let i = 1; i < players.length; i++) {
+        const nextPos = (currentPlayerPosition + i) % players.length;
+        if (!players[nextPos].folded && !players[nextPos].allin) {
+            return players[nextPos].id;
+        }
+    }
+    return null;
+}
+
+export function checkEndOfBettingRound(room) {
+    const players = Object.values(room.players);
+    const activePlayers = players.filter((p) => !p.folded);
+
+    if (activePlayers.length === 1) {
+        return { endRound: true, winner: activePlayers[0].id, nextPhase: null };
+    }
+
+    const allInPlayers = activePlayers.filter(p => p.allin)
+    if (allInPlayers.length === activePlayers.length) {
+        return { endRound: true, winner: null, nextPhase: 'progressive-showdown' };
+    }
+
+    const allActed = activePlayers.every(p => (p.bet === room.highest_bet || p.allin) && p.last_played_turn === room.current_turn);
+
+    if (allActed) {
+        let nextPhase;
+        switch (room.current_turn) {
+            case 0:
+                nextPhase = 'flop';
+                break;
+            case 1:
+                nextPhase = 'turn';
+                break;
+            case 2:
+                nextPhase = 'river';
+                break;
+            case 3:
+                nextPhase = 'showdown';
+                break;
+            default:
+                nextPhase = null;
+                break;
+        }
+        return { endRound: true, winner: null, nextPhase: nextPhase };
+    }
+
+    return { endRound: false, winner: null, nextPhase: null };
+}
+
+export function checkRoomWinners(room) {
+    const players = Object.values(room.players);
+    const activePlayers = players.filter(p => !p.folded);
+
+    const playerSolutions = activePlayers.map(player => ({
+        id: player.id,
+        solution: Hand.solve([...room.tapis, ...player.hand], 'standard', false)
+    }));
+
+    const solutions = playerSolutions.map(ps => ps.solution);
+
+    const winningIndices = Hand.winners(solutions).map(winningHand =>
+        solutions.findIndex(sol => sol === winningHand)
+    );
+
+    return winningIndices.map(index => playerSolutions[index].id);
 }
