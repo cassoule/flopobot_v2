@@ -3518,7 +3518,7 @@ app.post('/poker-room/join', async (req, res) => {
 
   const user = await client.users.fetch(userId)
 
-  let amount = getUser.get(userId).coins
+  let amount = getUser.get(userId)?.coins
   let fakeMoney = false
 
   if (!amount || amount < 100) {
