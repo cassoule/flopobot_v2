@@ -16,7 +16,10 @@ import {
   gork,
   getRandomHydrateText,
   getAPOUsers,
-  postAPOBuy, initialShuffledCards, getFirstActivePlayerAfterDealer, getNextActivePlayer, isPreFlopDone
+  postAPOBuy,
+  initialShuffledCards,
+  getFirstActivePlayerAfterDealer,
+  getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners
 } from './utils.js';
 import {channelPointsHandler, eloHandler, pokerTest, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -3485,10 +3488,21 @@ app.post('/create-poker-room', async (req, res) => {
     current_player: null,
     current_turn: null,
     playing: false,
+    winners: [],
+    waiting_for_restart: false,
     fakeMoney: false,
   }
+
+  res.status(200).send({ roomId: id })
+
+  try {
+    const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/join'
+    const response = await axios.post(url, { userId: creatorId, roomId: id })
+  } catch (e) {
+    console.log(e)
+  }
+
   io.emit('new-poker-room')
-  return res.status(200).send({ roomId: id })
 });
 
 app.get('/poker-rooms', (req, res) => {
@@ -3530,25 +3544,40 @@ app.post('/poker-room/join', async (req, res) => {
       pokerRooms[roomId].queue[userId] = player
     } else {
       pokerRooms[roomId].players[userId] = player
-      if (fakeMoney) pokerRooms[roomId].fakeMoney = true
     }
-
-    pokerRooms[roomId].last_move_at = Date.now()
+    if (fakeMoney) pokerRooms[roomId].fakeMoney = true
   } catch (e) {
     //
   }
 
-  io.emit('player-joined')
   io.emit('new-poker-room')
   return res.status(200)
 });
+
+app.post('/poker-room/accept', async (req, res) => {
+  const { userId, roomId } = req.body
+
+  const player = pokerRooms[roomId].queue[userId]
+
+  if (!player) return res.status(404).send({ message: 'Joueur introuvable dans le file d\'attente'});
+
+  try {
+      pokerRooms[roomId].players[userId] = player
+      delete pokerRooms[roomId].queue[userId]
+  } catch (e) {
+    //
+  }
+
+  io.emit('new-poker-room')
+  return res.status(200)
+})
 
 app.post('/poker-room/leave', async (req, res) => {
   const { userId, roomId } = req.body
 
   try {
     delete pokerRooms[roomId].players[userId]
-    pokerRooms[roomId].last_move_at = Date.now()
+
     if (userId === pokerRooms[roomId].host_id) {
       const newHostId = Object.keys(pokerRooms[roomId].players).find(id => id !== userId)
       if (!newHostId) {
@@ -3561,7 +3590,6 @@ app.post('/poker-room/leave', async (req, res) => {
     //
   }
 
-  io.emit('player-joined')
   io.emit('new-poker-room')
   return res.status(200)
 });
@@ -3602,9 +3630,11 @@ app.post('/poker-room/start', async (req, res) => {
   pokerRooms[roomId].current_player = Object.keys(pokerRooms[roomId].players)[3 % Object.keys(pokerRooms[roomId].players).length]
   pokerRooms[roomId].current_turn = 0;
 
+  pokerRooms[roomId].players[pokerRooms[roomId].bb].last_played_turn = pokerRooms[roomId].current_turn
+
   pokerRooms[roomId].playing = true
   pokerRooms[roomId].last_move_at = Date.now()
-  io.emit('poker-room-started')
+
   io.emit('new-poker-room')
   return res.status(200)
 })
@@ -3615,6 +3645,7 @@ app.post('/poker-room/flop', async (req, res) => {
   if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
 
   //flop
+  pokerRooms[roomId].current_turn = 1
   try {
     for (let i = 0; i < 3; i++) {
       if (pokerRooms[roomId].pioche.length > 0) {
@@ -3628,11 +3659,35 @@ app.post('/poker-room/flop', async (req, res) => {
   }
 
   pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
 
-  io.emit('poker-room-flop')
   io.emit('new-poker-room')
   return res.status(200)
 });
+
+async function handleFlop(roomId) {
+  if (!pokerRooms[roomId]) return false
+
+  //flop
+  pokerRooms[roomId].current_turn = 1
+  try {
+    for (let i = 0; i < 3; i++) {
+      if (pokerRooms[roomId].pioche.length > 0) {
+        pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
+        pokerRooms[roomId].pioche.shift()
+      }
+    }
+    await updatePokerPlayersSolve(roomId)
+  } catch(e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return true
+}
 
 app.post('/poker-room/turn', async (req, res) => {
   const { roomId } = req.body
@@ -3640,6 +3695,7 @@ app.post('/poker-room/turn', async (req, res) => {
   if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
 
   //turn
+  pokerRooms[roomId].current_turn = 2
   try {
     if (pokerRooms[roomId].pioche.length > 0) {
       pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
@@ -3652,11 +3708,34 @@ app.post('/poker-room/turn', async (req, res) => {
   }
 
   pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
 
-  io.emit('poker-room-turn')
   io.emit('new-poker-room')
   return res.status(200)
 });
+
+async function handleTurn(roomId) {
+  if (!pokerRooms[roomId]) return false
+
+  //turn
+  pokerRooms[roomId].current_turn = 2
+  try {
+    if (pokerRooms[roomId].pioche.length > 0) {
+      pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
+      pokerRooms[roomId].pioche.shift()
+    }
+
+    await updatePokerPlayersSolve(roomId)
+  } catch(e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return true
+}
 
 app.post('/poker-room/river', async (req, res) => {
   const { roomId } = req.body
@@ -3664,6 +3743,7 @@ app.post('/poker-room/river', async (req, res) => {
   if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
 
   //river
+  pokerRooms[roomId].current_turn = 3
   try {
     if (pokerRooms[roomId].pioche.length > 0) {
       pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
@@ -3676,11 +3756,228 @@ app.post('/poker-room/river', async (req, res) => {
   }
 
   pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
 
-  io.emit('poker-room-river')
   io.emit('new-poker-room')
   return res.status(200)
 });
+
+async function handleRiver(roomId) {
+  if (!pokerRooms[roomId]) return false
+
+  //river
+  pokerRooms[roomId].current_turn = 3
+  try {
+    if (pokerRooms[roomId].pioche.length > 0) {
+      pokerRooms[roomId].tapis.push(pokerRooms[roomId].pioche[0])
+      pokerRooms[roomId].pioche.shift()
+    }
+
+    await updatePokerPlayersSolve(roomId)
+  } catch(e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].current_player = getFirstActivePlayerAfterDealer(pokerRooms[roomId])
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return true
+}
+
+app.post('/poker-room/showdown', async (req, res) => {
+  const { roomId } = req.body
+
+  if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+
+  //showdown
+  pokerRooms[roomId].current_turn = 4
+  pokerRooms[roomId].current_player = null
+
+  await updatePokerPlayersSolve(roomId)
+
+  pokerRooms[roomId].winners = checkRoomWinners(pokerRooms[roomId])
+
+  try {
+    const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/winner'
+    const response = await axios.post(url, { roomId: roomId, winnerIds: pokerRooms[roomId].winners })
+  } catch (e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return res.status(200)
+})
+
+async function handleShowdown(roomId) {
+  if (!pokerRooms[roomId]) return false
+
+  //showdown
+  pokerRooms[roomId].current_turn = 4
+  pokerRooms[roomId].current_player = null
+
+  await updatePokerPlayersSolve(roomId)
+
+  pokerRooms[roomId].winners = checkRoomWinners(pokerRooms[roomId])
+
+  try {
+    await handleWinner(roomId, pokerRooms[roomId].winners)
+  } catch (e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return true
+}
+
+app.post('/poker-room/progressive-showdown', async (req, res) => {
+  const { roomId } = req.body
+
+  if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+
+  while(pokerRooms[roomId].current_turn < 4) {
+    let allGood = true
+    switch (pokerRooms[roomId].current_turn) {
+      case 0:
+        allGood = await handleFlop(roomId)
+        break;
+      case 1:
+        allGood = await handleTurn(roomId)
+        break;
+      case 2:
+        allGood = await handleRiver(roomId)
+        break;
+      case 3:
+        allGood = await handleShowdown(roomId)
+        break;
+      default:
+        allGood = false
+        break;
+    }
+
+    if (!allGood) console.log('error in progressive showdown')
+
+    await sleep(1000)
+  }
+
+  return res.status(200)
+})
+
+app.post('/poker-room/winner', async (req, res) => {
+  const { roomId, winnerIds } = req.body
+
+  if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+  //if (!pokerRooms[roomId].players[winnerIds]) return res.status(404).send({ message: 'Joueur introuvable' })
+
+  pokerRooms[roomId].current_player = null
+  pokerRooms[roomId].current_turn = 4
+
+  let pool = 0;
+  for (const playerId in pokerRooms[roomId].players) {
+    const player = pokerRooms[roomId].players[playerId]
+    pool += player?.bet ?? 0
+    player.bet = 0
+    if (player.bank === 0 && !pokerRooms[roomId].winners.includes(player.id)) {
+      try {
+        delete pokerRooms[roomId].players[player.id]
+
+        if (player.id === pokerRooms[roomId].host_id) {
+          const newHostId = Object.keys(pokerRooms[roomId].players).find(id => id !== player.id)
+          if (!newHostId) {
+            delete pokerRooms[roomId]
+          } else {
+            pokerRooms[roomId].host_id = newHostId
+          }
+        }
+      } catch (e) {
+        //
+      }
+    }
+  }
+
+  pokerRooms[roomId].winners.forEach((winner) => {
+    pokerRooms[roomId].players[winner].bank += Math.floor(pool / winnerIds.length)
+  });
+
+  pokerRooms[roomId].waiting_for_restart = true
+
+  io.emit('new-poker-room')
+  return res.status(200)
+})
+
+async function handleWinner(roomId, winnerIds) {
+  if (!pokerRooms[roomId]) return false
+
+  pokerRooms[roomId].current_player = null
+  pokerRooms[roomId].current_turn = 4
+
+  let pool = 0;
+  for (const playerId in pokerRooms[roomId].players) {
+    const player = pokerRooms[roomId].players[playerId]
+    pool += player?.bet ?? 0
+    player.bet = 0
+    if (player.bank === 0 && !pokerRooms[roomId].winners.includes(player.id)) {
+      try {
+        delete pokerRooms[roomId].players[player.id]
+      } catch (e) {
+        //
+      }
+    }
+  }
+
+  pokerRooms[roomId].winners = checkRoomWinners(pokerRooms[roomId])
+
+  pokerRooms[roomId]?.winners.forEach((winner) => {
+    pokerRooms[roomId].players[winner].bank += Math.floor(pool / winnerIds.length)
+  });
+
+  pokerRooms[roomId].waiting_for_restart = true
+
+  io.emit('new-poker-room')
+  return true
+}
+
+app.post('/poker-room/next-round', async (req, res) => {
+  const { roomId } = req.body
+
+  if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+
+  pokerRooms[roomId].waiting_for_restart = false
+  pokerRooms[roomId].winners = []
+  pokerRooms[roomId].pioche = initialShuffledCards()
+  pokerRooms[roomId].tapis = []
+  pokerRooms[roomId].dealer = null
+  pokerRooms[roomId].sb = null
+  pokerRooms[roomId].bb = null
+  pokerRooms[roomId].highest_bet = null
+  pokerRooms[roomId].current_player = null
+  pokerRooms[roomId].current_turn = null
+
+  for (const playerId in pokerRooms[roomId].players) {
+    const player = pokerRooms[roomId].players[playerId]
+    player.hand = []
+    player.bet = null
+    player.solve = null
+    player.folded = false
+    player.allin = false
+    player.last_played_turn = null
+    player.is_last_raiser = false
+  }
+
+  try {
+    const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/start'
+    const response = await axios.post(url, { roomId: roomId })
+  } catch (e) {
+    console.log(e)
+  }
+
+  io.emit('new-poker-room')
+  return res.status(200)
+})
 
 app.post('/poker-room/action/fold', async (req, res) => {
   const { roomId, playerId } = req.body
@@ -3696,7 +3993,6 @@ app.post('/poker-room/action/fold', async (req, res) => {
 
     await checksAfterPokerAction(roomId)
 
-    io.emit('poker-room-player-action')
     io.emit('new-poker-room')
   } catch(e) {
     console.log(e)
@@ -3719,7 +4015,6 @@ app.post('/poker-room/action/check', async (req, res) => {
 
     await checksAfterPokerAction(roomId)
 
-    io.emit('poker-room-player-action')
     io.emit('new-poker-room')
   } catch(e) {
     console.log(e)
@@ -3747,9 +4042,10 @@ app.post('/poker-room/action/call', async (req, res) => {
     pokerRooms[roomId].players[playerId].bank -= diff
     pokerRooms[roomId].players[playerId].last_played_turn = pokerRooms[roomId].current_turn
 
+    if (Object.values(pokerRooms[roomId].players).find(p => p.allin)) pokerRooms[roomId].players[playerId].allin = true
+
     await checksAfterPokerAction(roomId)
 
-    io.emit('poker-room-player-action')
     io.emit('new-poker-room')
   } catch(e) {
     console.log(e)
@@ -3783,7 +4079,6 @@ app.post('/poker-room/action/raise', async (req, res) => {
 
     await checksAfterPokerAction(roomId)
 
-    io.emit('poker-room-player-action')
     io.emit('new-poker-room')
   } catch(e) {
     console.log(e)
@@ -3794,19 +4089,30 @@ app.post('/poker-room/action/raise', async (req, res) => {
 });
 
 async function checksAfterPokerAction(roomId) {
-  let currentTurnDone = false
-  let nextTurnUrl;
-  if (pokerRooms[roomId].current_turn === 0) {
-    currentTurnDone = isPreFlopDone(pokerRooms[roomId])
-    nextTurnUrl = 'flop'
-  }
+  const data = checkEndOfBettingRound(pokerRooms[roomId])
 
-  if (currentTurnDone) {
-    const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/' + nextTurnUrl
-    const response = await axios.post(url, { roomId: roomId})
+  if (data.winner !== null) {
+    try {
+      pokerRooms[roomId].winners = [data.winner]
+      const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/winner'
+      const response = await axios.post(url, { roomId: roomId, winnerIds: [data.winner] })
+    } catch (e) {
+      console.log(e)
+    }
+  } else if (data.endRound) {
+    try {
+      const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/' + data.nextPhase
+      const response = await axios.post(url, { roomId: roomId})
+    } catch (e) {
+      console.log(e)
+    }
   } else {
     pokerRooms[roomId].current_player = getNextActivePlayer(pokerRooms[roomId])
   }
+
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
 }
 
 async function updatePokerPlayersSolve(roomId) {
