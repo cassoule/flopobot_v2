@@ -675,7 +675,7 @@ client.once('ready', async () => {
     try {
       const akhys = getAllUsers.all()
       akhys.forEach((akhy) => {
-        resetDailyReward.run(akhy);
+        resetDailyReward.run(akhy.id);
       })
     } catch (e) {
       console.log(e)
