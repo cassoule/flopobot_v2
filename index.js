@@ -810,6 +810,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         if (!poll || remaining === 0) {
           try {
+            let forText = ''
+            poll.voters.forEach(async (voter) => {
+              const user = await client.users.fetch(voter);
+              forText += `- ${user.globalName}\n`
+            })
             await DiscordRequest(
                 poll.endpoint,
                 {
@@ -822,7 +827,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                         fields: [
                             {
                                 name: 'Pour',
-                                value: '✅ ' + poll.for,
+                                value: '✅ ' + poll.for + '\n' + forText,
                                 inline: true,
                             },
                             {
@@ -849,6 +854,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         }
 
         try {
+          let forText = ''
+          poll.voters.forEach(async (voter) => {
+            const user = await client.users.fetch(voter);
+            forText += `- ${user.globalName}\n`
+          })
           await DiscordRequest(
               poll.endpoint,
               {
@@ -861,7 +871,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                       fields: [
                           {
                               name: 'Pour',
-                              value: '✅ ' + poll.for,
+                              value: '✅ ' + poll.for + '\n' + forText,
                               inline: true,
                           },
                           {
@@ -1559,15 +1569,15 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: "Tu as déjà voté !",
+              content: "Tu as déjà voté oui!",
               flags: InteractionResponseFlags.EPHEMERAL,
             },
           });
         }
 
         // Record the vote
-        poll.voters.push(voterId);
         if (isVotingFor) {
+          poll.voters.push(voterId);
           poll.for++;
         } else {
           poll.against++;
@@ -1585,6 +1595,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         if (poll.for >= poll.requiredMajority) {
           try {
             // Build the updated poll message content
+            let forText = ''
+            poll.voters.forEach(async (voter) => {
+              const user = await client.users.fetch(voter);
+              forText += `- ${user.globalName}\n`
+            })
             await DiscordRequest(
                 poll.endpoint,
                 {
@@ -1597,7 +1612,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                         fields: [
                             {
                                 name: 'Votes totaux',
-                                value: '✅ ' + poll.for,
+                                value: '✅ ' + poll.for + '\n' + forText,
                                 inline: true,
                             },
                         ],
@@ -1648,7 +1663,11 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           const countdownText = `**${minutes}m ${seconds}s** restantes`;
           try {
             // Build the updated poll message content
-
+            let forText = ''
+            poll.voters.forEach(async (voter) => {
+              const user = await client.users.fetch(voter);
+              forText += `- ${user.globalName}\n`
+            })
             await DiscordRequest(
                 poll.endpoint,
                 {
@@ -1661,7 +1680,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
                         fields: [
                             {
                                 name: 'Pour',
-                                value: '✅ ' + poll.for,
+                                value: '✅ ' + poll.for + '\n' + forText,
                                 inline: true,
                             },
                             {
@@ -2951,6 +2970,11 @@ app.post('/timeout/vote', async (req, res) => {
     if (poll.for >= poll.requiredMajority) {
       try {
         // Build the updated poll message content
+        let forText = ''
+        poll.voters.forEach(async (voter) => {
+          const user = await client.users.fetch(voter);
+          forText += `- ${user.globalName}\n`
+        })
         await DiscordRequest(
             poll.endpoint,
             {
@@ -2963,7 +2987,7 @@ app.post('/timeout/vote', async (req, res) => {
                     fields: [
                       {
                         name: 'Votes totaux',
-                        value: '✅ ' + poll.for,
+                        value: '✅ ' + poll.for + '\n' + forText,
                         inline: true,
                       },
                     ],
@@ -3014,6 +3038,11 @@ app.post('/timeout/vote', async (req, res) => {
       const countdownText = `**${minutes}m ${seconds}s** restantes`;
       try {
         // Build the updated poll message content
+        let forText = ''
+        poll.voters.forEach(async (voter) => {
+          const user = await client.users.fetch(voter);
+          forText += `- ${user.globalName}\n`
+        })
         await DiscordRequest(
             poll.endpoint,
             {
@@ -3026,7 +3055,7 @@ app.post('/timeout/vote', async (req, res) => {
                     fields: [
                       {
                         name: 'Pour',
-                        value: '✅ ' + poll.for,
+                        value: '✅ ' + poll.for + '\n' + forText,
                         inline: true,
                       },
                       {
