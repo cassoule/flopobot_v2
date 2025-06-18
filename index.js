@@ -19,7 +19,7 @@ import {
   postAPOBuy,
   initialShuffledCards,
   getFirstActivePlayerAfterDealer,
-  getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners
+  getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners, pruneOldLogs
 } from './utils.js';
 import {channelPointsHandler, eloHandler, pokerTest, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -812,7 +812,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       const guildId = req.body.guild_id;
       const roleId = process.env.VOTING_ROLE_ID; // Set this in your .env file
       const onlineEligibleUsers = await getOnlineUsersWithRole(guildId, roleId);
-      const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.size / 2) + 1);
+      const requiredMajority = Math.max(parseInt(process.env.MIN_VOTES), Math.floor(onlineEligibleUsers.size / (time >= 21600 ? 2 : 3)) + 1);
       const votesNeeded = Math.max(0, requiredMajority - activePolls[id].for);
 
       activePolls[id].endTime = Date.now() + process.env.POLL_TIME * 1000;
@@ -2660,7 +2660,10 @@ app.get('/users/by-elo', (req, res) => {
   res.json(users);
 })
 
-app.get('/logs', (req, res) => {
+app.get('/logs', async (req, res) => {
+  // purge old logs
+  await pruneOldLogs()
+
   return res.status(200).json(getLogs.all())
 })
 
