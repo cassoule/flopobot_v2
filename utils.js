@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import {GoogleGenAI} from "@google/genai";
 import {Mistral} from '@mistralai/mistralai';
 import pkg from 'pokersolver';
+import {flopoDB, getAllUsers} from "./init_database.js";
 
 const { Hand } = pkg;
 
@@ -282,4 +283,32 @@ export function checkRoomWinners(room) {
     );
 
     return winningIndices.map(index => playerSolutions[index].id);
+}
+
+export async function pruneOldLogs() {
+    const users = flopoDB.prepare(`
+        SELECT user_id
+        FROM logs
+        GROUP BY user_id
+        HAVING COUNT(*) > ${process.env.LOGS_BY_USER}
+    `).all();
+
+    const transaction = flopoDB.transaction(() => {
+        for (const { user_id } of users) {
+            flopoDB.prepare(`
+                DELETE FROM logs
+                WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id,
+                        ROW_NUMBER() OVER (ORDER BY id DESC) AS rn
+                        FROM logs
+                        WHERE user_id = ?
+                    )               
+                    WHERE rn > ${process.env.LOGS_BY_USER}
+                )
+            `).run(user_id);
+        }
+    });
+
+    transaction()
 }
