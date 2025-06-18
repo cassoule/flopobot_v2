@@ -811,8 +811,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
         if (!poll || remaining === 0) {
           try {
             let forText = ''
-            poll.voters.forEach(async (voter) => {
-              const user = await client.users.fetch(voter);
+            poll.voters.forEach((voter) => {
+              const user = getUser.get(voter);
               forText += `- ${user.globalName}\n`
             })
             await DiscordRequest(
@@ -855,8 +855,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 
         try {
           let forText = ''
-          poll.voters.forEach(async (voter) => {
-            const user = await client.users.fetch(voter);
+          poll.voters.forEach((voter) => {
+            const user = getUser.get(voter);
             forText += `- ${user.globalName}\n`
           })
           await DiscordRequest(
@@ -1596,8 +1596,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           try {
             // Build the updated poll message content
             let forText = ''
-            poll.voters.forEach(async (voter) => {
-              const user = await client.users.fetch(voter);
+            poll.voters.forEach((voter) => {
+              const user = getUser.get(voter);
               forText += `- ${user.globalName}\n`
             })
             await DiscordRequest(
@@ -1664,8 +1664,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           try {
             // Build the updated poll message content
             let forText = ''
-            poll.voters.forEach(async (voter) => {
-              const user = await client.users.fetch(voter);
+            poll.voters.forEach((voter) => {
+              const user = getUser.get(voter);
               forText += `- ${user.globalName}\n`
             })
             await DiscordRequest(
@@ -2971,8 +2971,8 @@ app.post('/timeout/vote', async (req, res) => {
       try {
         // Build the updated poll message content
         let forText = ''
-        poll.voters.forEach(async (voter) => {
-          const user = await client.users.fetch(voter);
+        poll.voters.forEach((voter) => {
+          const user = getUser.get(voter);
           forText += `- ${user.globalName}\n`
         })
         await DiscordRequest(
@@ -3039,8 +3039,8 @@ app.post('/timeout/vote', async (req, res) => {
       try {
         // Build the updated poll message content
         let forText = ''
-        poll.voters.forEach(async (voter) => {
-          const user = await client.users.fetch(voter);
+        poll.voters.forEach((voter) => {
+          const user = getUser.get(voter);
           forText += `- ${user.globalName}\n`
         })
         await DiscordRequest(
