@@ -4299,24 +4299,31 @@ io.on('connection', (socket) => {
   })
 
   socket.on('tictactoeplaying', async (e) => {
+    console.log('playing', e.value)
     let lobbyToChange;
     if (e.value === 'X') {
       lobbyToChange = playingArray.find(obj => obj.p1.id === e.playerId)
 
-      lobbyToChange.p2.move = ''
-      lobbyToChange.p1.move = e.boxId
-      lobbyToChange.sum++
-      lobbyToChange.xs.push(e.boxId)
-      lobbyToChange.lastmove = Date.now()
+      if (lobbyToChange.sum%2 === 1) {
+        console.log('yeah', e.value)
+        lobbyToChange.p2.move = ''
+        lobbyToChange.p1.move = e.boxId
+        lobbyToChange.sum++
+        lobbyToChange.xs.push(e.boxId)
+        lobbyToChange.lastmove = Date.now()
+      }
     }
     else if (e.value === 'O') {
       lobbyToChange = playingArray.find(obj => obj.p2.id === e.playerId)
 
-      lobbyToChange.p1.move = ''
-      lobbyToChange.p2.move = e.boxId
-      lobbyToChange.sum++
-      lobbyToChange.os.push(e.boxId)
-      lobbyToChange.lastmove = Date.now()
+      if (lobbyToChange.sum%2 === 0) {
+        console.log('yeah', e.value)
+        lobbyToChange.p1.move = ''
+        lobbyToChange.p2.move = e.boxId
+        lobbyToChange.sum++
+        lobbyToChange.os.push(e.boxId)
+        lobbyToChange.lastmove = Date.now()
+      }
     }
 
     let gridText = ''
@@ -4359,7 +4366,8 @@ io.on('connection', (socket) => {
     const winner = e.winner
     const game = playingArray.find(obj => obj.p1.id === e.playerId)
 
-    if (game) {
+    if (game && game.sum < 100) {
+      game.sum = 100
       let gridText = ''
       for (let i = 1; i <= 9; i++) {
         if (game.os.includes(i)) {
