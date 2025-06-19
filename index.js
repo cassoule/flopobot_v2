@@ -3506,6 +3506,12 @@ app.post('/create-poker-room', async (req, res) => {
     return res.status(403).send({message: 'Tu ne peux créer qu\'une seule table à la fois'})
   }
 
+  const alreadyInARoom = Object.values(pokerRooms).find((room) => {
+    return Object.keys(room.players).includes(creatorId)
+  })
+
+  if (alreadyInARoom) return res.status(403).send({ message: 'Tu es déjà assis à une table' })
+
   pokerRooms[id] = {
     id: id,
     host_id: creatorId,
@@ -3553,6 +3559,12 @@ app.post('/poker-room/join', async (req, res) => {
   const { userId, roomId } = req.body
 
   const user = await client.users.fetch(userId)
+
+  const alreadyInARoom = Object.values(pokerRooms).find((room) => {
+    return Object.keys(room.players).includes(userId)
+  })
+
+  if (alreadyInARoom) return res.status(403).send({ message: 'Déjà assis à une table' })
 
   let amount = getUser.get(userId)?.coins
   let fakeMoney = false
