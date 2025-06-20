@@ -227,3 +227,20 @@ export function pokerTest() {
   console.log(winner.includes(hand1));
   console.log(winner.includes(hand2));
 }
+
+export async function pokerEloHandler(room) {
+  let DBplayers = []
+  Object.keys(room.players).forEach(playerId => {
+    const DBuser = getUser.get(playerId)
+    if (DBuser) {
+      DBplayers.push(DBuser)
+    }
+  })
+
+  room.winners.forEach(winnerId => {
+    if (DBplayers.find((player) => player.id === winnerId)) {
+      // update elo
+
+    }
+  })
+}

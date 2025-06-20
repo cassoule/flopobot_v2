@@ -3128,6 +3128,7 @@ app.post('/slowmode', async (req, res) => {
 
   return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
 })
+
 app.get('/slowmodes', async (req, res) => {
   res.status(200).json({ slowmodes: activeSlowmodes });
 })
@@ -3506,6 +3507,12 @@ app.post('/create-poker-room', async (req, res) => {
     return res.status(403).send({message: 'Tu ne peux créer qu\'une seule table à la fois'})
   }
 
+  const alreadyInARoom = Object.values(pokerRooms).find((room) => {
+    return Object.keys(room.players).includes(creatorId)
+  })
+
+  if (alreadyInARoom) return res.status(403).send({ message: 'Tu es déjà assis à une table' })
+
   pokerRooms[id] = {
     id: id,
     host_id: creatorId,
@@ -3515,6 +3522,7 @@ app.post('/create-poker-room', async (req, res) => {
     last_move_at: Date.now(),
     players: {},
     queue: {},
+    afk: {},
     pioche: initialShuffledCards(),
     tapis: [],
     dealer: null,
@@ -3554,6 +3562,12 @@ app.post('/poker-room/join', async (req, res) => {
 
   const user = await client.users.fetch(userId)
 
+  const alreadyInARoom = Object.values(pokerRooms).find((room) => {
+    return Object.keys(room.players).includes(userId)
+  })
+
+  if (alreadyInARoom) return res.status(403).send({ message: 'Déjà assis à une table' })
+
   let amount = getUser.get(userId)?.coins
   let fakeMoney = false
 
@@ -3581,6 +3595,9 @@ app.post('/poker-room/join', async (req, res) => {
     } else {
       pokerRooms[roomId].players[userId] = player
     }
+    if (pokerRooms[roomId].afk[userId]) {
+      delete pokerRooms[roomId].afk[userId]
+    }
     if (fakeMoney) pokerRooms[roomId].fakeMoney = true
   } catch (e) {
     //
@@ -3600,6 +3617,9 @@ app.post('/poker-room/accept', async (req, res) => {
   try {
       pokerRooms[roomId].players[userId] = player
       delete pokerRooms[roomId].queue[userId]
+      if (pokerRooms[roomId].afk[userId]) {
+        delete pokerRooms[roomId].afk[userId]
+      }
   } catch (e) {
     //
   }
@@ -3608,8 +3628,30 @@ app.post('/poker-room/accept', async (req, res) => {
   return res.status(200)
 })
 
+app.post('/poker-room/kick', async (req, res) => {
+  //TODO
+})
+
 app.post('/poker-room/leave', async (req, res) => {
   const { userId, roomId } = req.body
+
+  if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+  if (!pokerRooms[roomId].players[userId]) return res.status(404).send({ message: 'Joueur introuvable' })
+
+  if (pokerRooms[roomId].playing && (pokerRooms[roomId].current_turn !== null && pokerRooms[roomId].current_turn !== 4)) {
+    pokerRooms[roomId].afk[userId] = pokerRooms[roomId].players[userId]
+
+    try {
+      pokerRooms[roomId].players[userId].folded = true
+      pokerRooms[roomId].players[userId].last_played_turn = pokerRooms[roomId].current_turn
+    } catch(e) {
+      console.log(e)
+    }
+
+    io.emit('new-poker-room')
+
+    return res.status(200)
+  }
 
   try {
     delete pokerRooms[roomId].players[userId]
@@ -3647,9 +3689,13 @@ app.post('/poker-room/start', async (req, res) => {
       }
     }
     for (const playerId in pokerRooms[roomId].players) {
-      const player = pokerRooms[roomId].players[playerId]
-      let fullHand = pokerRooms[roomId].tapis
-      player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false).descr
+      try {
+        const player = pokerRooms[roomId].players[playerId]
+        let fullHand = pokerRooms[roomId].tapis
+        player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+      } catch (e) {
+        console.log('erreur lors du hand solver')
+      }
     }
   } catch (e) {
     console.log(e)
@@ -3674,6 +3720,53 @@ app.post('/poker-room/start', async (req, res) => {
   io.emit('new-poker-room')
   return res.status(200)
 })
+
+async function handleRoomStart(roomId, dealerId = 0) {
+  if (!pokerRooms[roomId]) return false
+
+  // preflop
+  try {
+    for (const playerId in pokerRooms[roomId].players) {
+      const player = pokerRooms[roomId].players[playerId]
+      for (let i = 0; i < 2; i++) {
+        if (pokerRooms[roomId].pioche.length > 0) {
+          player.hand.push(pokerRooms[roomId].pioche[0])
+          pokerRooms[roomId].pioche.shift()
+        }
+      }
+    }
+    for (const playerId in pokerRooms[roomId].players) {
+      try {
+        const player = pokerRooms[roomId].players[playerId]
+        let fullHand = pokerRooms[roomId].tapis
+        player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+      } catch(e) {
+        console.log('erreur lors du hand solver')
+      }
+    }
+  } catch (e) {
+    console.log(e)
+  }
+
+  pokerRooms[roomId].dealer = Object.keys(pokerRooms[roomId].players)[(dealerId + 1) % Object.keys(pokerRooms[roomId].players).length]
+  pokerRooms[roomId].sb = Object.keys(pokerRooms[roomId].players)[(dealerId + 2) % Object.keys(pokerRooms[roomId].players).length]
+  pokerRooms[roomId].bb = Object.keys(pokerRooms[roomId].players)[(dealerId + 3) % Object.keys(pokerRooms[roomId].players).length]
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[(dealerId + 2) % Object.keys(pokerRooms[roomId].players).length]].bet = 10 //SB
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[(dealerId + 2) % Object.keys(pokerRooms[roomId].players).length]].bank -= 10 //SB
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[(dealerId + 3) % Object.keys(pokerRooms[roomId].players).length]].bet = 20 //BB
+  pokerRooms[roomId].players[Object.keys(pokerRooms[roomId].players)[(dealerId + 3) % Object.keys(pokerRooms[roomId].players).length]].bank -= 20 //BB
+  pokerRooms[roomId].highest_bet = 20
+  pokerRooms[roomId].current_player = Object.keys(pokerRooms[roomId].players)[(dealerId + 4) % Object.keys(pokerRooms[roomId].players).length]
+  pokerRooms[roomId].current_turn = 0;
+
+  pokerRooms[roomId].players[pokerRooms[roomId].bb].last_played_turn = pokerRooms[roomId].current_turn
+
+  pokerRooms[roomId].playing = true
+  pokerRooms[roomId].last_move_at = Date.now()
+
+  io.emit('new-poker-room')
+  return true
+}
 
 app.post('/poker-room/flop', async (req, res) => {
   const { roomId } = req.body
@@ -3941,6 +4034,8 @@ app.post('/poker-room/winner', async (req, res) => {
 
   pokerRooms[roomId].waiting_for_restart = true
 
+  await pokerEloHandler(pokerRooms[roomId])
+
   io.emit('new-poker-room')
   return res.status(200)
 })
@@ -3973,6 +4068,8 @@ async function handleWinner(roomId, winnerIds) {
 
   pokerRooms[roomId].waiting_for_restart = true
 
+  await pokerEloHandler(pokerRooms[roomId])
+
   io.emit('new-poker-room')
   return true
 }
@@ -3981,6 +4078,9 @@ app.post('/poker-room/next-round', async (req, res) => {
   const { roomId } = req.body
 
   if (!pokerRooms[roomId]) return res.status(404).send({ message: 'Table introuvable' })
+
+  const dealerId = Object.keys(pokerRooms[roomId].players).findIndex(p => p === pokerRooms[roomId].dealer)
+  console.log('dealer id', dealerId)
 
   pokerRooms[roomId].waiting_for_restart = false
   pokerRooms[roomId].winners = []
@@ -3992,6 +4092,15 @@ app.post('/poker-room/next-round', async (req, res) => {
   pokerRooms[roomId].highest_bet = null
   pokerRooms[roomId].current_player = null
   pokerRooms[roomId].current_turn = null
+
+  for (const playerId in pokerRooms[roomId].afk) {
+    try {
+      delete pokerRooms[roomId].players[playerId]
+    } catch (e) { console.log(e) }
+    try {
+      delete pokerRooms[roomId].afk[playerId]
+    } catch (e) { console.log(e) }
+  }
 
   for (const playerId in pokerRooms[roomId].players) {
     const player = pokerRooms[roomId].players[playerId]
@@ -4005,8 +4114,7 @@ app.post('/poker-room/next-round', async (req, res) => {
   }
 
   try {
-    const url = (process.env.DEV_SITE === 'true' ? process.env.API_URL_DEV : process.env.API_URL) + '/poker-room/start'
-    const response = await axios.post(url, { roomId: roomId })
+    await handleRoomStart(roomId, dealerId)
   } catch (e) {
     console.log(e)
   }
@@ -4299,24 +4407,31 @@ io.on('connection', (socket) => {
   })
 
   socket.on('tictactoeplaying', async (e) => {
+    console.log('playing', e.value)
     let lobbyToChange;
     if (e.value === 'X') {
       lobbyToChange = playingArray.find(obj => obj.p1.id === e.playerId)
 
-      lobbyToChange.p2.move = ''
-      lobbyToChange.p1.move = e.boxId
-      lobbyToChange.sum++
-      lobbyToChange.xs.push(e.boxId)
-      lobbyToChange.lastmove = Date.now()
+      if (lobbyToChange.sum%2 === 1) {
+        console.log('yeah', e.value)
+        lobbyToChange.p2.move = ''
+        lobbyToChange.p1.move = e.boxId
+        lobbyToChange.sum++
+        lobbyToChange.xs.push(e.boxId)
+        lobbyToChange.lastmove = Date.now()
+      }
     }
     else if (e.value === 'O') {
       lobbyToChange = playingArray.find(obj => obj.p2.id === e.playerId)
 
-      lobbyToChange.p1.move = ''
-      lobbyToChange.p2.move = e.boxId
-      lobbyToChange.sum++
-      lobbyToChange.os.push(e.boxId)
-      lobbyToChange.lastmove = Date.now()
+      if (lobbyToChange.sum%2 === 0) {
+        console.log('yeah', e.value)
+        lobbyToChange.p1.move = ''
+        lobbyToChange.p2.move = e.boxId
+        lobbyToChange.sum++
+        lobbyToChange.os.push(e.boxId)
+        lobbyToChange.lastmove = Date.now()
+      }
     }
 
     let gridText = ''
@@ -4359,7 +4474,8 @@ io.on('connection', (socket) => {
     const winner = e.winner
     const game = playingArray.find(obj => obj.p1.id === e.playerId)
 
-    if (game) {
+    if (game && game.sum < 100) {
+      game.sum = 100
       let gridText = ''
       for (let i = 1; i <= 9; i++) {
         if (game.os.includes(i)) {
