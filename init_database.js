@@ -53,7 +53,7 @@ export const getUserInventory = flopoDB.prepare('SELECT * FROM skins WHERE user_
 export const getTopSkins = flopoDB.prepare('SELECT * FROM skins ORDER BY maxPrice DESC LIMIT 10');
 
 export const insertManyUsers = flopoDB.transaction(async (users) => {
-  for (const user of users) try { await insertUser.run(user) } catch (e) { console.log('user insert failed (might already exists)') }
+  for (const user of users) try { await insertUser.run(user) } catch (e) { /**/ }
 });
 export const updateManyUsers = flopoDB.transaction(async (users) => {
   for (const user of users) try { await updateUser.run(user) } catch (e) { console.log('user update failed') }

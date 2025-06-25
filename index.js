@@ -98,7 +98,7 @@ async function getAkhys() {
     const guild = await client.guilds.fetch(process.env.GUILD_ID);
     const members = await guild.members.fetch(); // Fetch all members
 
-    const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.VOTING_ROLE_ID));
+    const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
 
     akhys.forEach(akhy => {
       akhysData.set(akhy.user.id, {
@@ -4285,7 +4285,6 @@ io.on('connection', (socket) => {
 
   socket.on('user-connected', async (user) => {
     const username = getUser.get(user)
-    console.log(`user connected: ${username?.username ?? '-'}`);
 
     queue = queue.filter(obj => obj !== user)
     let names = [];
