@@ -21,7 +21,7 @@ import {
   getFirstActivePlayerAfterDealer,
   getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners, pruneOldLogs
 } from './utils.js';
-import {channelPointsHandler, eloHandler, pokerTest, slowmodesHandler} from './game.js';
+import {channelPointsHandler, eloHandler, pokerEloHandler, pokerTest, slowmodesHandler} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -3714,6 +3714,40 @@ app.post('/poker-room/start', async (req, res) => {
 
   pokerRooms[roomId].players[pokerRooms[roomId].bb].last_played_turn = pokerRooms[roomId].current_turn
 
+  if (!pokerRooms[roomId].fakeMoney) {
+    const DB_SBplayer = await getUser.get(Object.keys(pokerRooms[roomId].players)[1])
+    const DB_BBplayer = await getUser.get(Object.keys(pokerRooms[roomId].players)[2 % Object.keys(pokerRooms[roomId].players).length])
+    if (DB_SBplayer) {
+      updateUserCoins.run({
+        id: DB_SBplayer.id,
+        coins: pokerRooms[roomId].players[DB_SBplayer.id].bank,
+      })
+      insertLog.run({
+        id: DB_SBplayer.id + '-' + Date.now(),
+        user_id: DB_SBplayer.id,
+        action: 'POKER_SMALL_BLIND',
+        target_user_id: DB_SBplayer.id,
+        coins_amount: -10,
+        user_new_amount: DB_SBplayer.coins - 10,
+      })
+    }
+    if (DB_BBplayer) {
+      updateUserCoins.run({
+        id: DB_BBplayer.id,
+        coins: pokerRooms[roomId].players[DB_BBplayer.id].bank,
+      })
+      insertLog.run({
+        id: DB_BBplayer.id + '-' + Date.now(),
+        user_id: DB_BBplayer.id,
+        action: 'POKER_BIG_BLIND',
+        target_user_id: DB_BBplayer.id,
+        coins_amount: -20,
+        user_new_amount: DB_BBplayer.coins - 20,
+      })
+    }
+    io.emit('data-updated', {table: 'users', action: 'update'});
+  }
+
   pokerRooms[roomId].playing = true
   pokerRooms[roomId].last_move_at = Date.now()
 
@@ -3760,6 +3794,40 @@ async function handleRoomStart(roomId, dealerId = 0) {
   pokerRooms[roomId].current_turn = 0;
 
   pokerRooms[roomId].players[pokerRooms[roomId].bb].last_played_turn = pokerRooms[roomId].current_turn
+
+  if (!pokerRooms[roomId].fakeMoney) {
+    const DB_SBplayer = await getUser.get(Object.keys(pokerRooms[roomId].players)[(dealerId + 2) % Object.keys(pokerRooms[roomId].players).length])
+    const DB_BBplayer = await getUser.get(Object.keys(pokerRooms[roomId].players)[(dealerId + 3) % Object.keys(pokerRooms[roomId].players).length])
+    if (DB_SBplayer) {
+      updateUserCoins.run({
+        id: DB_SBplayer.id,
+        coins: pokerRooms[roomId].players[DB_SBplayer.id].bank,
+      })
+      insertLog.run({
+        id: DB_SBplayer.id + '-' + Date.now(),
+        user_id: DB_SBplayer.id,
+        action: 'POKER_SMALL_BLIND',
+        target_user_id: DB_SBplayer.id,
+        coins_amount: -10,
+        user_new_amount: DB_SBplayer.coins - 10,
+      })
+    }
+    if (DB_BBplayer) {
+      updateUserCoins.run({
+        id: DB_BBplayer.id,
+        coins: pokerRooms[roomId].players[DB_BBplayer.id].bank,
+      })
+      insertLog.run({
+        id: DB_BBplayer.id + '-' + Date.now(),
+        user_id: DB_BBplayer.id,
+        action: 'POKER_BIG_BLIND',
+        target_user_id: DB_BBplayer.id,
+        coins_amount: -20,
+        user_new_amount: DB_BBplayer.coins - 20,
+      })
+    }
+    io.emit('data-updated', {table: 'users', action: 'update'});
+  }
 
   pokerRooms[roomId].playing = true
   pokerRooms[roomId].last_move_at = Date.now()
@@ -4030,9 +4098,29 @@ app.post('/poker-room/winner', async (req, res) => {
 
   pokerRooms[roomId].winners.forEach((winner) => {
     pokerRooms[roomId].players[winner].bank += Math.floor(pool / winnerIds.length)
+    if (!pokerRooms[roomId].fakeMoney) {
+      const DBplayer = getUser.get(winner)
+      if (DBplayer) {
+        updateUserCoins.run({
+          id: winner,
+          coins: pokerRooms[roomId].players[winner].bank,
+        })
+        insertLog.run({
+          id: winner + '-' + Date.now(),
+          user_id: winner,
+          action: 'POKER_WIN',
+          target_user_id: winner,
+          coins_amount: Math.floor(pool / winnerIds.length),
+          user_new_amount: pokerRooms[roomId].players[winner].bank,
+        })
+      }
+      io.emit('data-updated', {table: 'users', action: 'update'});
+    }
   });
 
   pokerRooms[roomId].waiting_for_restart = true
+
+  io.emit('player-winner', { roomId: roomId, playerIds: winnerIds, amount: Math.floor(pool / winnerIds.length) })
 
   await pokerEloHandler(pokerRooms[roomId])
 
@@ -4067,6 +4155,8 @@ async function handleWinner(roomId, winnerIds) {
   });
 
   pokerRooms[roomId].waiting_for_restart = true
+
+  io.emit('player-winner', { roomId: roomId, playerIds: pokerRooms[roomId].winners, amount: Math.floor(pool / winnerIds.length) })
 
   await pokerEloHandler(pokerRooms[roomId])
 
@@ -4135,6 +4225,8 @@ app.post('/poker-room/action/fold', async (req, res) => {
     pokerRooms[roomId].players[playerId].folded = true
     pokerRooms[roomId].players[playerId].last_played_turn = pokerRooms[roomId].current_turn
 
+    io.emit('player-fold', { roomId: roomId, playerId: playerId, playerName: pokerRooms[roomId].players[playerId].globalName })
+
     await checksAfterPokerAction(roomId)
 
     io.emit('new-poker-room')
@@ -4156,6 +4248,8 @@ app.post('/poker-room/action/check', async (req, res) => {
 
   try {
     pokerRooms[roomId].players[playerId].last_played_turn = pokerRooms[roomId].current_turn
+
+    io.emit('player-check', { roomId: roomId, playerId: playerId, playerName: pokerRooms[roomId].players[playerId].globalName })
 
     await checksAfterPokerAction(roomId)
 
@@ -4187,6 +4281,26 @@ app.post('/poker-room/action/call', async (req, res) => {
     pokerRooms[roomId].players[playerId].last_played_turn = pokerRooms[roomId].current_turn
 
     if (Object.values(pokerRooms[roomId].players).find(p => p.allin)) pokerRooms[roomId].players[playerId].allin = true
+    if (!pokerRooms[roomId].fakeMoney) {
+      const DBplayer = await getUser.get(playerId)
+      if (DBplayer) {
+        updateUserCoins.run({
+          id: playerId,
+          coins: pokerRooms[roomId].players[playerId].bank,
+        })
+        insertLog.run({
+          id: playerId + '-' + Date.now(),
+          user_id: playerId,
+          action: 'POKER_CALL',
+          target_user_id: playerId,
+          coins_amount: -diff,
+          user_new_amount: pokerRooms[roomId].players[playerId].bank,
+        })
+      }
+      io.emit('data-updated', { table: 'users', action: 'update' });
+    }
+
+    io.emit('player-call', { roomId: roomId, playerId: playerId, playerName: pokerRooms[roomId].players[playerId].globalName })
 
     await checksAfterPokerAction(roomId)
 
@@ -4220,6 +4334,27 @@ app.post('/poker-room/action/raise', async (req, res) => {
     }
     pokerRooms[roomId].players[playerId].is_last_raiser = true
     pokerRooms[roomId].highest_bet = pokerRooms[roomId].players[playerId].bet
+
+    if (!pokerRooms[roomId].fakeMoney) {
+      const DBplayer = await getUser.get(playerId)
+      if (DBplayer) {
+        updateUserCoins.run({
+          id: playerId,
+          coins: DBplayer.coins - amount,
+        })
+        insertLog.run({
+          id: playerId + '-' + Date.now(),
+          user_id: playerId,
+          action: 'POKER_RAISE',
+          target_user_id: playerId,
+          coins_amount: -amount,
+          user_new_amount: DBplayer.coins - amount,
+        })
+      }
+      io.emit('data-updated', { table: 'users', action: 'update' });
+    }
+
+    io.emit('player-raise', { roomId: roomId, playerId: playerId, amount: amount, playerName: pokerRooms[roomId].players[playerId].globalName })
 
     await checksAfterPokerAction(roomId)
 
@@ -4263,7 +4398,7 @@ async function updatePokerPlayersSolve(roomId) {
   for (const playerId in pokerRooms[roomId].players) {
     const player = pokerRooms[roomId].players[playerId]
     let fullHand = pokerRooms[roomId].tapis
-    player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false).descr
+    player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
   }
 }
 
