@@ -237,10 +237,46 @@ export async function pokerEloHandler(room) {
     }
   })
 
-  room.winners.forEach(winnerId => {
-    if (DBplayers.find((player) => player.id === winnerId)) {
-      // update elo
+  const winnerIds = new Set(room.winners)
+  const baseK = 5
+  const playerCount = Object.keys(room.players).length
+  const K = baseK * Math.log2(playerCount)
 
+  DBplayers.forEach(player => {
+    const others = DBplayers.filter(p => p.id !== player.id)
+    const avgOppElo = others.reduce((sum, p) => sum + p.elo, 0) / others.length
+
+    const expectedScore = 1 / (1 + Math.pow(10, (avgOppElo - player.elo) / 400))
+    let actualScore;
+
+    if (winnerIds.has(player.id)) {
+      if (winnerIds.size === DBplayers.length) {
+        actualScore = 0.5
+      } else {
+        actualScore = 1
+      }
+    } else {
+      actualScore = 0
     }
+
+    const delta = K * (actualScore - expectedScore)
+    const newElo = Math.max(Math.floor(player.elo + delta), 0)
+
+    console.log(`${player.id} elo update : ${player.elo} -> ${newElo} (K: ${K})`)
+    updateElo.run({ id: player.id, elo: newElo })
+
+    insertGame.run({
+      id: player.id + '-' + Date.now().toString(),
+      p1: player.id,
+      p2: null,
+      p1_score: actualScore,
+      p2_score: null,
+      p1_elo: player.elo,
+      p2_elo: avgOppElo,
+      p1_new_elo: newElo,
+      p2_new_elo: null,
+      type: 'POKER_ROUND',
+      timestamp: Date.now(),
+    })
   })
 }
