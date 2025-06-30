@@ -682,26 +682,6 @@ client.once('ready', async () => {
     }
   });
 
-  cron.schedule(todaysHydrateCron, async () => {
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
-
-    try {
-      const generalChannel = guild.channels.cache.find(
-          ch => ch.name === 'général' || ch.name === 'general'
-      );
-
-      if (generalChannel && generalChannel.isTextBased()) {
-        generalChannel.send(
-            `${getRandomHydrateText()} ${getRandomEmoji(1)}`
-        );
-      }
-
-      console.log(`Message hydratation`);
-    } catch (err) {
-      console.error('Message hydratation:', err);
-    }
-  });
-
   // users/skins dayly fetch at 7am
   cron.schedule('0 7 * * *', async() => {
     // fetch eventual new users/skins
