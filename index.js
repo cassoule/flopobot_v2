@@ -21,7 +21,14 @@ import {
   getFirstActivePlayerAfterDealer,
   getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners, pruneOldLogs
 } from './utils.js';
-import {channelPointsHandler, eloHandler, pokerEloHandler, pokerTest, slowmodesHandler} from './game.js';
+import {
+  channelPointsHandler,
+  eloHandler,
+  pokerEloHandler,
+  pokerTest,
+  randomSkinPrice,
+  slowmodesHandler
+} from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
 import Database from "better-sqlite3";
@@ -90,7 +97,7 @@ const requestTimestamps = new Map(); // userId => [timestamp1, timestamp2, ...]
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
 
 const akhysData= new Map()
-const skins = []
+export const skins = []
 
 async function getAkhys() {
   try {
@@ -529,6 +536,16 @@ client.on('messageCreate', async (message) => {
     else if (message.content.toLowerCase().startsWith('?v')) {
       console.log('active polls :')
       console.log(activePolls)
+    }
+    else if (message.content.toLowerCase().startsWith('?sv')) {
+      const amount = parseInt(message.content.replace('?sv ', ''))
+      let sum = 0
+      let start_at = Date.now()
+      for (let i = 0; i < amount; i++) {
+        sum += parseFloat(randomSkinPrice(i+1))
+        if (i%10 === 0 || i === amount-1) console.log(`Avg Skin Cost : ~${(sum/i+1).toFixed(2)}€ (~${sum.toFixed(2)}/${i+1}) - ${(Date.now() - start_at)}ms elapsed`)
+      }
+      console.log(`Result for ${amount} skins`)
     }
     else if (message.author.id === process.env.DEV_ID) {
       const prefix = process.env.DEV_SITE === 'true' ? 'dev' : 'flopo'
