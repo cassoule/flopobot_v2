@@ -2,7 +2,17 @@ import { capitalize } from './utils.js';
 import pkg from 'pokersolver';
 const { Hand } = pkg;
 
-import {updateUserCoins, getUser, insertLog, insertGame, getUserElo, insertElos, updateElo} from './init_database.js'
+import {
+  updateUserCoins,
+  getUser,
+  insertLog,
+  insertGame,
+  getUserElo,
+  insertElos,
+  updateElo,
+  getAllSkins
+} from './init_database.js'
+import {skins} from "./index.js";
 
 const messagesTimestamps = new Map();
 
@@ -279,4 +289,34 @@ export async function pokerEloHandler(room) {
       timestamp: Date.now(),
     })
   })
+}
+
+export function randomSkinPrice(id=0) {
+  const dbSkins = getAllSkins.all();
+  const randomIndex = Math.floor(Math.random() * dbSkins.length);
+  let randomSkin = skins.find((skin) => skin.uuid === dbSkins[randomIndex].uuid);
+
+  // Generate random level and chroma
+  const randomLevel = Math.floor(Math.random() * randomSkin.levels.length + 1);
+  let randomChroma = randomLevel === randomSkin.levels.length
+      ? Math.floor(Math.random() * randomSkin.chromas.length + 1)
+      : 1;
+  if (randomChroma === randomSkin.chromas.length && randomSkin.chromas.length >= 2) randomChroma--
+  const selectedLevel = randomSkin.levels[randomLevel - 1]
+  const selectedChroma = randomSkin.chromas[randomChroma - 1]
+
+
+  // Helper functions (unchanged from your original code)
+  const price = () => {
+    let result = dbSkins[randomIndex].basePrice;
+
+    result *= (1 + (randomLevel / Math.max(randomSkin.levels.length, 2)))
+    result *= (1 + (randomChroma / 4))
+
+    return result.toFixed(2);
+  }
+
+  const returnPrice = price()
+  console.log(`#${id} :`, returnPrice)
+  return returnPrice
 }
