@@ -91,6 +91,14 @@ const SKINS_COMMAND = {
   contexts: [0, 2],
 }
 
+const SITE_COMMAND = {
+  name: 'floposite',
+  description: 'Lien vers FlopoSite',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 2],
+}
+
 const SEARCH_SKIN_COMMAND = {
   name: 'search',
   description: 'Chercher un skin',
@@ -107,6 +115,6 @@ const SEARCH_SKIN_COMMAND = {
   contexts: [0, 2],
 }
 
-const ALL_COMMANDS = [TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND, INFO_COMMAND, SKINS_COMMAND, SEARCH_SKIN_COMMAND];
+const ALL_COMMANDS = [TIMEOUT_COMMAND, INVENTORY_COMMAND, VALORANT_COMMAND, INFO_COMMAND, SKINS_COMMAND, SEARCH_SKIN_COMMAND, SITE_COMMAND];
 
 InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
