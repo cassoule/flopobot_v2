@@ -1386,6 +1386,36 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
+    if (name === 'floposite') {
+      const originalComponents = [
+        {
+          type: MessageComponentTypes.BUTTON,
+          label: 'Aller sur FlopoSite',
+          style: ButtonStyleTypes.LINK,
+          url: 'https://floposite.netlify.app',
+        },
+      ];
+
+      return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+          embeds: [
+            {
+              title: 'FlopoSite',
+              description: 'L\'officiel et très goatesque site de FlopoBot.',
+              color: 0x6571F3,
+            }
+          ],
+          components: [
+            {
+              type: MessageComponentTypes.ACTION_ROW,
+              components: originalComponents,
+            },
+          ],
+        }
+      })
+    }
+
     if (name === 'search') {
       const context = req.body.context;
       // User ID is in user field for (G)DMs, and member for servers
