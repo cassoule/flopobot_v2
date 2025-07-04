@@ -67,7 +67,7 @@ const app = express();
 // Get port, or default to 25578
 const PORT = process.env.PORT || 25578;
 const FLAPI_URL = process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL
-app.use(express.json());
+
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', FLAPI_URL);
   res.header('Access-Control-Allow-Headers', 'Content-type, X-API-Key, ngrok-skip-browser-warning');
@@ -322,7 +322,7 @@ async function getOnlineUsersWithRole(guild_id=process.env.GUILD_ID, role_id=pro
 }
 
 // Login to Discord using bot token (optional)
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN).then(r => console.log(''));
 
 // Listen for message events
 client.on('messageCreate', async (message) => {
@@ -2663,6 +2663,8 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
   console.error('unknown interaction type', type);
   return res.status(400).json({ error: 'unknown interaction type' });
 });
+
+app.use(express.json());
 
 // Check flAPI
 app.get('/check', (req, res) => {
