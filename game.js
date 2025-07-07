@@ -220,25 +220,9 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
   })
 }
 
-export function pokerTest() {
-  console.log('pokerTest')
-  let hand1 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', '3c', 'Kd'], 'standard', false);
-  //let hand2 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', '3c', 'Kd'], 'standard', false);
-  let hand2 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', 'Qs', 'Qd'], 'standard', false);
-  /*console.log(hand1.name)
-  console.log(hand2.name)
-  console.log(hand1.descr)
-  console.log(hand2.descr)*/
-  console.log(hand1.toString())
-  console.log(hand2.toString())
-
-  let winner = Hand.winners([hand1, hand2]); // hand2
-  console.log(winner)
-  console.log(winner.includes(hand1));
-  console.log(winner.includes(hand2));
-}
-
 export async function pokerEloHandler(room) {
+  if (room.fakeMoney) return
+
   let DBplayers = []
   Object.keys(room.players).forEach(playerId => {
     const DBuser = getUser.get(playerId)
@@ -248,46 +232,52 @@ export async function pokerEloHandler(room) {
   })
 
   const winnerIds = new Set(room.winners)
-  const baseK = 5
   const playerCount = Object.keys(room.players).length
-  const K = baseK * Math.log2(playerCount)
+  const baseK = 10
+
+  const avgOpponentElo = (player) => {
+    const opponents = DBplayers.filter(p => p.id !== player.id);
+    return opponents.reduce((sum, p) => sum + p.elo, 0) / opponents.length;
+  };
 
   DBplayers.forEach(player => {
-    const others = DBplayers.filter(p => p.id !== player.id)
-    const avgOppElo = others.reduce((sum, p) => sum + p.elo, 0) / others.length
+    const avgElo = avgOpponentElo(player);
+    const expectedScore = 1 / (1 + 10 ** ((avgElo - player.elo) / 400))
 
-    const expectedScore = 1 / (1 + Math.pow(10, (avgOppElo - player.elo) / 400))
     let actualScore;
-
     if (winnerIds.has(player.id)) {
-      if (winnerIds.size === DBplayers.length) {
-        actualScore = 0.5
-      } else {
-        actualScore = 1
-      }
+      actualScore = (winnerIds.size === playerCount) ? 0.5 : 1;
     } else {
-      actualScore = 0
+      actualScore = 0;
     }
 
+    const K = winnerIds.has(player.id) ? (baseK * playerCount) : baseK
     const delta = K * (actualScore - expectedScore)
+
     const newElo = Math.max(Math.floor(player.elo + delta), 0)
 
-    console.log(`${player.id} elo update : ${player.elo} -> ${newElo} (K: ${K})`)
-    updateElo.run({ id: player.id, elo: newElo })
 
-    insertGame.run({
-      id: player.id + '-' + Date.now().toString(),
-      p1: player.id,
-      p2: null,
-      p1_score: actualScore,
-      p2_score: null,
-      p1_elo: player.elo,
-      p2_elo: avgOppElo,
-      p1_new_elo: newElo,
-      p2_new_elo: null,
-      type: 'POKER_ROUND',
-      timestamp: Date.now(),
-    })
+
+    if (!isNaN(newElo)) {
+      console.log(`${player.id} elo update: ${player.elo} -> ${newElo} (K: ${K.toFixed(2)}, Δ: ${delta.toFixed(2)})`);
+      updateElo.run({ id: player.id, elo: newElo })
+
+      insertGame.run({
+        id: player.id + '-' + Date.now().toString(),
+        p1: player.id,
+        p2: null,
+        p1_score: actualScore,
+        p2_score: null,
+        p1_elo: player.elo,
+        p2_elo: avgElo,
+        p1_new_elo: newElo,
+        p2_new_elo: null,
+        type: 'POKER_ROUND',
+        timestamp: Date.now(),
+      })
+    } else {
+      console.log(`# ELO UPDATE ERROR -> ${player.id} elo update: ${player.elo} -> ${newElo} (K: ${K.toFixed(2)}, Δ: ${delta.toFixed(2)})`);
+    }
   })
 }
 
