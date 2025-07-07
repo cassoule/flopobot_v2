@@ -609,7 +609,7 @@ client.on('messageCreate', async (message) => {
         }
       }
       else if (message.content.startsWith(prefix + ':poker')) {
-        io.emit('message', message.content);
+        console.log('poker')
       }
       else if (message.content.startsWith(prefix + ':elo-test')) {
         const numbers = message.content.match(/\d+/g);
@@ -3599,8 +3599,8 @@ app.post('/poker-room/join', async (req, res) => {
   let amount = getUser.get(userId)?.coins
   let fakeMoney = false
 
-  if (!amount || amount < 100) {
-    amount = 100
+  if (!amount || amount < 1000) {
+    amount = 1000
     fakeMoney = true
   }
 
@@ -4432,6 +4432,7 @@ async function updatePokerPlayersSolve(roomId) {
 
 import http from 'http';
 import { Server } from 'socket.io';
+import * as test from "node:test";
 const server = http.createServer(app);
 
 const io = new Server(server, {
