@@ -220,25 +220,8 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
   })
 }
 
-export function pokerTest() {
-  console.log('pokerTest')
-  let hand1 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', '3c', 'Kd'], 'standard', false);
-  //let hand2 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', '3c', 'Kd'], 'standard', false);
-  let hand2 = Hand.solve(['Ad', 'As', 'Jc', 'Th', '2d', 'Qs', 'Qd'], 'standard', false);
-  /*console.log(hand1.name)
-  console.log(hand2.name)
-  console.log(hand1.descr)
-  console.log(hand2.descr)*/
-  console.log(hand1.toString())
-  console.log(hand2.toString())
-
-  let winner = Hand.winners([hand1, hand2]); // hand2
-  console.log(winner)
-  console.log(winner.includes(hand1));
-  console.log(winner.includes(hand2));
-}
-
 export async function pokerEloHandler(room) {
+  if (room.fakeMoney) return
   let DBplayers = []
   Object.keys(room.players).forEach(playerId => {
     const DBuser = getUser.get(playerId)

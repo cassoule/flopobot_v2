@@ -25,7 +25,6 @@ import {
   channelPointsHandler,
   eloHandler,
   pokerEloHandler,
-  pokerTest,
   randomSkinPrice,
   slowmodesHandler
 } from './game.js';
