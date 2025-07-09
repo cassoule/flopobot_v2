@@ -4417,7 +4417,7 @@ async function checksAfterPokerAction(roomId) {
     pokerRooms[roomId].current_player = getNextActivePlayer(pokerRooms[roomId])
   }
 
-  pokerRooms[roomId].last_move_at = Date.now()
+  pokerRooms[roomId]?.last_move_at = Date.now()
 
   io.emit('new-poker-room')
 }
