@@ -2721,6 +2721,22 @@ app.get('/user/:id/avatar', async (req, res) => {
   }
 })
 
+app.get('/user/:id/username', async (req, res) => {
+  try {
+    const userId = req.params.id; // Get the ID from route parameters
+    const user = await client.users.fetch(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    console.error('Error fetching user');
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+})
+
 app.get('/user/:id/sparkline', async (req, res) => {
   try {
     const userId = req.params.id
