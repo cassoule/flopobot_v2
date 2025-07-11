@@ -12,7 +12,7 @@ import {
   updateElo,
   getAllSkins
 } from './init_database.js'
-import {skins} from "./index.js";
+import {C4_COLS, C4_ROWS, skins} from "./index.js";
 
 const messagesTimestamps = new Map();
 
@@ -309,4 +309,61 @@ export function randomSkinPrice(id=0) {
   const returnPrice = price()
   console.log(`#${id} :`, returnPrice)
   return returnPrice
+}
+
+export function createConnect4Board() {
+  return Array(C4_ROWS).fill(null).map(() => Array(C4_COLS).fill(null));
+}
+
+export function checkConnect4Win(board, player) {
+  // Check horizontal
+  for (let r = 0; r < C4_ROWS; r++) {
+    for (let c = 0; c <= C4_COLS - 4; c++) {
+      if (board[r][c] === player && board[r][c+1] === player && board[r][c+2] === player && board[r][c+3] === player) {
+        return { win: true, pieces: [{row:r, col:c}, {row:r, col:c+1}, {row:r, col:c+2}, {row:r, col:c+3}] };
+      }
+    }
+  }
+
+  // Check vertical
+  for (let r = 0; r <= C4_ROWS - 4; r++) {
+    for (let c = 0; c < C4_COLS; c++) {
+      if (board[r][c] === player && board[r+1][c] === player && board[r+2][c] === player && board[r+3][c] === player) {
+        return { win: true, pieces: [{row:r, col:c}, {row:r+1, col:c}, {row:r+2, col:c}, {row:r+3, col:c}] };
+      }
+    }
+  }
+
+  // Check diagonal (down-right)
+  for (let r = 0; r <= C4_ROWS - 4; r++) {
+    for (let c = 0; c <= C4_COLS - 4; c++) {
+      if (board[r][c] === player && board[r+1][c+1] === player && board[r+2][c+2] === player && board[r+3][c+3] === player) {
+        return { win: true, pieces: [{row:r, col:c}, {row:r+1, col:c+1}, {row:r+2, col:c+2}, {row:r+3, col:c+3}] };
+      }
+    }
+  }
+
+  // Check diagonal (up-right)
+  for (let r = 3; r < C4_ROWS; r++) {
+    for (let c = 0; c <= C4_COLS - 4; c++) {
+      if (board[r][c] === player && board[r-1][c+1] === player && board[r-2][c+2] === player && board[r-3][c+3] === player) {
+        return { win: true, pieces: [{row:r, col:c}, {row:r-1, col:c+1}, {row:r-2, col:c+2}, {row:r-3, col:c+3}] };
+      }
+    }
+  }
+
+  return { win: false, pieces: [] };
+}
+
+export function checkConnect4Draw(board) {
+  return board[0].every(cell => cell !== null);
+}
+
+export function formatConnect4BoardForDiscord(board) {
+  const symbols = {
+    'R': '🔴',
+    'Y': '🟡',
+    null: '⚪'
+  };
+  return board.map(row => row.map(cell => symbols[cell]).join('')).join('\n');
 }

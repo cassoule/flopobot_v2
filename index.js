@@ -22,8 +22,8 @@ import {
   getNextActivePlayer, checkEndOfBettingRound, initialCards, checkRoomWinners, pruneOldLogs
 } from './utils.js';
 import {
-  channelPointsHandler,
-  eloHandler,
+  channelPointsHandler, checkConnect4Draw, checkConnect4Win, createConnect4Board,
+  eloHandler, formatConnect4BoardForDiscord,
   pokerEloHandler,
   randomSkinPrice,
   slowmodesHandler
@@ -4461,6 +4461,11 @@ const io = new Server(server, {
 let queue = []
 let playingArray = []
 
+let connect4Queue = []
+let connect4PlayingArray = []
+export const C4_ROWS = 6
+export const C4_COLS = 7
+
 io.on('connection', (socket) => {
 
   socket.on('user-connected', async (user) => {
@@ -4717,6 +4722,120 @@ io.on('connection', (socket) => {
 
     playingArray = playingArray.filter(obj => obj.p1.id !== e.playerId)
   })
+
+  socket.on('connect4queue', async (e) => {
+    console.log(`${e.playerId} in Connect 4 queue`);
+
+    if (!connect4Queue.find(obj => obj === e.playerId)) {
+      connect4Queue.push(e.playerId);
+    }
+
+    if (connect4Queue.length >= 2) {
+      const p1Id = connect4Queue[0];
+      const p2Id = connect4Queue[1];
+      const p1 = await client.users.fetch(p1Id);
+      const p2 = await client.users.fetch(p2Id);
+      let msgId;
+
+      const board = createConnect4Board();
+      const boardText = formatConnect4BoardForDiscord(board);
+
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const generalChannel = guild.channels.cache.find(ch => ch.name === 'général' || ch.name === 'general');
+        const embed = new EmbedBuilder()
+            .setTitle('Puissance 4')
+            .setDescription(`**🔴 ${p1.globalName}** vs **${p2.globalName} 🟡**\n\n${boardText}`)
+            .setColor('#5865f2')
+            .setTimestamp(new Date());
+        const msg = await generalChannel.send({ embeds: [embed] });
+        msgId = msg.id;
+      } catch (err) {
+        console.error("Error sending Connect 4 start message:", err);
+      }
+
+      const lobby = {
+        p1: { id: p1Id, name: p1.globalName, val: 'R' },
+        p2: { id: p2Id, name: p2.globalName, val: 'Y' },
+        turn: p1Id,
+        board: board,
+        msgId: msgId,
+        gameOver: false,
+        winningPieces: []
+      };
+
+      connect4PlayingArray.push(lobby);
+      connect4Queue.splice(0, 2);
+    }
+
+    let names = [];
+    for (const n of connect4Queue) {
+      let name = await client.users.fetch(n);
+      names.push(name?.globalName);
+    }
+    io.emit('connect4queue', { allPlayers: connect4PlayingArray, queue: names });
+  });
+
+  socket.on('connect4playing', async (e) => {
+    const lobby = connect4PlayingArray.find(l => (l.p1.id === e.playerId || l.p2.id === e.playerId) && !l.gameOver);
+    if (!lobby || lobby.turn !== e.playerId) return;
+
+    const player = lobby.p1.id === e.playerId ? lobby.p1 : lobby.p2;
+    const col = e.col;
+
+    // Drop the piece
+    let row;
+    for (row = C4_ROWS - 1; row >= 0; row--) {
+      if (lobby.board[row][col] === null) {
+        lobby.board[row][col] = player.val;
+        break;
+      }
+    }
+
+    // Check for win
+    const winCheck = checkConnect4Win(lobby.board, player.val);
+    if (winCheck.win) {
+      lobby.gameOver = true;
+      lobby.winningPieces = winCheck.pieces;
+      await eloHandler(lobby.p1.id, lobby.p2.id, lobby.p1.id === player.id ? 1 : 0, lobby.p2.id === player.id ? 1 : 0, 'CONNECT4');
+      io.emit('connect4gameOver', { game: lobby, winner: player.id });
+    }
+    // Check for draw
+    else if (checkConnect4Draw(lobby.board)) {
+      lobby.gameOver = true;
+      await eloHandler(lobby.p1.id, lobby.p2.id, 0.5, 0.5, 'CONNECT4');
+      io.emit('connect4gameOver', { game: lobby, winner: 'draw' });
+    }
+    // Switch turns
+    else {
+      lobby.turn = lobby.p1.id === player.id ? lobby.p2.id : lobby.p1.id;
+    }
+
+    // Update Discord message
+    try {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const generalChannel = guild.channels.cache.find(ch => ch.name === 'général' || ch.name === 'general');
+      const message = await generalChannel.messages.fetch(lobby.msgId);
+      let description = `**🔴 ${lobby.p1.name}** vs **${lobby.p2.name} 🟡**\n\n${formatConnect4BoardForDiscord(lobby.board)}`;
+      if (lobby.gameOver) {
+        if(winCheck.win) {
+          description += `\n\n### Victoire de ${player.name}!`;
+        } else {
+          description += `\n\n### Match Nul!`;
+        }
+      }
+      const embed = new EmbedBuilder()
+          .setTitle('Puissance 4')
+          .setDescription(description)
+          .setColor(lobby.gameOver ? '#2ade2a' : '#5865f2')
+          .setTimestamp(new Date());
+      await message.edit({ embeds: [embed] });
+    } catch (err) {
+      console.error("Error updating Connect 4 message:", err);
+    }
+
+    io.emit('connect4playing', { allPlayers: connect4PlayingArray });
+  });
 });
 
 server.listen(PORT, () => {
