@@ -4730,6 +4730,34 @@ io.on('connection', (socket) => {
       connect4Queue.push(e.playerId);
     }
 
+    if (connect4Queue.length === 1) {
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const generalChannel = guild.channels.cache.find(
+            ch => ch.name === 'général' || ch.name === 'general'
+        );
+        const user = await client.users.fetch(e.playerId)
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Puissance 4`)
+            .setDescription(`**${user.username}** est dans la file d'attente`)
+            .setColor('#5865f2')
+            .setTimestamp(new Date());
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel(`Jouer contre ${user.username}`)
+                    .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/connect-4`)
+                    .setStyle(ButtonStyle.Link)
+            )
+
+        await generalChannel.send({ embeds: [embed], components: [row] });
+      } catch (e) {
+        console.log(e)
+      }
+    }
+
     if (connect4Queue.length >= 2) {
       const p1Id = connect4Queue[0];
       const p2Id = connect4Queue[1];
@@ -4758,9 +4786,11 @@ io.on('connection', (socket) => {
         p1: { id: p1Id, name: p1.globalName, val: 'R' },
         p2: { id: p2Id, name: p2.globalName, val: 'Y' },
         turn: p1Id,
+        sum: 1,
         board: board,
         msgId: msgId,
         gameOver: false,
+        lastmove: Date.now(),
         winningPieces: []
       };
 
@@ -4784,6 +4814,8 @@ io.on('connection', (socket) => {
     const col = e.col;
 
     // Drop the piece
+    lobby.lastmove = Date.now()
+    lobby.sum++
     let row;
     for (row = C4_ROWS - 1; row >= 0; row--) {
       if (lobby.board[row][col] === null) {
@@ -4799,12 +4831,15 @@ io.on('connection', (socket) => {
       lobby.winningPieces = winCheck.pieces;
       await eloHandler(lobby.p1.id, lobby.p2.id, lobby.p1.id === player.id ? 1 : 0, lobby.p2.id === player.id ? 1 : 0, 'CONNECT4');
       io.emit('connect4gameOver', { game: lobby, winner: player.id });
+
+      connect4PlayingArray = connect4PlayingArray.filter(obj => obj.p1.id !== lobby.p1.id)
     }
     // Check for draw
     else if (checkConnect4Draw(lobby.board)) {
       lobby.gameOver = true;
       await eloHandler(lobby.p1.id, lobby.p2.id, 0.5, 0.5, 'CONNECT4');
       io.emit('connect4gameOver', { game: lobby, winner: 'draw' });
+      connect4PlayingArray = connect4PlayingArray.filter(obj => obj.p1.id !== lobby.p1.id)
     }
     // Switch turns
     else {
@@ -4834,7 +4869,41 @@ io.on('connection', (socket) => {
       console.error("Error updating Connect 4 message:", err);
     }
 
-    io.emit('connect4playing', { allPlayers: connect4PlayingArray });
+    if (!winCheck.win && !checkConnect4Draw(lobby.board)) {
+      io.emit('connect4playing', { allPlayers: connect4PlayingArray });
+    }
+  });
+
+  socket.on('connect4NoTime', async (e) => {
+    const lobby = connect4PlayingArray.find(l => (l.p1.id === e.playerId || l.p2.id === e.playerId) && !l.gameOver);
+    const winner = e.winner
+
+    if (lobby) {
+      lobby.gameOver = true;
+      await eloHandler(lobby.p1?.id, lobby.p2?.id, lobby.p1?.id === winner ? 1 : 0, lobby.p2?.id === winner ? 1 : 0, 'CONNECT4');
+
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const generalChannel = guild.channels.cache.find(ch => ch.name === 'général' || ch.name === 'general');
+        const message = await generalChannel.messages.fetch(lobby.msgId);
+        let description = `**🔴 ${lobby.p1.name}** vs **${lobby.p2.name} 🟡**\n\n${formatConnect4BoardForDiscord(lobby.board)}`;
+        description += `\n\n### Victoire de ${lobby.p1.id === winner ? lobby.p1.name : lobby.p2.name}! (temps écoulé)`;
+        const embed = new EmbedBuilder()
+            .setTitle('Puissance 4')
+            .setDescription(description)
+            .setColor(lobby.gameOver ? '#2ade2a' : '#5865f2')
+            .setTimestamp(new Date());
+        await message.edit({ embeds: [embed] });
+      } catch (err) {
+        console.error("Error updating Connect 4 message:", err);
+      }
+
+      try {
+        connect4PlayingArray = connect4PlayingArray.filter(obj => obj.p1.id !== lobby.p1.id)
+      } catch (e) {
+        console.log(e)
+      }
+    }
   });
 });
 
