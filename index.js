@@ -4475,9 +4475,18 @@ io.on('connection', (socket) => {
     let names = [];
     for (const n of queue) {
       let name = await client.users.fetch(n)
-      names.push(name?.username)
+      names.push(name?.globalName)
     }
     io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
+
+    connect4Queue = connect4Queue.filter(obj => obj !== user)
+    let C4names = []
+    for (const n of connect4Queue) {
+      let name = await client.users.fetch(n)
+      C4names.push(name?.globalName)
+    }
+
+    io.emit('connect4queue', { allPlayers: playingArray, queue: C4names })
   })
 
   socket.on('tictactoeconnection', async (e) => {
@@ -4485,13 +4494,33 @@ io.on('connection', (socket) => {
     let names = [];
     for (const n of queue) {
       let name = await client.users.fetch(n)
-      names.push(name?.username)
+      names.push(name?.globalName)
     }
     io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
   })
 
+  socket.on('connect4connection', async (e) => {
+    connect4Queue = connect4Queue.filter(obj => obj !== e.id)
+    let names = [];
+    for (const n of connect4Queue) {
+      let name = await client.users.fetch(n)
+      names.push(name?.globalName)
+    }
+    io.emit('connect4queue', { allPlayers: playingArray, queue: names })
+  })
+
   socket.on('tictactoequeue', async (e) => {
     console.log(`${e.playerId} in tic tac toe queue`);
+
+    if (playingArray.find(obj => obj.p1.id === e.playerId || obj.p2.id === e.playerId)) {
+      let names = [];
+      for (const n of queue) {
+        let name = await client.users.fetch(n)
+        names.push(name?.globalName)
+      }
+      io.emit('tictactoequeue', { allPlayers: playingArray, queue: names })
+      return
+    }
 
     let msgId;
 
@@ -4725,6 +4754,16 @@ io.on('connection', (socket) => {
 
   socket.on('connect4queue', async (e) => {
     console.log(`${e.playerId} in Connect 4 queue`);
+
+    if (connect4PlayingArray.find(obj => obj.p1.id === e.playerId || obj.p2.id === e.playerId)) {
+      let names = [];
+      for (const n of connect4Queue) {
+        let name = await client.users.fetch(n);
+        names.push(name?.globalName);
+      }
+      io.emit('connect4queue', { allPlayers: connect4PlayingArray, queue: names });
+      return
+    }
 
     if (!connect4Queue.find(obj => obj === e.playerId)) {
       connect4Queue.push(e.playerId);
