@@ -367,3 +367,231 @@ export function formatConnect4BoardForDiscord(board) {
   };
   return board.map(row => row.map(cell => symbols[cell]).join('')).join('\n');
 }
+
+/**
+ * Shuffles an array in place using the Fisher-Yates algorithm.
+ * @param {Array} array - The array to shuffle.
+ * @returns {Array} The shuffled array.
+ */
+export function shuffle(array) {
+  let currentIndex = array.length,
+      randomIndex;
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex--;
+    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+}
+
+/**
+ * Deals a shuffled deck into the initial Solitaire game state.
+ * @param {Array} deck - A shuffled deck of cards.
+ * @returns {Object} The initial gameState object.
+ */
+export function deal(deck) {
+  const gameState = {
+    tableauPiles: [[], [], [], [], [], [], []],
+    foundationPiles: [[], [], [], []],
+    stockPile: [],
+    wastePile: [],
+  };
+
+  // Deal cards to the tableau piles
+  for (let i = 0; i < 7; i++) {
+    for (let j = i; j < 7; j++) {
+      gameState.tableauPiles[j].push(deck.shift());
+    }
+  }
+
+  // Flip the top card of each tableau pile
+  gameState.tableauPiles.forEach(pile => {
+    if (pile.length > 0) {
+      pile[pile.length - 1].faceUp = true;
+    }
+  });
+
+  // The rest of the deck becomes the stock
+  gameState.stockPile = deck;
+
+  return gameState;
+}
+
+/**
+ * Checks if a proposed move is valid according to the rules of Klondike Solitaire.
+ * @param {Object} gameState - The current state of the game.
+ * @param {Object} moveData - The details of the move.
+ * @returns {boolean}
+ */
+export function isValidMove(gameState, moveData) {
+  // Use more descriptive names to avoid confusion
+  const { sourcePileType, sourcePileIndex, sourceCardIndex, destPileType, destPileIndex } = moveData;
+
+  let sourcePile;
+  // Get the actual source pile array based on its type and index
+  if (sourcePileType === 'tableauPiles') {
+    sourcePile = gameState.tableauPiles[sourcePileIndex];
+  } else if (sourcePileType === 'wastePile') {
+    sourcePile = gameState.wastePile;
+  } else {
+    return false; // Cannot drag from foundation or stock
+  }
+
+  // Get the actual card being dragged (the top of the stack)
+  const sourceCard = sourcePile[sourceCardIndex];
+
+  // A card must exist and be face-up to be moved
+  if (!sourceCard || !sourceCard.faceUp) {
+    return false;
+  }
+
+  // --- Validate move TO a Tableau Pile ---
+  if (destPileType === 'tableauPiles') {
+    const destinationPile = gameState.tableauPiles[destPileIndex];
+    const topCard = destinationPile.length > 0 ? destinationPile[destinationPile.length - 1] : null;
+
+    if (!topCard) {
+      // If the destination tableau pile is empty, only a King can be moved there.
+      return sourceCard.rank === 'K';
+    }
+
+    // If the destination pile is not empty, check game rules
+    const sourceColor = getCardColor(sourceCard.suit);
+    const destColor = getCardColor(topCard.suit);
+    const sourceValue = getRankValue(sourceCard.rank);
+    const destValue = getRankValue(topCard.rank);
+
+    // Card being moved must be opposite color and one rank lower than the destination top card.
+    return sourceColor !== destColor && destValue - sourceValue === 1;
+  }
+
+  // --- Validate move TO a Foundation Pile ---
+  if (destPileType === 'foundationPiles') {
+    // You can only move one card at a time to a foundation pile.
+    const stackBeingMoved = sourcePile.slice(sourceCardIndex);
+    if (stackBeingMoved.length > 1) {
+      return false;
+    }
+
+    const destinationPile = gameState.foundationPiles[destPileIndex];
+    const topCard = destinationPile.length > 0 ? destinationPile[destinationPile.length - 1] : null;
+
+    if (!topCard) {
+      // If the foundation is empty, only an Ace can be moved there.
+      return sourceCard.rank === 'A';
+    }
+
+    // If not empty, card must be same suit and one rank higher.
+    const sourceValue = getRankValue(sourceCard.rank);
+    const destValue = getRankValue(topCard.rank);
+
+    return sourceCard.suit === topCard.suit && sourceValue - destValue === 1;
+  }
+
+  return false;
+}
+
+/**
+ * An array of suits and ranks to create a deck.
+ */
+const SUITS = ['h', 'd', 's', 'c']; // Hearts, Diamonds, Spades, Clubs
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
+
+/**
+ * Gets the numerical value of a card's rank.
+ * @param {string} rank - e.g., 'A', 'K', '7'
+ * @returns {number}
+ */
+function getRankValue(rank) {
+  if (rank === 'A') return 1;
+  if (rank === 'T') return 10;
+  if (rank === 'J') return 11;
+  if (rank === 'Q') return 12;
+  if (rank === 'K') return 13;
+  return parseInt(rank, 10);
+}
+
+/**
+ * Gets the color of a card's suit.
+ * @param {string} suit - e.g., 'h', 's'
+ * @returns {string} 'red' or 'black'
+ */
+function getCardColor(suit) {
+  return suit === 'h' || suit === 'd' ? 'red' : 'black';
+}
+
+/**
+ * Creates a standard 52-card deck.
+ * @returns {Array<Object>}
+ */
+export function createDeck() {
+  const deck = [];
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      deck.push({ suit, rank, faceUp: false });
+    }
+  }
+  return deck;
+}
+
+/**
+ * Mutates the game state by performing a valid move, correctly handling stacks.
+ * @param {Object} gameState - The current state of the game.
+ * @param {Object} moveData - The details of the move.
+ */
+export function moveCard(gameState, moveData) {
+  const { sourcePileType, sourcePileIndex, sourceCardIndex, destPileType, destPileIndex } = moveData;
+
+  // Identify the source pile array
+  const sourcePile = sourcePileType === 'tableauPiles'
+      ? gameState.tableauPiles[sourcePileIndex]
+      : gameState.wastePile;
+
+  // Identify the destination pile array
+  const destPile = destPileType === 'tableauPiles'
+      ? gameState.tableauPiles[destPileIndex]
+      : gameState.foundationPiles[destPileIndex];
+
+  // Using splice(), cut the entire stack of cards to be moved from the source pile.
+  const cardsToMove = sourcePile.splice(sourceCardIndex);
+
+  // Add the stack of cards to the destination pile.
+  // Using the spread operator (...) to add all items from the cardsToMove array.
+  destPile.push(...cardsToMove);
+
+  // After moving, if the source was a tableau pile and it's not empty,
+  // flip the new top card to be face-up.
+  if (sourcePileType === 'tableauPiles' && sourcePile.length > 0) {
+    sourcePile[sourcePile.length - 1].faceUp = true;
+  }
+}
+
+/**
+ * Moves a card from the stock to the waste pile. If stock is empty, resets it from the waste.
+ * @param {Object} gameState - The current state of the game.
+ */
+export function drawCard(gameState) {
+  if (gameState.stockPile.length > 0) {
+    const card = gameState.stockPile.pop();
+    card.faceUp = true;
+    gameState.wastePile.push(card);
+  } else if (gameState.wastePile.length > 0) {
+    // When stock is empty, move waste pile back to stock, face down
+    gameState.stockPile = gameState.wastePile.reverse();
+    gameState.stockPile.forEach(card => (card.faceUp = false));
+    gameState.wastePile = [];
+  }
+}
+
+/**
+ * Checks if the game has been won (all cards are in the foundation piles).
+ * @param {Object} gameState - The current state of the game.
+ * @returns {boolean}
+ */
+export function checkWinCondition(gameState) {
+  const foundationCardCount = gameState.foundationPiles.reduce(
+      (acc, pile) => acc + pile.length,
+      0
+  );
+  return foundationCardCount === 52;
+}
