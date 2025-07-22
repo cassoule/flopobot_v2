@@ -27,7 +27,7 @@ import {
   pokerEloHandler,
   randomSkinPrice,
   slowmodesHandler,
-  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition,
+  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition, createDeck,
 } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
@@ -4456,64 +4456,69 @@ app.post('/solitaire/start', async (req, res) => {
   res.json({ success: true, gameState });
 });
 
+/**
+ * GET /solitaire/state/:userId
+ * Gets the current game state for a user. If no game exists, creates a new one.
+ */
 app.get('/solitaire/state/:userId', (req, res) => {
-  const userId = req.params.userId;
+  const { userId } = req.params;
   let gameState = activeSolitaireGames[userId];
-
   if (!gameState) {
-    const deck = createDeck();
+    console.log(`Creating new Solitaire game for user: ${userId}`);
+    const deck = shuffle(createDeck());
     gameState = deal(deck);
     activeSolitaireGames[userId] = gameState;
-
-    console.log(`New Solitaire game created for user ${userId}`);
   }
-
   res.json({ success: true, gameState });
 });
 
+/**
+ * POST /solitaire/move
+ * Receives all necessary move data from the frontend.
+ */
 app.post('/solitaire/move', (req, res) => {
-  const { userId, sourcePile, sourceCardIndex, destPile, destPileIndex } = req.body;
+  // Destructure the complete move data from the request body
+  // Frontend must send all these properties.
+  const {
+    userId,
+    sourcePileType,
+    sourcePileIndex,
+    sourceCardIndex,
+    destPileType,
+    destPileIndex
+  } = req.body;
+
   const gameState = activeSolitaireGames[userId];
 
   if (!gameState) {
-    return res.status(404).json({ error: "Game not found" });
+    return res.status(404).json({ error: 'Game not found for this user.' });
   }
 
-  const valid = isValidMove(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState);
-
-  if (valid) {
-    moveCard(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState);
+  // Pass the entire data object to the validation function
+  if (isValidMove(gameState, req.body)) {
+    // If valid, mutate the state
+    moveCard(gameState, req.body);
     const win = checkWinCondition(gameState);
     res.json({ success: true, gameState, win });
   } else {
-    res.status(400).json({ error: "Invalid move" });
+    // If the move is invalid, send a specific error message
+    res.status(400).json({ error: 'Invalid move' });
   }
 });
 
+/**
+ * POST /solitaire/draw
+ * Draws a card from the stock pile to the waste pile.
+ */
 app.post('/solitaire/draw', (req, res) => {
   const { userId } = req.body;
   const gameState = activeSolitaireGames[userId];
-
   if (!gameState) {
-    return res.status(404).json({ error: `Game not found for ${userId}` });
+    return res.status(404).json({ error: `Game not found for user ${userId}` });
   }
-
   drawCard(gameState);
-
   res.json({ success: true, gameState });
 });
-
-function createDeck() {
-  const suits = ['c', 'd', 'h', 's'];
-  const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
-  const deck = [];
-  for (const suit of suits) {
-    for (const rank of ranks) {
-      deck.push({ suit, rank, image: `${rank}${suit}.png`, faceUp: false });
-    }
-  }
-  return shuffle(deck);
-}
 
 import http from 'http';
 import { Server } from 'socket.io';
