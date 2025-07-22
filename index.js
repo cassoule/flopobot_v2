@@ -4450,7 +4450,7 @@ async function updatePokerPlayersSolve(roomId) {
 
 app.post('/solitaire/start', async (req, res) => {
   const userId = req.body.userId;
-  const deck = createDeck();
+  const deck = shuffle(createDeck());
   const gameState = deal(deck);
   activeSolitaireGames[userId] = gameState
   res.json({ success: true, gameState });
