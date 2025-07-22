@@ -26,7 +26,8 @@ import {
   eloHandler, formatConnect4BoardForDiscord,
   pokerEloHandler,
   randomSkinPrice,
-  slowmodesHandler
+  slowmodesHandler,
+  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition,
 } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
@@ -74,6 +75,7 @@ app.use((req, res, next) => {
 });
 // To keep track of our active games
 const activeGames = {};
+const activeSolitaireGames = {};
 const activePolls = {};
 const activeInventories = {};
 const activeSearchs = {};
@@ -4444,6 +4446,73 @@ async function updatePokerPlayersSolve(roomId) {
     let fullHand = pokerRooms[roomId].tapis
     player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
   }
+}
+
+app.post('/solitaire/start', async (req, res) => {
+  const userId = req.body.userId;
+  const deck = createDeck();
+  const gameState = deal(deck);
+  activeSolitaireGames[userId] = gameState
+  res.json({ success: true, gameState });
+});
+
+app.get('/solitaire/state/:userId', (req, res) => {
+  const userId = req.params.userId;
+  let gameState = activeSolitaireGames[userId];
+
+  if (!gameState) {
+    const deck = createDeck();
+    gameState = deal(deck);
+    activeSolitaireGames[userId] = gameState;
+
+    console.log(`New Solitaire game created for user ${userId}`);
+  }
+
+  res.json({ success: true, gameState });
+});
+
+app.post('/solitaire/move', (req, res) => {
+  const { userId, sourcePile, sourceCardIndex, destPile, destPileIndex } = req.body;
+  const gameState = activeSolitaireGames[userId];
+
+  if (!gameState) {
+    return res.status(404).json({ error: "Game not found" });
+  }
+
+  const valid = isValidMove(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState);
+
+  if (valid) {
+    moveCard(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState);
+    const win = checkWinCondition(gameState);
+    res.json({ success: true, gameState, win });
+  } else {
+    res.status(400).json({ error: "Invalid move" });
+  }
+});
+
+app.post('/solitaire/draw', (req, res) => {
+  const { userId } = req.body;
+  const gameState = activeSolitaireGames[userId];
+
+  if (!gameState) {
+    return res.status(404).json({ error: `Game not found for ${userId}` });
+  }
+
+  drawCard(gameState);
+
+  res.json({ success: true, gameState });
+});
+
+function createDeck() {
+  const suits = ['c', 'd', 'h', 's'];
+  const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+  const deck = [];
+  for (const suit of suits) {
+    for (const rank of ranks) {
+      deck.push({ suit, rank, image: `${rank}${suit}.png`, faceUp: false });
+    }
+  }
+  return shuffle(deck);
 }
 
 import http from 'http';

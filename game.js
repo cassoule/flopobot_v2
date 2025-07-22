@@ -367,3 +367,164 @@ export function formatConnect4BoardForDiscord(board) {
   };
   return board.map(row => row.map(cell => symbols[cell]).join('')).join('\n');
 }
+
+export function shuffle(arr) {
+  let currentIndex = arr.length, randomIndex
+
+  while (currentIndex !== 0) {
+    randomIndex = Math.floor(Math.random() * currentIndex)
+    currentIndex--
+
+    [arr[currentIndex], arr[randomIndex]] = [arr[randomIndex], arr[currentIndex]]
+  }
+
+  return arr
+}
+
+export function deal(deck) {
+  const tableauPiles = [[], [], [], [], [], [], []]
+  const foundationPiles = [[], [], [], []]
+  const stockPile = []
+  const wastePile = []
+
+  for (let i = 0; i < 7; i++) {
+    for (let j = i; j < 7; j++) {
+      tableauPiles[j].push(deck.shift())
+    }
+    tableauPiles[i][tableauPiles[i].length - 1].faceUp = true
+  }
+
+  stockPile.push(...deck)
+
+  return {
+    tableauPiles,
+    foundationPiles,
+    stockPile,
+    wastePile
+  }
+}
+
+export function isValidMove(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState) {
+  const sourceCard = sourcePile === 'wastePile' ? gameState[sourcePile][gameState[sourcePile].length - 1] : gameState[sourcePile][destPileIndex][gameState[sourcePile][destPileIndex].length - 1]
+  const destCard = destPile === 'empty' ? null : gameState[destPile][destPileIndex][gameState[destPile][destPileIndex].length - 1]
+
+  console.log(sourceCard)
+  console.log(destCard)
+
+  if (sourcePile.startsWith('tableauPiles')) {
+    if (destPile.startsWith('tableauPiles')) {
+      if (destCard === null && sourceCard.rank === 'K') return true
+      if (destCard === null) return false
+      const sourceRankValue = getRankValue(sourceCard.rank)
+      const destRankValue = getRankValue(destCard.rank)
+
+      const sourceColor = (sourceCard.suit === 'd' || sourceCard.suit === 'h') ? 'red' : 'black'
+      const destColor = (destCard.suit === 'd' || destCard.suit === 'h') ? 'red' : 'black'
+
+      console.log('tab -> tab')
+      console.log({sourceRankValue, sourceColor})
+      console.log({destRankValue, destColor})
+
+      return (destRankValue - sourceRankValue === 1 && sourceColor !== destColor)
+    }
+    else if (destPile.startsWith('foundationPiles')) {
+      if (destCard === null && sourceCard.rank === 'A') return true
+      if (destCard === null) return false
+
+      console.log('tab -> found')
+      console.log([sourceCard.suit, getRankValue(sourceCard.rank)])
+      console.log([destCard.suit, getRankValue(destCard.rank)])
+
+      return (sourceCard.suit === destCard.suit && getRankValue(sourceCard.rank) - getRankValue(destCard.rank) === -1)
+    }
+    return false
+  }
+
+  if (sourcePile === 'wastePile') {
+    if (destPile.startsWith('tableauPiles')) {
+      if (destCard === null && sourceCard.rank === 'K') return true
+      if (destCard === null) return false
+      const sourceRankValue = getRankValue(sourceCard.rank)
+      const destRankValue = getRankValue(destCard.rank)
+
+      const sourceColor = (sourceCard.suit === 'd' || sourceCard.suit === 'h') ? 'red' : 'black'
+      const destColor = (destCard.suit === 'd' || destCard.suit === 'h') ? 'red' : 'black'
+
+      console.log('waste -> tab')
+      console.log({sourceRankValue, sourceColor})
+      console.log({destRankValue, destColor})
+
+      return (destRankValue - sourceRankValue === 1 && sourceColor !== destColor)
+    }
+    else if (destPile.startsWith('foundationPiles')) {
+      if (destCard === null && sourceCard.rank === 'A') return true
+      if (destCard === null) return false
+
+      console.log('waste -> found')
+      console.log([sourceCard.suit, getRankValue(sourceCard.rank)])
+      console.log([destCard.suit, getRankValue(destCard.rank)])
+
+      return (sourceCard.suit === destCard.suit && getRankValue(sourceCard.rank) - getRankValue(destCard.rank) === -1)
+    }
+    return false
+  }
+  return false
+}
+
+export function getRankValue(rank) {
+  switch (rank) {
+    case 'A': return 1;
+    case '2': return 2;
+    case '3': return 3;
+    case '4': return 4;
+    case '5': return 5;
+    case '6': return 6;
+    case '7': return 7;
+    case '8': return 8;
+    case '9': return 9;
+    case 'T': return 10;
+    case 'J': return 11;
+    case 'Q': return 12;
+    case 'K': return 13;
+    default: return 0;
+  }
+}
+
+export function moveCard(sourcePile, sourceCardIndex, destPile, destPileIndex, gameState) {
+  const card = sourcePile === 'wastePile' ? gameState[sourcePile].splice(sourceCardIndex, 1)[0] : gameState[sourcePile].splice(gameState[sourcePile].length - 1, 1)[0];
+
+  if (destPile === 'empty') {
+    gameState[destPile] = [card]
+  } else if (destPile.startsWith('tableauPiles')) {
+    gameState[destPile].push(card);
+  } else {
+    gameState[destPile].push(card);
+  }
+
+  if (sourcePile.startsWith('tableauPiles') && gameState[sourcePile].length > 0 ) {
+    gameState[sourcePile][gameState[sourcePile].length - 1].faceUp = true;
+  }
+}
+
+export function drawCard(gameState) {
+  if (gameState.stockPile.length > 0) {
+    const card = gameState.stockPile.shift();
+    card.faceUp = true;
+    gameState.wastePile.push(card);
+  } else {
+    gameState.stockPile = gameState.wastePile.reverse().map(card => {
+      card.faceUp = false;
+      return card;
+    });
+    gameState.wastePile = [];
+  }
+}
+
+export function checkWinCondition(gameState) {
+  for (const pile of gameState.foundationPiles) {
+    if (pile.length !== 13) {
+      return false;
+    }
+  }
+  return true;
+}
