@@ -2666,6 +2666,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
 });
 
 app.use(express.json());
+app.use('/public', express.static('public'));
 
 // Check flAPI
 app.get('/check', (req, res) => {
