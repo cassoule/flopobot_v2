@@ -1405,6 +1405,9 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
               title: 'FlopoSite',
               description: 'L\'officiel et très goatesque site de FlopoBot.',
               color: 0x6571F3,
+              image: {
+                url: process.env.API_URL + '/public/images/curry.png'
+              }
             }
           ],
           components: [
