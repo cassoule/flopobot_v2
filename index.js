@@ -4503,6 +4503,7 @@ app.post('/solitaire/move', (req, res) => {
     // If valid, mutate the state
     moveCard(gameState, req.body);
     const win = checkWinCondition(gameState);
+    if (win) gameState.isDone = true
     res.json({ success: true, gameState, win });
   } else {
     // If the move is invalid, send a specific error message

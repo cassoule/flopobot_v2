@@ -395,6 +395,7 @@ export function deal(deck) {
     foundationPiles: [[], [], [], []],
     stockPile: [],
     wastePile: [],
+    isDone: false,
   };
 
   // Deal cards to the tableau piles
@@ -433,6 +434,8 @@ export function isValidMove(gameState, moveData) {
     sourcePile = gameState.tableauPiles[sourcePileIndex];
   } else if (sourcePileType === 'wastePile') {
     sourcePile = gameState.wastePile;
+  } else if (sourcePileType === 'foundationPiles') {
+    sourcePile = gameState.foundationPiles[sourcePileIndex];
   } else {
     return false; // Cannot drag from foundation or stock
   }
@@ -466,7 +469,7 @@ export function isValidMove(gameState, moveData) {
   }
 
   // --- Validate move TO a Foundation Pile ---
-  if (destPileType === 'foundationPiles') {
+  if (destPileType === 'foundationPiles' && sourcePileType !== 'foundationPiles') {
     // You can only move one card at a time to a foundation pile.
     const stackBeingMoved = sourcePile.slice(sourceCardIndex);
     if (stackBeingMoved.length > 1) {
@@ -543,14 +546,22 @@ export function moveCard(gameState, moveData) {
   const { sourcePileType, sourcePileIndex, sourceCardIndex, destPileType, destPileIndex } = moveData;
 
   // Identify the source pile array
-  const sourcePile = sourcePileType === 'tableauPiles'
-      ? gameState.tableauPiles[sourcePileIndex]
-      : gameState.wastePile;
+  let sourcePile;
+  if (sourcePileType === 'tableauPiles') {
+    sourcePile = gameState.tableauPiles[sourcePileIndex];
+  } else if (sourcePileType === 'wastePile') {
+    sourcePile = gameState.wastePile;
+  } else if (sourcePileType === 'foundationPiles') {
+    sourcePile = gameState.foundationPiles[sourcePileIndex];
+  }
 
   // Identify the destination pile array
-  const destPile = destPileType === 'tableauPiles'
-      ? gameState.tableauPiles[destPileIndex]
-      : gameState.foundationPiles[destPileIndex];
+  let destPile;
+  if (destPileType === 'tableauPiles') {
+    destPile = gameState.tableauPiles[destPileIndex];
+  } else {
+    destPile = gameState.foundationPiles[destPileIndex];
+  }
 
   // Using splice(), cut the entire stack of cards to be moved from the source pile.
   const cardsToMove = sourcePile.splice(sourceCardIndex);
