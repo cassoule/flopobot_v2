@@ -27,7 +27,7 @@ import {
   pokerEloHandler,
   randomSkinPrice,
   slowmodesHandler,
-  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition, createDeck,
+  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition, createDeck, initTodaysSOTD,
 } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
@@ -50,9 +50,19 @@ import {
   getSkin,
   getAllAvailableSkins,
   getUserInventory,
-  getTopSkins, updateUserCoins,
-  insertLog, stmtLogs,
-  getLogs, getUserLogs, getUserElo, getUserGames, getUsersByElo, resetDailyReward, queryDailyReward,
+  getTopSkins,
+  updateUserCoins,
+  insertLog,
+  stmtLogs,
+  getLogs,
+  getUserLogs,
+  getUserElo,
+  getUserGames,
+  getUsersByElo,
+  resetDailyReward,
+  queryDailyReward,
+  deleteSOTD,
+  insertSOTD, getSOTD,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -81,7 +91,7 @@ const activeInventories = {};
 const activeSearchs = {};
 const activeSlowmodes = {};
 const activePredis = {};
-let todaysHydrateCron = ''
+let todaysSOTD = {};
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
 const client = new Client({
@@ -548,6 +558,9 @@ client.on('messageCreate', async (message) => {
       }
       console.log(`Result for ${amount} skins`)
     }
+    else if (message.content.toLowerCase().startsWith('?sotd')) {
+      initTodaysSOTD()
+    }
     else if (message.author.id === process.env.DEV_ID) {
       const prefix = process.env.DEV_SITE === 'true' ? 'dev' : 'flopo'
       if (message.content === prefix + ':add-coins-to-users') {
@@ -635,10 +648,6 @@ client.on('messageCreate', async (message) => {
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`[Connected with ${FLAPI_URL}]`)
-  const randomMinute = Math.floor(Math.random() * 60);
-  const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
-  todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
-  console.log(todaysHydrateCron)
   await getAkhys();
   console.log('FlopoBOT marked as ready')
 
@@ -683,13 +692,8 @@ client.once('ready', async () => {
     }
   });
 
-  // ─── 💀 Midnight Chaos Timer ──────────────────────
+  // at midnight
   cron.schedule(process.env.CRON_EXPR, async () => {
-    const randomMinute = Math.floor(Math.random() * 60);
-    const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
-    todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
-    console.log(todaysHydrateCron)
-
     try {
       const akhys = getAllUsers.all()
       akhys.forEach((akhy) => {
@@ -698,6 +702,8 @@ client.once('ready', async () => {
     } catch (e) {
       console.log(e)
     }
+
+    initTodaysSOTD()
   });
 
   // users/skins dayly fetch at 7am
@@ -4460,6 +4466,33 @@ app.post('/solitaire/start', async (req, res) => {
   res.json({ success: true, gameState });
 });
 
+app.post('/solitaire/start/sotd', async (req, res) => {
+  const userId = req.body.userId
+  const sotd = getSOTD.get()
+
+  const gameState = {
+    tableauPiles: JSON.parse(sotd.tableauPiles),
+    foundationPiles: JSON.parse(sotd.foundationPiles),
+    stockPile: JSON.parse(sotd.stockPile),
+    wastePile: JSON.parse(sotd.wastePile),
+    isDone: false,
+    isSOTD: true,
+    hasFinToday: false,
+    startTime: Date.now(),
+    moves: 0,
+    score: 0,
+  }
+
+  activeSolitaireGames[userId] = gameState
+  res.json({ success: true, gameState });
+})
+
+app.post('/solitaire/reset', async (req, res) => {
+  const userId = req.body.userId;
+  delete activeSolitaireGames[userId]
+  res.json({ success: true });
+});
+
 /**
  * GET /solitaire/state/:userId
  * Gets the current game state for a user. If no game exists, creates a new one.
@@ -4467,12 +4500,11 @@ app.post('/solitaire/start', async (req, res) => {
 app.get('/solitaire/state/:userId', (req, res) => {
   const { userId } = req.params;
   let gameState = activeSolitaireGames[userId];
-  if (!gameState) {
-    console.log(`Creating new Solitaire game for user: ${userId}`);
+  /*if (!gameState) {
     const deck = shuffle(createDeck());
     gameState = deal(deck);
     activeSolitaireGames[userId] = gameState;
-  }
+  }*/
   res.json({ success: true, gameState });
 });
 
@@ -4480,7 +4512,7 @@ app.get('/solitaire/state/:userId', (req, res) => {
  * POST /solitaire/move
  * Receives all necessary move data from the frontend.
  */
-app.post('/solitaire/move', (req, res) => {
+app.post('/solitaire/move', async (req, res) => {
   // Destructure the complete move data from the request body
   // Frontend must send all these properties.
   const {
@@ -4501,9 +4533,11 @@ app.post('/solitaire/move', (req, res) => {
   // Pass the entire data object to the validation function
   if (isValidMove(gameState, req.body)) {
     // If valid, mutate the state
-    moveCard(gameState, req.body);
+    await moveCard(gameState, req.body);
     const win = checkWinCondition(gameState);
-    if (win) gameState.isDone = true
+    if (win) {
+      gameState.isDone = true
+    }
     res.json({ success: true, gameState, win });
   } else {
     // If the move is invalid, send a specific error message
@@ -4515,13 +4549,13 @@ app.post('/solitaire/move', (req, res) => {
  * POST /solitaire/draw
  * Draws a card from the stock pile to the waste pile.
  */
-app.post('/solitaire/draw', (req, res) => {
+app.post('/solitaire/draw', async (req, res) => {
   const { userId } = req.body;
   const gameState = activeSolitaireGames[userId];
   if (!gameState) {
     return res.status(404).json({ error: `Game not found for user ${userId}` });
   }
-  drawCard(gameState);
+  await drawCard(gameState);
   res.json({ success: true, gameState });
 });
 

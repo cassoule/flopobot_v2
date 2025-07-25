@@ -121,3 +121,19 @@ export const updateElo = flopoDB.prepare('UPDATE elos SET elo = @elo WHERE id = 
 
 
 export const getUsersByElo = flopoDB.prepare('SELECT * FROM users JOIN elos ON elos.id = users.id ORDER BY elos.elo DESC')
+
+export const stmtSOTD = flopoDB.prepare(`
+  CREATE TABLE IF NOT EXISTS sotd (
+    id INT PRIMARY KEY,
+    tableauPiles TEXT,
+    foundationPiles TEXT,
+    stockPile TEXT,
+    wastePile TEXT,
+    isDone BOOLEAN DEFAULT false
+  )
+`);
+stmtSOTD.run()
+
+export const getSOTD = flopoDB.prepare(`SELECT * FROM sotd WHERE id = '0'`)
+export const insertSOTD = flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, foundationPiles, stockPile, wastePile) VALUES (@id, @tableauPiles, @foundationPiles, @stockPile, @wastePile)`)
+export const deleteSOTD = flopoDB.prepare(`DELETE FROM sotd WHERE id = '0'`)

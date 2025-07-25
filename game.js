@@ -10,7 +10,7 @@ import {
   getUserElo,
   insertElos,
   updateElo,
-  getAllSkins
+  getAllSkins, deleteSOTD, insertSOTD
 } from './init_database.js'
 import {C4_COLS, C4_ROWS, skins} from "./index.js";
 
@@ -542,7 +542,7 @@ export function createDeck() {
  * @param {Object} gameState - The current state of the game.
  * @param {Object} moveData - The details of the move.
  */
-export function moveCard(gameState, moveData) {
+export async function moveCard(gameState, moveData) {
   const { sourcePileType, sourcePileIndex, sourceCardIndex, destPileType, destPileIndex } = moveData;
 
   // Identify the source pile array
@@ -570,6 +570,14 @@ export function moveCard(gameState, moveData) {
   // Using the spread operator (...) to add all items from the cardsToMove array.
   destPile.push(...cardsToMove);
 
+  if (sourcePileType === 'foundationPiles') {
+    sotdMoveUpdate(gameState, -15)
+  } else if (destPileType === 'foundationPiles') {
+    sotdMoveUpdate(gameState, 10)
+  } else {
+    sotdMoveUpdate(gameState, 0)
+  }
+
   // After moving, if the source was a tableau pile and it's not empty,
   // flip the new top card to be face-up.
   if (sourcePileType === 'tableauPiles' && sourcePile.length > 0) {
@@ -581,7 +589,7 @@ export function moveCard(gameState, moveData) {
  * Moves a card from the stock to the waste pile. If stock is empty, resets it from the waste.
  * @param {Object} gameState - The current state of the game.
  */
-export function drawCard(gameState) {
+export async function drawCard(gameState) {
   if (gameState.stockPile.length > 0) {
     const card = gameState.stockPile.pop();
     card.faceUp = true;
@@ -592,6 +600,7 @@ export function drawCard(gameState) {
     gameState.stockPile.forEach(card => (card.faceUp = false));
     gameState.wastePile = [];
   }
+  sotdMoveUpdate(gameState, 0)
 }
 
 /**
@@ -605,4 +614,25 @@ export function checkWinCondition(gameState) {
       0
   );
   return foundationCardCount === 52;
+}
+
+export function initTodaysSOTD() {
+  const deck = shuffle(createDeck());
+  const todaysSOTD = deal(deck)
+  deleteSOTD.run()
+  insertSOTD.run({
+    id: 0,
+    tableauPiles: JSON.stringify(todaysSOTD.tableauPiles),
+    foundationPiles: JSON.stringify(todaysSOTD.foundationPiles),
+    stockPile: JSON.stringify(todaysSOTD.stockPile),
+    wastePile: JSON.stringify(todaysSOTD.wastePile),
+  })
+  console.log('Today\' SOTD is ready')
+}
+
+export function sotdMoveUpdate(gameState, points) {
+  if (gameState.isSOTD) {
+    gameState.moves++
+    gameState.score += points
+  }
 }
