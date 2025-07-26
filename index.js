@@ -1399,7 +1399,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           type: MessageComponentTypes.BUTTON,
           label: 'Aller sur FlopoSite',
           style: ButtonStyleTypes.LINK,
-          url: 'https://floposite.netlify.app',
+          url: 'https://floposite.com',
         },
       ];
 
