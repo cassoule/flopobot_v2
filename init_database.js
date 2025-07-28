@@ -121,3 +121,37 @@ export const updateElo = flopoDB.prepare('UPDATE elos SET elo = @elo WHERE id = 
 
 
 export const getUsersByElo = flopoDB.prepare('SELECT * FROM users JOIN elos ON elos.id = users.id ORDER BY elos.elo DESC')
+
+export const stmtSOTD = flopoDB.prepare(`
+  CREATE TABLE IF NOT EXISTS sotd (
+    id INT PRIMARY KEY,
+    tableauPiles TEXT,
+    foundationPiles TEXT,
+    stockPile TEXT,
+    wastePile TEXT,
+    isDone BOOLEAN DEFAULT false,
+    seed TEXT
+  )
+`);
+stmtSOTD.run()
+
+export const getSOTD = flopoDB.prepare(`SELECT * FROM sotd WHERE id = '0'`)
+export const insertSOTD = flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, foundationPiles, stockPile, wastePile, seed) VALUES (@id, @tableauPiles, @foundationPiles, @stockPile, @wastePile, @seed)`)
+export const deleteSOTD = flopoDB.prepare(`DELETE FROM sotd WHERE id = '0'`)
+
+export const stmtSOTDStats = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS sotd_stats (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users,
+        time INTEGER,
+        moves INTEGER,
+        score INTEGER
+    )
+`);
+stmtSOTDStats.run()
+
+export const getAllSOTDStats = flopoDB.prepare(`SELECT sotd_stats.*, users.globalName FROM sotd_stats JOIN users ON users.id = sotd_stats.user_id ORDER BY score DESC, moves ASC, time ASC`);
+export const getUserSOTDStats = flopoDB.prepare(`SELECT * FROM sotd_stats WHERE user_id = ?`);
+export const insertSOTDStats = flopoDB.prepare(`INSERT INTO sotd_stats (id, user_id, time, moves, score) VALUES (@id, @user_id, @time, @moves, @score)`);
+export const clearSOTDStats = flopoDB.prepare(`DELETE FROM sotd_stats`);
+export const deleteUserSOTDStats = flopoDB.prepare(`DELETE FROM sotd_stats WHERE user_id = ?`);

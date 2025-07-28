@@ -27,7 +27,7 @@ import {
   pokerEloHandler,
   randomSkinPrice,
   slowmodesHandler,
-  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition, createDeck,
+  deal, isValidMove, moveCard, seededShuffle, drawCard, checkWinCondition, createDeck, initTodaysSOTD, createSeededRNG,
 } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
@@ -50,9 +50,19 @@ import {
   getSkin,
   getAllAvailableSkins,
   getUserInventory,
-  getTopSkins, updateUserCoins,
-  insertLog, stmtLogs,
-  getLogs, getUserLogs, getUserElo, getUserGames, getUsersByElo, resetDailyReward, queryDailyReward,
+  getTopSkins,
+  updateUserCoins,
+  insertLog,
+  stmtLogs,
+  getLogs,
+  getUserLogs,
+  getUserElo,
+  getUserGames,
+  getUsersByElo,
+  resetDailyReward,
+  queryDailyReward,
+  deleteSOTD,
+  insertSOTD, getSOTD, insertSOTDStats, deleteUserSOTDStats, getUserSOTDStats, getAllSOTDStats,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -81,7 +91,7 @@ const activeInventories = {};
 const activeSearchs = {};
 const activeSlowmodes = {};
 const activePredis = {};
-let todaysHydrateCron = ''
+let todaysSOTD = {};
 const SPAM_INTERVAL = process.env.SPAM_INTERVAL
 
 const client = new Client({
@@ -548,6 +558,9 @@ client.on('messageCreate', async (message) => {
       }
       console.log(`Result for ${amount} skins`)
     }
+    else if (message.content.toLowerCase().startsWith('?sotd')) {
+      initTodaysSOTD()
+    }
     else if (message.author.id === process.env.DEV_ID) {
       const prefix = process.env.DEV_SITE === 'true' ? 'dev' : 'flopo'
       if (message.content === prefix + ':add-coins-to-users') {
@@ -635,10 +648,6 @@ client.on('messageCreate', async (message) => {
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`[Connected with ${FLAPI_URL}]`)
-  const randomMinute = Math.floor(Math.random() * 60);
-  const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
-  todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
-  console.log(todaysHydrateCron)
   await getAkhys();
   console.log('FlopoBOT marked as ready')
 
@@ -683,13 +692,8 @@ client.once('ready', async () => {
     }
   });
 
-  // ─── 💀 Midnight Chaos Timer ──────────────────────
+  // at midnight
   cron.schedule(process.env.CRON_EXPR, async () => {
-    const randomMinute = Math.floor(Math.random() * 60);
-    const randomHour = Math.floor(Math.random() * (18 - 8 + 1)) + 8;
-    todaysHydrateCron = `${randomMinute} ${randomHour} * * *`
-    console.log(todaysHydrateCron)
-
     try {
       const akhys = getAllUsers.all()
       akhys.forEach((akhy) => {
@@ -698,6 +702,8 @@ client.once('ready', async () => {
     } catch (e) {
       console.log(e)
     }
+
+    initTodaysSOTD()
   });
 
   // users/skins dayly fetch at 7am
@@ -3148,7 +3154,7 @@ app.post('/slowmode', async (req, res) => {
       return res.status(200).json({ message: 'Slowmode retiré'})
     } else {
       let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
-      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed().toString() + 'min' : timeLeft.toFixed().toString() + 'sec'
+      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed()?.toString() + 'min' : timeLeft.toFixed()?.toString() + 'sec'
       return res.status(403).json({ message: `${user.globalName} est déjà en slowmode (${timeLeft})`})
     }
   } else if (userId === commandUserId) {
@@ -3196,7 +3202,7 @@ app.post('/start-predi', async (req, res) => {
   }
 
   const startTime = Date.now()
-  const newPrediId = commandUserId.toString() + '-' + startTime.toString()
+  const newPrediId = commandUserId?.toString() + '-' + startTime?.toString()
 
   let msgId;
   try {
@@ -4448,16 +4454,102 @@ async function updatePokerPlayersSolve(roomId) {
   for (const playerId in pokerRooms[roomId].players) {
     const player = pokerRooms[roomId].players[playerId]
     let fullHand = pokerRooms[roomId].tapis
-    player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+    if (!fullHand && !player.hand) {
+      player.solve = Hand.solve([], 'standard', false)?.descr
+    } else if (!fullHand) {
+      player.solve = Hand.solve(player.hand, 'standard', false)?.descr
+    } else if (!player.hand) {
+      player.solve = Hand.solve(fullHand, 'standard', false)?.descr
+    } else {
+      player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+    }
   }
 }
 
+app.get('/solitaire/sotd/rankings', async (req, res) => {
+  const rankings = getAllSOTDStats.all()
+
+  return res.json({ rankings })
+})
+
 app.post('/solitaire/start', async (req, res) => {
   const userId = req.body.userId;
-  const deck = shuffle(createDeck());
-  const gameState = deal(deck);
+  let userSeed = req.body.userSeed;
+
+  if (activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
+    return res.json({ succes: true, gameState: activeSolitaireGames[userId]})
+  }
+
+  if (userSeed) {
+    let numericSeed = 0
+    for (let i = 0; i < userSeed.length; i++) {
+      numericSeed = (numericSeed + userSeed.charCodeAt(i)) & 0xFFFFFFFF;
+    }
+
+    const rng = createSeededRNG(numericSeed);
+    const deck = createDeck()
+    const shuffledDeck = seededShuffle(deck, rng);
+    const gameState = deal(shuffledDeck);
+    gameState.seed = userSeed;
+
+    activeSolitaireGames[userId] = gameState;
+
+    return res.json({ success: true, gameState });
+  } else {
+    const newRandomSeed = Date.now()?.toString(36) + Math.random()?.toString(36).substr(2);
+    let numericSeed = 0;
+    for (let i = 0; i < newRandomSeed.length; i++) {
+      numericSeed = (numericSeed + newRandomSeed.charCodeAt(i)) & 0xFFFFFFFF;
+    }
+
+    const rng = createSeededRNG(numericSeed);
+    const deck = createDeck();
+    const shuffledDeck = seededShuffle(deck, rng);
+    const gameState = deal(shuffledDeck);
+    gameState.seed = newRandomSeed;
+
+    activeSolitaireGames[userId] = gameState;
+
+    return res.json({ success: true, gameState });
+  }
+});
+
+app.post('/solitaire/start/sotd', async (req, res) => {
+  const userId = req.body.userId
+  const sotd = getSOTD.get();
+
+  const user = getUser.get(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  if (activeSolitaireGames[userId] && activeSolitaireGames[userId].isSOTD) {
+    return res.json({ success: true, gameState: activeSolitaireGames[userId]})
+  }
+
+  const gameState = {
+    tableauPiles: JSON.parse(sotd.tableauPiles),
+    foundationPiles: JSON.parse(sotd.foundationPiles),
+    stockPile: JSON.parse(sotd.stockPile),
+    wastePile: JSON.parse(sotd.wastePile),
+    isDone: false,
+    isSOTD: true,
+    hasFinToday: false,
+    startTime: Date.now(),
+    endTime: null,
+    moves: 0,
+    score: 0,
+    seed: sotd.seed,
+  }
+
   activeSolitaireGames[userId] = gameState
   res.json({ success: true, gameState });
+})
+
+app.post('/solitaire/reset', async (req, res) => {
+  const userId = req.body.userId;
+  delete activeSolitaireGames[userId]
+  res.json({ success: true });
 });
 
 /**
@@ -4467,12 +4559,11 @@ app.post('/solitaire/start', async (req, res) => {
 app.get('/solitaire/state/:userId', (req, res) => {
   const { userId } = req.params;
   let gameState = activeSolitaireGames[userId];
-  if (!gameState) {
-    console.log(`Creating new Solitaire game for user: ${userId}`);
+  /*if (!gameState) {
     const deck = shuffle(createDeck());
     gameState = deal(deck);
     activeSolitaireGames[userId] = gameState;
-  }
+  }*/
   res.json({ success: true, gameState });
 });
 
@@ -4480,7 +4571,7 @@ app.get('/solitaire/state/:userId', (req, res) => {
  * POST /solitaire/move
  * Receives all necessary move data from the frontend.
  */
-app.post('/solitaire/move', (req, res) => {
+app.post('/solitaire/move', async (req, res) => {
   // Destructure the complete move data from the request body
   // Frontend must send all these properties.
   const {
@@ -4501,10 +4592,53 @@ app.post('/solitaire/move', (req, res) => {
   // Pass the entire data object to the validation function
   if (isValidMove(gameState, req.body)) {
     // If valid, mutate the state
-    moveCard(gameState, req.body);
+    await moveCard(gameState, req.body);
     const win = checkWinCondition(gameState);
-    if (win) gameState.isDone = true
-    res.json({ success: true, gameState, win });
+    if (win) {
+      gameState.isDone = true
+      if (gameState.isSOTD) {
+        gameState.hasFinToday = true;
+        gameState.endTime = Date.now();
+        const userStats = getUserSOTDStats.get(userId);
+        if (userStats) {
+          if (
+              (gameState.score > userStats.score) ||
+              (gameState.score === userStats.score && gameState.moves < userStats.moves) ||
+              (gameState.score === userStats.score && gameState.moves === userStats.moves && gameState.time < userStats.time)
+          ) {
+            deleteUserSOTDStats.run(userId);
+            insertSOTDStats.run({
+              id: userId,
+              user_id: userId,
+              time: gameState.endTime - gameState.startTime,
+              moves: gameState.moves,
+              score: gameState.score,
+            })
+          }
+        } else {
+          insertSOTDStats.run({
+            id: userId,
+            user_id: userId,
+            time: gameState.endTime - gameState.startTime,
+            moves: gameState.moves,
+            score: gameState.score,
+          })
+          const user = getUser.get(userId)
+          if (user) {
+            updateUserCoins.run({ id: userId, coins: user.coins + 1000 });
+            insertLog.run({
+              id: userId + '-' + Date.now(),
+              user_id: userId,
+              action: 'SOTD_WIN',
+              target_user_id: null,
+              coins_amount: 1000,
+              user_new_amount: user.coins + 1000,
+            })
+          }
+        }
+      }
+    }
+    res.json({ success: true, gameState, win, endTime: win ? Date.now() : null });
   } else {
     // If the move is invalid, send a specific error message
     res.status(400).json({ error: 'Invalid move' });
@@ -4515,13 +4649,13 @@ app.post('/solitaire/move', (req, res) => {
  * POST /solitaire/draw
  * Draws a card from the stock pile to the waste pile.
  */
-app.post('/solitaire/draw', (req, res) => {
+app.post('/solitaire/draw', async (req, res) => {
   const { userId } = req.body;
   const gameState = activeSolitaireGames[userId];
   if (!gameState) {
     return res.status(404).json({ error: `Game not found for user ${userId}` });
   }
-  drawCard(gameState);
+  await drawCard(gameState);
   res.json({ success: true, gameState });
 });
 
