@@ -558,9 +558,6 @@ client.on('messageCreate', async (message) => {
       }
       console.log(`Result for ${amount} skins`)
     }
-    else if (message.content.toLowerCase().startsWith('?sotd')) {
-      initTodaysSOTD()
-    }
     else if (message.author.id === process.env.DEV_ID) {
       const prefix = process.env.DEV_SITE === 'true' ? 'dev' : 'flopo'
       if (message.content === prefix + ':add-coins-to-users') {
@@ -574,6 +571,9 @@ client.on('messageCreate', async (message) => {
         } catch (e) {
           console.log(e)
         }
+      }
+      else if (message.content === prefix + ':sotd') {
+        initTodaysSOTD()
       }
       else if (message.content === prefix + ':users') {
         const allAkhys = getAllUsers.all()

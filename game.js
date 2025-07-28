@@ -657,10 +657,13 @@ export function checkWinCondition(gameState) {
 
 export function initTodaysSOTD() {
   const rankings = getAllSOTDStats.all()
-  const firstPlaceId = rankings > 0 ? rankings[0].user_id : null
+  const firstPlaceId = rankings.length > 0 ? rankings[0].user_id : null
 
+  console.log(rankings)
+  console.log(firstPlaceId)
   if (firstPlaceId) {
     const firstPlaceUser = getUser.get(firstPlaceId)
+    console.log(firstPlaceUser)
     if (firstPlaceUser) {
       updateUserCoins.run({ id: firstPlaceId, coins: firstPlaceUser.coins + 1000 });
       insertLog.run({
@@ -672,6 +675,7 @@ export function initTodaysSOTD() {
         user_new_amount: firstPlaceUser.coins + 1000,
       })
     }
+    console.log(`${firstPlaceId} wins ${new Date().toLocaleDateString()} SOTD`)
   }
 
   const newRandomSeed = Date.now().toString(36) + Math.random().toString(36).substr(2);
