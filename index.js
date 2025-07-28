@@ -27,7 +27,7 @@ import {
   pokerEloHandler,
   randomSkinPrice,
   slowmodesHandler,
-  deal, isValidMove, moveCard, shuffle, drawCard, checkWinCondition, createDeck, initTodaysSOTD,
+  deal, isValidMove, moveCard, seededShuffle, drawCard, checkWinCondition, createDeck, initTodaysSOTD, createSeededRNG,
 } from './game.js';
 import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import cron from 'node-cron';
@@ -62,7 +62,7 @@ import {
   resetDailyReward,
   queryDailyReward,
   deleteSOTD,
-  insertSOTD, getSOTD,
+  insertSOTD, getSOTD, insertSOTDStats, deleteUserSOTDStats, getUserSOTDStats, getAllSOTDStats,
 } from './init_database.js';
 import { getValorantSkins, getSkinTiers } from './valo.js';
 import {sleep} from "openai/core";
@@ -3154,7 +3154,7 @@ app.post('/slowmode', async (req, res) => {
       return res.status(200).json({ message: 'Slowmode retiré'})
     } else {
       let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
-      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed().toString() + 'min' : timeLeft.toFixed().toString() + 'sec'
+      timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed()?.toString() + 'min' : timeLeft.toFixed()?.toString() + 'sec'
       return res.status(403).json({ message: `${user.globalName} est déjà en slowmode (${timeLeft})`})
     }
   } else if (userId === commandUserId) {
@@ -3202,7 +3202,7 @@ app.post('/start-predi', async (req, res) => {
   }
 
   const startTime = Date.now()
-  const newPrediId = commandUserId.toString() + '-' + startTime.toString()
+  const newPrediId = commandUserId?.toString() + '-' + startTime?.toString()
 
   let msgId;
   try {
@@ -4454,21 +4454,78 @@ async function updatePokerPlayersSolve(roomId) {
   for (const playerId in pokerRooms[roomId].players) {
     const player = pokerRooms[roomId].players[playerId]
     let fullHand = pokerRooms[roomId].tapis
-    player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+    if (!fullHand && !player.hand) {
+      player.solve = Hand.solve([], 'standard', false)?.descr
+    } else if (!fullHand) {
+      player.solve = Hand.solve(player.hand, 'standard', false)?.descr
+    } else if (!player.hand) {
+      player.solve = Hand.solve(fullHand, 'standard', false)?.descr
+    } else {
+      player.solve = Hand.solve(fullHand.concat(player.hand), 'standard', false)?.descr
+    }
   }
 }
 
+app.get('/solitaire/sotd/rankings', async (req, res) => {
+  const rankings = getAllSOTDStats.all()
+
+  return res.json({ rankings })
+})
+
 app.post('/solitaire/start', async (req, res) => {
   const userId = req.body.userId;
-  const deck = shuffle(createDeck());
-  const gameState = deal(deck);
-  activeSolitaireGames[userId] = gameState
-  res.json({ success: true, gameState });
+  let userSeed = req.body.userSeed;
+
+  if (activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
+    return res.json({ succes: true, gameState: activeSolitaireGames[userId]})
+  }
+
+  if (userSeed) {
+    let numericSeed = 0
+    for (let i = 0; i < userSeed.length; i++) {
+      numericSeed = (numericSeed + userSeed.charCodeAt(i)) & 0xFFFFFFFF;
+    }
+
+    const rng = createSeededRNG(numericSeed);
+    const deck = createDeck()
+    const shuffledDeck = seededShuffle(deck, rng);
+    const gameState = deal(shuffledDeck);
+    gameState.seed = userSeed;
+
+    activeSolitaireGames[userId] = gameState;
+
+    return res.json({ success: true, gameState });
+  } else {
+    const newRandomSeed = Date.now()?.toString(36) + Math.random()?.toString(36).substr(2);
+    let numericSeed = 0;
+    for (let i = 0; i < newRandomSeed.length; i++) {
+      numericSeed = (numericSeed + newRandomSeed.charCodeAt(i)) & 0xFFFFFFFF;
+    }
+
+    const rng = createSeededRNG(numericSeed);
+    const deck = createDeck();
+    const shuffledDeck = seededShuffle(deck, rng);
+    const gameState = deal(shuffledDeck);
+    gameState.seed = newRandomSeed;
+
+    activeSolitaireGames[userId] = gameState;
+
+    return res.json({ success: true, gameState });
+  }
 });
 
 app.post('/solitaire/start/sotd', async (req, res) => {
   const userId = req.body.userId
-  const sotd = getSOTD.get()
+  const sotd = getSOTD.get();
+
+  const user = getUser.get(userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  if (activeSolitaireGames[userId] && activeSolitaireGames[userId].isSOTD) {
+    return res.json({ success: true, gameState: activeSolitaireGames[userId]})
+  }
 
   const gameState = {
     tableauPiles: JSON.parse(sotd.tableauPiles),
@@ -4479,8 +4536,10 @@ app.post('/solitaire/start/sotd', async (req, res) => {
     isSOTD: true,
     hasFinToday: false,
     startTime: Date.now(),
+    endTime: null,
     moves: 0,
     score: 0,
+    seed: sotd.seed,
   }
 
   activeSolitaireGames[userId] = gameState
@@ -4537,8 +4596,49 @@ app.post('/solitaire/move', async (req, res) => {
     const win = checkWinCondition(gameState);
     if (win) {
       gameState.isDone = true
+      if (gameState.isSOTD) {
+        gameState.hasFinToday = true;
+        gameState.endTime = Date.now();
+        const userStats = getUserSOTDStats.get(userId);
+        if (userStats) {
+          if (
+              (gameState.score > userStats.score) ||
+              (gameState.score === userStats.score && gameState.moves < userStats.moves) ||
+              (gameState.score === userStats.score && gameState.moves === userStats.moves && gameState.time < userStats.time)
+          ) {
+            deleteUserSOTDStats.run(userId);
+            insertSOTDStats.run({
+              id: userId,
+              user_id: userId,
+              time: gameState.endTime - gameState.startTime,
+              moves: gameState.moves,
+              score: gameState.score,
+            })
+          }
+        } else {
+          insertSOTDStats.run({
+            id: userId,
+            user_id: userId,
+            time: gameState.endTime - gameState.startTime,
+            moves: gameState.moves,
+            score: gameState.score,
+          })
+          const user = getUser.get(userId)
+          if (user) {
+            updateUserCoins.run({ id: userId, coins: user.coins + 1000 });
+            insertLog.run({
+              id: userId + '-' + Date.now(),
+              user_id: userId,
+              action: 'SOTD_WIN',
+              target_user_id: null,
+              coins_amount: 1000,
+              user_new_amount: user.coins + 1000,
+            })
+          }
+        }
+      }
     }
-    res.json({ success: true, gameState, win });
+    res.json({ success: true, gameState, win, endTime: win ? Date.now() : null });
   } else {
     // If the move is invalid, send a specific error message
     res.status(400).json({ error: 'Invalid move' });

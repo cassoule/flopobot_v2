@@ -9,7 +9,7 @@ function createTimesChoices() {
   for (let choice of choices) {
     commandChoices.push({
       name: capitalize(choice.name),
-      value: choice.value.toString(),
+      value: choice.value?.toString(),
     });
   }
 

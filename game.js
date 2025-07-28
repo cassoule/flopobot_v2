@@ -10,7 +10,7 @@ import {
   getUserElo,
   insertElos,
   updateElo,
-  getAllSkins, deleteSOTD, insertSOTD
+  getAllSkins, deleteSOTD, insertSOTD, clearSOTDStats, getAllSOTDStats
 } from './init_database.js'
 import {C4_COLS, C4_ROWS, skins} from "./index.js";
 
@@ -164,14 +164,14 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
 
   if (!p1elo) {
     await insertElos.run({
-      id: p1.toString(),
+      id: p1?.toString(),
       elo: 100,
     })
     p1elo = await getUserElo.get({ id: p1 })
   }
   if (!p2elo) {
     await insertElos.run({
-      id: p2.toString(),
+      id: p2?.toString(),
       elo: 100,
     })
     p2elo = await getUserElo.get({ id: p2 })
@@ -179,7 +179,7 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
 
   if (p1score === p2score) {
     insertGame.run({
-      id: p1.toString() + '-' + p2.toString() + '-' + Date.now().toString(),
+      id: p1?.toString() + '-' + p2?.toString() + '-' + Date.now()?.toString(),
       p1: p1,
       p2: p2,
       p1_score: p1score,
@@ -206,7 +206,7 @@ export async function eloHandler(p1, p2, p1score, p2score, type) {
   updateElo.run({ id: p2, elo: p2newElo })
 
   insertGame.run({
-    id: p1.toString() + '-' + p2.toString() + '-' + Date.now().toString(),
+    id: p1?.toString() + '-' + p2?.toString() + '-' + Date.now()?.toString(),
     p1: p1,
     p2: p2,
     p1_score: p1score,
@@ -263,7 +263,7 @@ export async function pokerEloHandler(room) {
       updateElo.run({ id: player.id, elo: newElo })
 
       insertGame.run({
-        id: player.id + '-' + Date.now().toString(),
+        id: player.id + '-' + Date.now()?.toString(),
         p1: player.id,
         p2: null,
         p1_score: actualScore,
@@ -369,6 +369,20 @@ export function formatConnect4BoardForDiscord(board) {
 }
 
 /**
+ * Creates a seedable pseudorandom number generator (PRNG) using the Mulberry32 algorithm.
+ * @param {number} seed - An initial number to seed the generator.
+ * @returns {function} A function that, when called, returns a pseudorandom number between 0 and 1.
+ */
+export function createSeededRNG(seed) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  }
+}
+
+/**
  * Shuffles an array in place using the Fisher-Yates algorithm.
  * @param {Array} array - The array to shuffle.
  * @returns {Array} The shuffled array.
@@ -380,6 +394,31 @@ export function shuffle(array) {
     randomIndex = Math.floor(Math.random() * currentIndex);
     currentIndex--;
     [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+  }
+  return array;
+}
+
+/**
+ * Shuffles an array in place using a seedable PRNG via the Fisher-Yates algorithm.
+ * @param {Array} array - The array to shuffle.
+ * @param {function} rng - A seedable random number generator function.
+ * @returns {Array} The shuffled array.
+ */
+export function seededShuffle(array, rng) {
+  let currentIndex = array.length,
+      randomIndex;
+
+  // While there remain elements to shuffle.
+  while (currentIndex !== 0) {
+    // Pick a remaining element using the seeded RNG.
+    randomIndex = Math.floor(rng() * currentIndex);
+    currentIndex--;
+
+    // And swap it with the current element.
+    [array[currentIndex], array[randomIndex]] = [
+      array[randomIndex],
+      array[currentIndex],
+    ];
   }
   return array;
 }
@@ -617,8 +656,37 @@ export function checkWinCondition(gameState) {
 }
 
 export function initTodaysSOTD() {
-  const deck = shuffle(createDeck());
-  const todaysSOTD = deal(deck)
+  const rankings = getAllSOTDStats.all()
+  const firstPlaceId = rankings > 0 ? rankings[0].user_id : null
+
+  if (firstPlaceId) {
+    const firstPlaceUser = getUser.get(firstPlaceId)
+    if (firstPlaceUser) {
+      updateUserCoins.run({ id: firstPlaceId, coins: firstPlaceUser.coins + 1000 });
+      insertLog.run({
+        id: firstPlaceId + '-' + Date.now(),
+        user_id: firstPlaceId,
+        action: 'SOTD_FIRST_PLACE',
+        target_user_id: null,
+        coins_amount: 1000,
+        user_new_amount: firstPlaceUser.coins + 1000,
+      })
+    }
+  }
+
+  const newRandomSeed = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  let numericSeed = 0;
+  for (let i = 0; i < newRandomSeed.length; i++) {
+    numericSeed = (numericSeed + newRandomSeed.charCodeAt(i)) & 0xFFFFFFFF;
+  }
+
+  const rng = createSeededRNG(numericSeed);
+  const deck = createDeck();
+  const shuffledDeck = seededShuffle(deck, rng);
+  const todaysSOTD = deal(shuffledDeck);
+  todaysSOTD.seed = newRandomSeed;
+
+  clearSOTDStats.run()
   deleteSOTD.run()
   insertSOTD.run({
     id: 0,
@@ -626,8 +694,9 @@ export function initTodaysSOTD() {
     foundationPiles: JSON.stringify(todaysSOTD.foundationPiles),
     stockPile: JSON.stringify(todaysSOTD.stockPile),
     wastePile: JSON.stringify(todaysSOTD.wastePile),
+    seed: todaysSOTD.seed,
   })
-  console.log('Today\' SOTD is ready')
+  console.log('Today\'s SOTD is ready')
 }
 
 export function sotdMoveUpdate(gameState, points) {
