@@ -7,6 +7,8 @@ import { initialShuffledCards, getFirstActivePlayerAfterDealer, getNextActivePla
 import { pokerEloHandler } from '../../game/elo.js';
 import { getUser, updateUserCoins, insertLog } from '../../database/index.js';
 import {sleep} from "openai/core";
+import {client} from "../../bot/client.js";
+import { io } from '../../../index.js'
 
 // Create a new router instance
 const router = express.Router();
@@ -14,18 +16,17 @@ const router = express.Router();
 /**
  * Factory function to create and configure the poker API routes.
  * @param {object} client - The Discord.js client instance.
- * @param {object} io - The Socket.IO server instance.
  * @returns {object} The configured Express router.
  */
-export function pokerRoutes(client, io) {
+export function pokerRoutes(client) {
 
     // --- Room Management Endpoints ---
 
-    router.get('/', (req, res) => {
+    router.get('/poker-rooms', (req, res) => {
         res.status(200).json({ rooms: pokerRooms });
     });
 
-    router.get('/:id', (req, res) => {
+    router.get('/poker-rooms/:id', (req, res) => {
         const room = pokerRooms[req.params.id];
         if (room) {
             res.status(200).json({ room });
@@ -34,7 +35,7 @@ export function pokerRoutes(client, io) {
         }
     });
 
-    router.post('/create', async (req, res) => {
+    router.post('/create-poker-room', async (req, res) => {
         const { creatorId } = req.body;
         if (!creatorId) return res.status(400).json({ message: 'Creator ID is required.' });
 
@@ -55,6 +56,7 @@ export function pokerRoutes(client, io) {
             last_move_at: Date.now(),
             players: {},
             queue: {},
+            afk: {},
             pioche: initialShuffledCards(),
             tapis: [],
             dealer: null,
@@ -76,7 +78,7 @@ export function pokerRoutes(client, io) {
         res.status(201).json({ roomId: id });
     });
 
-    router.post('/join', async (req, res) => {
+    router.post('/poker-room/join', async (req, res) => {
         const { userId, roomId } = req.body;
         if (!userId || !roomId) return res.status(400).json({ message: 'User ID and Room ID are required.' });
         if (!pokerRooms[roomId]) return res.status(404).json({ message: 'Room not found.' });
@@ -89,15 +91,15 @@ export function pokerRoutes(client, io) {
         res.status(200).json({ message: 'Successfully joined room.' });
     });
 
-    router.post('/leave', (req, res) => {
+    router.post('poker-room/leave', (req, res) => {
         // Implement leave logic...
         res.status(501).json({ message: "Not Implemented" });
     });
 
     // --- Game Action Endpoints ---
 
-    router.post('/:roomId/start', async (req, res) => {
-        const { roomId } = req.params;
+    router.post('/poker-room/start', async (req, res) => {
+        const { roomId } = req.body;
         const room = pokerRooms[roomId];
         if (!room) return res.status(404).json({ message: 'Room not found.' });
         if (Object.keys(room.players).length < 2) return res.status(400).json({ message: 'Not enough players to start.' });
@@ -106,9 +108,9 @@ export function pokerRoutes(client, io) {
         res.status(200).json({ message: 'Game started.' });
     });
 
-    router.post('/:roomId/action', async (req, res) => {
-        const { roomId } = req.params;
-        const { playerId, action, amount } = req.body;
+    router.post('/poker-room/action/:action', async (req, res) => {
+        const { playerId, amount, roomId } = req.body;
+        const { action } = req.params;
         const room = pokerRooms[roomId];
 
         if (!room || !room.players[playerId] || room.current_player !== playerId) {
@@ -295,7 +297,7 @@ async function handleShowdown(room, io, winners) {
         updatePlayerCoins(winnerPlayer, winAmount, room.fakeMoney);
     });
 
-    await pokerEloHandler(room);
+    //await pokerEloHandler(room);
     io.emit('poker-update', { type: 'showdown', room, winners, winAmount });
 }
 
@@ -309,6 +311,7 @@ function updatePlayerCoins(player, amount, isFake) {
     insertLog.run({
         id: `${player.id}-poker-${Date.now()}`,
         user_id: player.id,
+        target_user_id: null,
         action: `POKER_${amount > 0 ? 'WIN' : 'BET'}`,
         coins_amount: amount,
         user_new_amount: newCoins,

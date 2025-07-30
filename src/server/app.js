@@ -42,7 +42,7 @@ app.use('/public', express.static('public'));
 app.use('/', apiRoutes(client));
 
 // Poker-specific routes
-app.use('/poker-room', pokerRoutes(client));
+app.use('/', pokerRoutes(client));
 
 // Solitaire-specific routes
 app.use('/solitaire', solitaireRoutes(client));

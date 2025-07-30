@@ -14,7 +14,7 @@ const server = http.createServer(app);
 
 // --- SOCKET.IO INITIALIZATION ---
 const FLAPI_URL = process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL;
-const io = new Server(server, {
+export const io = new Server(server, {
     cors: {
         origin: FLAPI_URL,
         methods: ['GET', 'POST', 'PUT', 'OPTIONS'],

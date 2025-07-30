@@ -52,8 +52,8 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
     const p2NewElo = Math.round(p2CurrentElo + K_FACTOR * (p2Score - expectedP2));
 
     // Ensure Elo doesn't drop below a certain threshold (e.g., 100)
-    const finalP1Elo = Math.max(100, p1NewElo);
-    const finalP2Elo = Math.max(100, p2NewElo);
+    const finalP1Elo = Math.max(0, p1NewElo);
+    const finalP2Elo = Math.max(0, p2NewElo);
 
     console.log(`Elo Update (${type}) for ${p1DB.globalName}: ${p1CurrentElo} -> ${finalP1Elo}`);
     console.log(`Elo Update (${type}) for ${p2DB.globalName}: ${p2CurrentElo} -> ${finalP2Elo}`);
@@ -136,6 +136,7 @@ export async function pokerEloHandler(room) {
                 p1_new_elo: newElo,
                 p2_new_elo: null,
                 type: 'POKER_ROUND',
+                timestamp: Date.now(),
             });
         } else {
             console.error(`Error calculating new Elo for ${player.globalName}.`);

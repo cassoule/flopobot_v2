@@ -70,6 +70,25 @@ async function onQueueJoin(client, gameType, playerId) {
     await emitQueueUpdate(client, gameType);
 }
 
+/**
+ * A helper function to check for a win in Tic-Tac-Toe.
+ * @param {Array<number>} moves - An array of the player's moves (e.g., [1, 5, 9]).
+ * @returns {boolean} - True if the player has won, false otherwise.
+ */
+function checkTicTacToeWin(moves) {
+    const winningCombinations = [
+        [1, 2, 3], [4, 5, 6], [7, 8, 9], // Rows
+        [1, 4, 7], [2, 5, 8], [3, 6, 9], // Columns
+        [1, 5, 9], [3, 5, 7]  // Diagonals
+    ];
+    for (const combination of winningCombinations) {
+        if (combination.every(num => moves.includes(num))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 async function onTicTacToeMove(client, eventData) {
     const { playerId, value, boxId } = eventData;
     const lobby = Object.values(activeTicTacToeGames).find(g => (g.p1.id === playerId || g.p2.id === playerId) && !g.gameOver);
@@ -79,11 +98,26 @@ async function onTicTacToeMove(client, eventData) {
     const isP2Turn = lobby.sum % 2 === 0 && value === 'O' && lobby.p2.id === playerId;
 
     if (isP1Turn || isP2Turn) {
-        (isP1Turn) ? lobby.xs.push(boxId) : lobby.os.push(boxId);
+        const playerMoves = isP1Turn ? lobby.xs : lobby.os;
+        playerMoves.push(boxId);
         lobby.sum++;
         lobby.lastmove = Date.now();
-        await updateDiscordMessage(client, lobby, 'Tic Tac Toe');
+
+        if (isP1Turn) lobby.p1.move = boxId
+        if (isP2Turn) lobby.p2.move = boxId
+
         io.emit('tictactoeplaying', { allPlayers: Object.values(activeTicTacToeGames) });
+        const hasWon = checkTicTacToeWin(playerMoves);
+        if (hasWon) {
+            // The current player has won. End the game.
+            await onGameOver(client, 'tictactoe', playerId, playerId);
+        } else if (lobby.sum > 9) {
+            // It's a draw (9 moves made, sum is now 10). End the game.
+            await onGameOver(client, 'tictactoe', playerId, null); // null winner for a draw
+        } else {
+            // The game continues. Update the state and notify clients.
+            await updateDiscordMessage(client, lobby, 'Tic Tac Toe');
+        }
     }
     await emitQueueUpdate(client, 'tictactoe');
 }
@@ -145,9 +179,8 @@ async function onGameOver(client, gameType, playerId, winnerId, reason = '') {
     if(gameType === 'connect4') io.emit('connect4gameOver', { game, winner: winnerId });
 
     if (gameKey) {
-        setTimeout(() => delete activeGames[gameKey], 10000);
+        setTimeout(() => delete activeGames[gameKey], 1000)
     }
-    await emitQueueUpdate(client, gameType);
 }
 
 // --- Game Lifecycle & Discord Helpers ---
