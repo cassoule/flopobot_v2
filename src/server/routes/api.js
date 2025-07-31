@@ -17,6 +17,8 @@ import { DiscordRequest } from '../../api/discord.js';
 
 // --- Discord.js Builder Imports ---
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import {emitDataUpdated, socketEmit} from "../socket.js";
+import {formatTime} from "../../../utils.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -123,7 +125,7 @@ export function apiRoutes(client, io) {
         }
     });
 
-    router.post('/user/:id/daily', (req, res) => {
+    router.post('/user/:id/daily', async (req, res) => {
         const { id } = req.params;
         try {
             const akhy = getUser.get(id);
@@ -139,7 +141,7 @@ export function apiRoutes(client, io) {
                 coins_amount: amount, user_new_amount: newCoins,
             });
 
-            io.emit('data-updated', { table: 'users' });
+            await emitDataUpdated({ table: 'users' });
             res.status(200).json({ message: `+${amount} FlopoCoins! Récompense récupérée !` });
         } catch (error) {
             res.status(500).json({ error: "Failed to process daily reward." });
@@ -179,11 +181,14 @@ export function apiRoutes(client, io) {
             const newCoins = commandUser.coins - 1000;
             updateUserCoins.run({ id: commandUserId, coins: newCoins });
             insertLog.run({
-                id: `${commandUserId}-changenick-${Date.now()}`, user_id: commandUserId, action: 'CHANGE_NICKNAME',
-                target_user_id: userId, coins_amount: -1000, user_new_amount: newCoins,
+                id: `${commandUserId}-changenick-${Date.now()}`,
+                user_id: commandUserId,
+                action: 'CHANGE_NICKNAME',
+                target_user_id: userId,
+                coins_amount: -1000,
+                user_new_amount: newCoins,
             });
 
-            io.emit('data-updated', { table: 'users' });
             res.status(200).json({ message: `Le pseudo de ${member.user.username} a été changé.` });
         } catch (error) {
             res.status(500).json({ message: `Erreur: Impossible de changer le pseudo.` });
@@ -191,8 +196,44 @@ export function apiRoutes(client, io) {
     });
 
     router.post('/spam-ping', async (req, res) => {
-        // Implement spam-ping logic here...
-        res.status(501).json({ message: "Not Implemented" });
+        const { userId, commandUserId } = req.body;
+
+        const user = getUser.get(userId);
+        const commandUser = getUser.get(commandUserId);
+
+        if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
+
+        if (commandUser.coins < 10000) return res.status(403).json({ message: 'Pas assez de coins' });
+
+        try {
+            const discordUser = await client.users.fetch(userId);
+
+            await discordUser.send(`<@${userId}>`)
+
+            res.status(200).json({ message : 'C\'est parti ehehe' });
+
+            updateUserCoins.run({
+                id: commandUserId,
+                coins: commandUser.coins - 10000,
+            })
+            insertLog.run({
+                id: commandUserId + '-' + Date.now(),
+                user_id: commandUserId,
+                action: 'SPAM_PING',
+                target_user_id: userId,
+                coins_amount: -10000,
+                user_new_amount: commandUser.coins - 10000,
+            })
+            await emitDataUpdated({ table: 'users', action: 'update' });
+
+            for (let i = 0; i < 29; i++) {
+                await discordUser.send(`<@${userId}>`)
+                await sleep(1000);
+            }
+        } catch (err) {
+            console.log(err)
+            res.status(500).json({ message : "Oups ça n'a pas marché" });
+        }
     });
 
     // --- Slowmode Routes ---
@@ -201,9 +242,53 @@ export function apiRoutes(client, io) {
         res.status(200).json({ slowmodes: activeSlowmodes });
     });
 
-    router.post('/slowmode', (req, res) => {
-        // Implement slowmode logic here...
-        res.status(501).json({ message: "Not Implemented" });
+    router.post('/slowmode', async (req, res) => {
+        let { userId, commandUserId} = req.body
+
+        const user = getUser.get(userId)
+        const commandUser = getUser.get(commandUserId);
+
+        if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
+
+        if (commandUser.coins < 10000) return res.status(403).json({ message: 'Pas assez de coins' });
+
+        if (!user) return res.status(403).send({ message: 'Oups petit problème'})
+
+        if (activeSlowmodes[userId]) {
+            if (userId === commandUserId) {
+                delete activeSlowmodes[userId];
+                return res.status(200).json({ message: 'Slowmode retiré'})
+            } else {
+                let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
+                timeLeft = timeLeft > 60 ? (timeLeft/60).toFixed()?.toString() + 'min' : timeLeft.toFixed()?.toString() + 'sec'
+                return res.status(403).json({ message: `${user.globalName} est déjà en slowmode (${timeLeft})`})
+            }
+        } else if (userId === commandUserId) {
+            return res.status(403).json({ message: 'Impossible de te mettre toi-même en slowmode'})
+        }
+
+        activeSlowmodes[userId] = {
+            userId: userId,
+            endAt: Date.now() + 60 * 60 * 1000, // 1 heure
+            lastMessage: null,
+        };
+        await socketEmit('new-slowmode', { action: 'new slowmode' });
+
+        updateUserCoins.run({
+            id: commandUserId,
+            coins: commandUser.coins - 10000,
+        })
+        insertLog.run({
+            id: commandUserId + '-' + Date.now(),
+            user_id: commandUserId,
+            action: 'SLOWMODE',
+            target_user_id: userId,
+            coins_amount: -10000,
+            user_new_amount: commandUser.coins - 10000,
+        })
+        await emitDataUpdated({ table: 'users', action: 'update' });
+
+        return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
     });
 
     // --- Prediction Routes ---
@@ -214,18 +299,275 @@ export function apiRoutes(client, io) {
     });
 
     router.post('/start-predi', async (req, res) => {
-        // Implement prediction start logic here...
-        res.status(501).json({ message: "Not Implemented" });
+        let { commandUserId, label, options, closingTime, payoutTime } = req.body
+
+        const commandUser = getUser.get(commandUserId)
+
+        if (!commandUser) return res.status(403).send({ message: 'Oups petit problème'})
+        if (commandUser.coins < 100) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
+
+        if (Object.values(activePredis).find(p => p.creatorId === commandUserId && (p.endTime > Date.now() && !p.closed))) {
+            return res.status(403).json({ message: `Tu ne peux pas lancer plus d'une prédi à la fois !`})
+        }
+
+        const startTime = Date.now()
+        const newPrediId = commandUserId?.toString() + '-' + startTime?.toString()
+
+        let msgId;
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const generalChannel = guild.channels.cache.find(
+                ch => ch.name === 'général' || ch.name === 'general'
+            );
+            const embed = new EmbedBuilder()
+                .setTitle(`Prédiction de ${commandUser.username}`)
+                .setDescription(`**${label}**`)
+                .addFields(
+                    { name: `${options[0]}`, value: ``, inline: true },
+                    { name: ``, value: `ou`, inline: true },
+                    { name: `${options[1]}`, value: ``, inline: true }
+                )
+                .setFooter({ text: `${formatTime(closingTime).replaceAll('*', '')} pour voter` })
+                .setColor('#5865f2')
+                .setTimestamp(new Date());
+
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`option_0_${newPrediId}`)
+                        .setLabel(`+10 sur '${options[0]}'`)
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`option_1_${newPrediId}`)
+                        .setLabel(`+10 sur '${options[1]}'`)
+                        .setStyle(ButtonStyle.Primary)
+                );
+
+            const row2 = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Voter sur FlopoSite')
+                        .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard`)
+                        .setStyle(ButtonStyle.Link)
+                )
+
+            const msg = await generalChannel.send({ embeds: [embed], components: [/*row,*/ row2] });
+            msgId = msg.id;
+        } catch (e) {
+            console.log(e)
+            return res.status(500).send({ message: 'Erreur lors de l\'envoi du message'})
+        }
+
+        const formattedOptions = [
+            { label: options[0], votes: [], total: 0, percent: 0, },
+            { label: options[1], votes: [], total: 0, percent: 0, },
+        ]
+        activePredis[newPrediId] = {
+            creatorId: commandUserId,
+            label: label,
+            options: formattedOptions,
+            startTime: startTime,
+            closingTime: startTime + (closingTime * 1000),
+            endTime: startTime + (closingTime * 1000) + (payoutTime * 1000),
+            closed: false,
+            winning: null,
+            cancelledTime: null,
+            paidTime: null,
+            msgId: msgId,
+        };
+        await socketEmit('new-predi', { action: 'new predi' });
+
+        updateUserCoins.run({
+            id: commandUserId,
+            coins: commandUser.coins - 100,
+        })
+        insertLog.run({
+            id: commandUserId + '-' + Date.now(),
+            user_id: commandUserId,
+            action: 'START_PREDI',
+            target_user_id: null,
+            coins_amount: -100,
+            user_new_amount: commandUser.coins - 100,
+        })
+        await emitDataUpdated({ table: 'users', action: 'update' });
+
+        return res.status(200).json({ message: `Ta prédi '${label}' a commencée !`})
     });
 
-    router.post('/vote-predi', (req, res) => {
-        // Implement prediction vote logic here...
-        res.status(501).json({ message: "Not Implemented" });
+    router.post('/vote-predi', async (req, res) => {
+        const { commandUserId, predi, amount, option } = req.body
+
+        let warning = false;
+
+        let intAmount = parseInt(amount)
+        if (intAmount < 10 || intAmount > 250000) return res.status(403).send({ message: 'Montant invalide'})
+
+        const commandUser = getUser.get(commandUserId)
+        if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+        if (commandUser.coins < intAmount) return res.status(403).send({ message: 'Tu n\'as pas assez de FlopoCoins'})
+
+        const prediObject = activePredis[predi]
+        if (!prediObject) return res.status(403).send({ message: 'Prédiction introuvable'})
+
+        if (prediObject.endTime < Date.now()) return res.status(403).send({ message: 'Les votes de cette prédiction sont clos'})
+
+        const otherOption = option === 0 ? 1 : 0;
+        if (prediObject.options[otherOption].votes.find(v => v.id === commandUserId) && commandUserId !== process.env.DEV_ID) return res.status(403).send({ message: 'Tu ne peux pas voter pour les 2 deux options'})
+
+        if (prediObject.options[option].votes.find(v => v.id === commandUserId)) {
+            activePredis[predi].options[option].votes.forEach(v => {
+                if (v.id === commandUserId) {
+                    if (v.amount === 250000) {
+                        return res.status(403).send({ message: 'Tu as déjà parié le max (250K)'})
+                    }
+                    if (v.amount + intAmount > 250000) {
+                        intAmount = 250000-v.amount
+                        warning = true
+                    }
+                    v.amount += intAmount
+                }
+            })
+        } else {
+            activePredis[predi].options[option].votes.push({
+                id: commandUserId,
+                amount: intAmount,
+            })
+        }
+        activePredis[predi].options[option].total += intAmount
+
+        activePredis[predi].options[option].percent = (activePredis[predi].options[option].total / (activePredis[predi].options[otherOption].total + activePredis[predi].options[option].total)) * 100
+        activePredis[predi].options[otherOption].percent = 100 - activePredis[predi].options[option].percent
+
+        await socketEmit('new-predi', { action: 'new vote' });
+
+        updateUserCoins.run({
+            id: commandUserId,
+            coins: commandUser.coins - intAmount,
+        })
+        insertLog.run({
+            id: commandUserId + '-' + Date.now(),
+            user_id: commandUserId,
+            action: 'PREDI_VOTE',
+            target_user_id: null,
+            coins_amount: -intAmount,
+            user_new_amount: commandUser.coins - intAmount,
+        })
+        await emitDataUpdated({ table: 'users', action: 'update' });
+
+        return res.status(200).send({ message : `Vote enregistré!` });
     });
 
-    router.post('/end-predi', (req, res) => {
-        // Implement prediction end logic here...
-        res.status(501).json({ message: "Not Implemented" });
+    router.post('/end-predi', async (req, res) => {
+        const { commandUserId, predi, confirm, winningOption } = req.body
+
+        const commandUser = getUser.get(commandUserId)
+        if (!commandUser) return res.status(403).send({ message: 'Oups, je ne te connais pas'})
+        if (commandUserId !== process.env.DEV_ID) return res.status(403).send({ message: 'Tu n\'as pas les permissions requises' })
+
+        const prediObject = activePredis[predi]
+        if (!prediObject) return res.status(403).send({ message: 'Prédiction introuvable'})
+        if (prediObject.closed) return res.status(403).send({ message: 'Prédiction déjà close'})
+
+        if (!confirm) {
+            activePredis[predi].cancelledTime = new Date();
+            activePredis[predi].options[0].votes.forEach((v) => {
+                const tempUser = getUser.get(v.id)
+                try {
+                    updateUserCoins.run({
+                        id: v.id,
+                        coins: tempUser.coins + v.amount
+                    })
+                    insertLog.run({
+                        id: v.id + '-' + Date.now(),
+                        user_id: v.id,
+                        action: 'PREDI_REFUND',
+                        target_user_id: v.id,
+                        coins_amount: v.amount,
+                        user_new_amount: tempUser.coins + v.amount,
+                    })
+                } catch (e) {
+                    console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
+                }
+            })
+            activePredis[predi].options[1].votes.forEach((v) => {
+                const tempUser = getUser.get(v.id)
+                try {
+                    updateUserCoins.run({
+                        id: v.id,
+                        coins: tempUser.coins + v.amount
+                    })
+                    insertLog.run({
+                        id: v.id + '-' + Date.now(),
+                        user_id: v.id,
+                        action: 'PREDI_REFUND',
+                        target_user_id: v.id,
+                        coins_amount: v.amount,
+                        user_new_amount: tempUser.coins + v.amount,
+                    })
+                } catch (e) {
+                    console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`)
+                }
+            })
+            activePredis[predi].closed = true;
+        }
+        else {
+            const losingOption = winningOption === 0 ? 1 : 0;
+            activePredis[predi].options[winningOption].votes.forEach((v) => {
+                const tempUser = getUser.get(v.id)
+                const ratio = activePredis[predi].options[winningOption].total === 0 ? 0 : activePredis[predi].options[losingOption].total / activePredis[predi].options[winningOption].total
+                try {
+                    updateUserCoins.run({
+                        id: v.id,
+                        coins: tempUser.coins + (v.amount * (1 + ratio))
+                    })
+                    insertLog.run({
+                        id: v.id + '-' + Date.now(),
+                        user_id: v.id,
+                        action: 'PREDI_RESULT',
+                        target_user_id: v.id,
+                        coins_amount: v.amount * (1 + ratio),
+                        user_new_amount: tempUser.coins + (v.amount * (1 + ratio)),
+                    })
+                } catch (e) {
+                    console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`)
+                }
+            })
+            activePredis[predi].paidTime = new Date();
+            activePredis[predi].closed = true;
+            activePredis[predi].winning = winningOption;
+        }
+
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const generalChannel = guild.channels.cache.find(
+                ch => ch.name === 'général' || ch.name === 'general'
+            );
+            const message = await generalChannel.messages.fetch(activePredis[predi].msgId)
+            const updatedEmbed = new EmbedBuilder()
+                .setTitle(`Prédiction de ${commandUser.username}`)
+                .setDescription(`**${activePredis[predi].label}**`)
+                .setFields({ name: `${activePredis[predi].options[0].label}`, value: ``, inline: true },
+                    { name: ``, value: `ou`, inline: true },
+                    { name: `${activePredis[predi].options[1].label}`, value: ``, inline: true },
+                )
+                .setFooter({ text: `${activePredis[predi].cancelledTime !== null ? 'Prédi annulée' : 'Prédi confirmée !' }` })
+                .setTimestamp(new Date());
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Voir')
+                        .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/dashboard`)
+                        .setStyle(ButtonStyle.Link)
+                )
+            await message.edit({ embeds: [updatedEmbed], components: [row] });
+        } catch (err) {
+            console.error('Error updating prédi message:', err);
+        }
+
+        await socketEmit('new-predi', { action: 'closed predi' });
+        await emitDataUpdated({ table: 'users', action: 'fin predi' });
+
+        return res.status(200).json({ message: 'Prédi close' });
     });
 
     // --- Admin Routes ---
@@ -242,7 +584,6 @@ export function apiRoutes(client, io) {
             coins_amount: coins, user_new_amount: newCoins
         });
 
-        io.emit('data-updated', { table: 'users' });
         res.status(200).json({ message: `Added ${coins} coins.` });
     });
 

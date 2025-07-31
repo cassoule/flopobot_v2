@@ -8,9 +8,11 @@ import { client } from '../bot/client.js';
 import { apiRoutes } from './routes/api.js';
 import { pokerRoutes } from './routes/poker.js';
 import { solitaireRoutes } from './routes/solitaire.js';
+import {getSocketIo} from "./socket.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
+const io = getSocketIo();
 const FLAPI_URL = process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL;
 
 // --- GLOBAL MIDDLEWARE ---
@@ -39,13 +41,13 @@ app.use('/public', express.static('public'));
 // --- API ROUTES ---
 
 // General API routes (users, polls, etc.)
-app.use('/', apiRoutes(client));
+app.use('/api', apiRoutes(client, io));
 
 // Poker-specific routes
-app.use('/', pokerRoutes(client));
+app.use('/api/poker', pokerRoutes(client, io));
 
 // Solitaire-specific routes
-app.use('/solitaire', solitaireRoutes(client));
+app.use('/api/solitaire', solitaireRoutes(client, io));
 
 
 export { app };

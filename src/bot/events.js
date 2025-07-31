@@ -14,10 +14,6 @@ export function initializeEvents(client, io) {
     // It's a good place for setup tasks that require the bot to be online.
     client.once('ready', async () => {
         console.log(`Bot is ready and logged in as ${client.user.tag}!`);
-        // You can add any post-login setup tasks here if needed.
-        // For example, setting the bot's activity:
-        client.user.setActivity('FlopoSite.com', { type: 'WATCHING' });
-
         console.log('[Startup] Bot is ready, performing initial data sync...');
         await getAkhys(client);
         console.log('[Startup] Setting up scheduled tasks...');

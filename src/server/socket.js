@@ -13,8 +13,6 @@ export function initializeSocket(server, client) {
     io = server;
 
     io.on('connection', (socket) => {
-        console.log(`[Socket.IO] User connected: ${socket.id}`);
-
         socket.on('user-connected', async (userId) => {
             if (!userId) return;
             await refreshQueuesForUser(userId, client);
@@ -24,7 +22,7 @@ export function initializeSocket(server, client) {
         registerConnect4Events(socket, client);
 
         socket.on('disconnect', () => {
-            console.log(`[Socket.IO] User disconnected: ${socket.id}`);
+            //
         });
     });
 
@@ -288,4 +286,20 @@ function cleanupStaleGames() {
     };
     cleanup(activeTicTacToeGames, 'TicTacToe');
     cleanup(activeConnect4Games, 'Connect4');
+}
+
+/* EMITS */
+export async function socketEmit(event, data) {
+    io.emit(event, data);
+}
+export async function emitDataUpdated(data) {
+    io.emit('data-updated', data);
+}
+
+export async function emitPokerUpdate(data) {
+    io.emit('poker-update', data);
+}
+
+export async function emitPokerToast(data) {
+    io.emit('poker-toast', data);
 }

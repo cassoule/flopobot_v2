@@ -1,32 +1,34 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { uniqueNamesGenerator, adjectives } from 'unique-names-generator';
+import pkg from 'pokersolver';
+const { Hand } = pkg;
 
 import { pokerRooms } from '../../game/state.js';
 import { initialShuffledCards, getFirstActivePlayerAfterDealer, getNextActivePlayer, checkEndOfBettingRound, checkRoomWinners } from '../../game/poker.js';
 import { pokerEloHandler } from '../../game/elo.js';
 import { getUser, updateUserCoins, insertLog } from '../../database/index.js';
-import {sleep} from "openai/core";
+import { sleep } from "openai/core";
 import {client} from "../../bot/client.js";
-import { io } from '../../../index.js'
+import {emitPokerToast, emitPokerUpdate} from "../socket.js";
 
-// Create a new router instance
 const router = express.Router();
 
 /**
  * Factory function to create and configure the poker API routes.
  * @param {object} client - The Discord.js client instance.
+ * @param {object} io - The Socket.IO server instance. // FIX: Pass io in as a parameter
  * @returns {object} The configured Express router.
  */
-export function pokerRoutes(client) {
+export function pokerRoutes(client, io) {
 
     // --- Room Management Endpoints ---
 
-    router.get('/poker-rooms', (req, res) => {
+    router.get('/', (req, res) => {
         res.status(200).json({ rooms: pokerRooms });
     });
 
-    router.get('/poker-rooms/:id', (req, res) => {
+    router.get('/:id', (req, res) => {
         const room = pokerRooms[req.params.id];
         if (room) {
             res.status(200).json({ room });
@@ -35,7 +37,7 @@ export function pokerRoutes(client) {
         }
     });
 
-    router.post('/create-poker-room', async (req, res) => {
+    router.post('/create', async (req, res) => {
         const { creatorId } = req.body;
         if (!creatorId) return res.status(400).json({ message: 'Creator ID is required.' });
 
@@ -48,57 +50,53 @@ export function pokerRoutes(client) {
         const name = uniqueNamesGenerator({ dictionaries: [adjectives, ['Poker']], separator: ' ', style: 'capital' });
 
         pokerRooms[id] = {
-            id,
-            host_id: creatorId,
-            host_name: creator.globalName || creator.username,
-            name,
-            created_at: Date.now(),
-            last_move_at: Date.now(),
-            players: {},
-            queue: {},
-            afk: {},
-            pioche: initialShuffledCards(),
-            tapis: [],
-            dealer: null,
-            sb: null,
-            bb: null,
-            highest_bet: 0,
-            current_player: null,
-            current_turn: null, // 0: pre-flop, 1: flop, 2: turn, 3: river, 4: showdown
-            playing: false,
-            winners: [],
-            waiting_for_restart: false,
-            fakeMoney: false,
+            id, host_id: creatorId, host_name: creator.globalName || creator.username,
+            name, created_at: Date.now(), last_move_at: Date.now(),
+            players: {}, queue: {}, afk: {}, pioche: initialShuffledCards(), tapis: [],
+            dealer: null, sb: null, bb: null, highest_bet: 0, current_player: null,
+            current_turn: null, playing: false, winners: [], waiting_for_restart: false, fakeMoney: false,
         };
 
-        // Auto-join the creator to their own room
-        await joinRoom(id, creatorId, io);
-
-        io.emit('poker-update', { type: 'room-created', roomId: id });
+        await joinRoom(id, creatorId, io); // Auto-join the creator
+        await emitPokerUpdate({ room: pokerRooms[id] });
         res.status(201).json({ roomId: id });
     });
 
-    router.post('/poker-room/join', async (req, res) => {
+    router.post('/join', async (req, res) => {
         const { userId, roomId } = req.body;
         if (!userId || !roomId) return res.status(400).json({ message: 'User ID and Room ID are required.' });
         if (!pokerRooms[roomId]) return res.status(404).json({ message: 'Room not found.' });
-
-        if (Object.values(pokerRooms).some(r => r.players[userId])) {
-            return res.status(403).json({ message: 'You are already in a room.' });
+        if (Object.values(pokerRooms).some(r => r.players[userId] || r.queue[userId])) {
+            return res.status(403).json({ message: 'You are already in a room or queue.' });
         }
 
         await joinRoom(roomId, userId, io);
-        res.status(200).json({ message: 'Successfully joined room.' });
+        res.status(200).json({ message: 'Successfully joined.' });
     });
 
-    router.post('poker-room/leave', (req, res) => {
+    // NEW: Endpoint to accept a player from the queue
+    router.post('/accept', async (req, res) => {
+        const { hostId, playerId, roomId } = req.body;
+        const room = pokerRooms[roomId];
+        if (!room || room.host_id !== hostId || !room.queue[playerId]) {
+            return res.status(403).json({ message: 'Unauthorized or player not in queue.' });
+        }
+
+        room.players[playerId] = room.queue[playerId];
+        delete room.queue[playerId];
+
+        await emitPokerUpdate({ room: room });
+        res.status(200).json({ message: 'Player accepted.' });
+    });
+
+    router.post('/leave', (req, res) => {
         // Implement leave logic...
         res.status(501).json({ message: "Not Implemented" });
     });
 
     // --- Game Action Endpoints ---
 
-    router.post('/poker-room/start', async (req, res) => {
+    router.post('/start', async (req, res) => {
         const { roomId } = req.body;
         const room = pokerRooms[roomId];
         if (!room) return res.status(404).json({ message: 'Room not found.' });
@@ -108,7 +106,18 @@ export function pokerRoutes(client) {
         res.status(200).json({ message: 'Game started.' });
     });
 
-    router.post('/poker-room/action/:action', async (req, res) => {
+    // NEW: Endpoint to start the next hand
+    router.post('/next-hand', async (req, res) => {
+        const { roomId } = req.body;
+        const room = pokerRooms[roomId];
+        if (!room || !room.waiting_for_restart) {
+            return res.status(400).json({ message: 'Not ready for the next hand.' });
+        }
+        await startNewHand(room, io);
+        res.status(200).json({ message: 'Next hand started.' });
+    });
+
+    router.post('/action/:action', async (req, res) => {
         const { playerId, amount, roomId } = req.body;
         const { action } = req.params;
         const room = pokerRooms[roomId];
@@ -122,38 +131,53 @@ export function pokerRoutes(client) {
         switch(action) {
             case 'fold':
                 player.folded = true;
-                io.emit('poker-update', { type: 'player-action', roomId, playerId, action, globalName: player.globalName });
+                await emitPokerToast({
+                    type: 'player-fold',
+                    playerId: player.id,
+                    playerName: player.globalName,
+                    roomId: room.id,
+                })
                 break;
             case 'check':
-                if (player.bet < room.highest_bet) return res.status(400).json({ message: 'Cannot check, you must call or raise.' });
-                io.emit('poker-update', { type: 'player-action', roomId, playerId, action, globalName: player.globalName });
+                if (player.bet < room.highest_bet) return res.status(400).json({ message: 'Cannot check.' });
+                await emitPokerToast({
+                    type: 'player-check',
+                    playerId: player.id,
+                    playerName: player.globalName,
+                    roomId: room.id,
+                })
                 break;
             case 'call':
-                const callAmount = room.highest_bet - player.bet;
-                if (callAmount > player.bank) { // All-in call
-                    player.bet += player.bank;
-                    player.bank = 0;
-                    player.allin = true;
-                } else {
-                    player.bet += callAmount;
-                    player.bank -= callAmount;
-                }
+                const callAmount = Math.min(room.highest_bet - player.bet, player.bank);
+                player.bank -= callAmount;
+                player.bet += callAmount;
+                if (player.bank === 0) player.allin = true;
                 updatePlayerCoins(player, -callAmount, room.fakeMoney);
-                io.emit('poker-update', { type: 'player-action', roomId, playerId, action, globalName: player.globalName });
+                await emitPokerToast({
+                    type: 'player-call',
+                    playerId: player.id,
+                    playerName: player.globalName,
+                    roomId: room.id,
+                })
                 break;
             case 'raise':
-                const totalBet = player.bet + amount;
-                if (amount > player.bank || totalBet <= room.highest_bet) return res.status(400).json({ message: 'Invalid raise amount.' });
-
-                player.bet = totalBet;
+                if (amount <= 0 || amount > player.bank || (player.bet + amount) <= room.highest_bet) {
+                    return res.status(400).json({ message: 'Invalid raise amount.' });
+                }
                 player.bank -= amount;
-                if(player.bank === 0) player.allin = true;
-                room.highest_bet = totalBet;
+                player.bet += amount;
+                if (player.bank === 0) player.allin = true;
+                room.highest_bet = player.bet;
                 updatePlayerCoins(player, -amount, room.fakeMoney);
-                io.emit('poker-update', { type: 'player-action', roomId, playerId, action, amount, globalName: player.globalName });
+                await emitPokerToast({
+                    type: 'player-raise',
+                    amount: amount,
+                    playerId: player.id,
+                    playerName: player.globalName,
+                    roomId: room.id,
+                })
                 break;
-            default:
-                return res.status(400).json({ message: 'Invalid action.' });
+            default: return res.status(400).json({ message: 'Invalid action.' });
         }
 
         player.last_played_turn = room.current_turn;
@@ -170,26 +194,34 @@ export function pokerRoutes(client) {
 async function joinRoom(roomId, userId, io) {
     const user = await client.users.fetch(userId);
     const userDB = getUser.get(userId);
-    const bank = userDB?.coins >= 1000 ? userDB.coins : 1000;
-    const isFake = userDB?.coins < 1000;
+    const bank = (userDB?.coins ?? 0) >= 1000 ? userDB.coins : 1000;
+    const isFake = (userDB?.coins ?? 0) < 1000;
 
-    pokerRooms[roomId].players[userId] = {
-        id: userId,
-        globalName: user.globalName || user.username,
-        hand: [],
-        bank: bank,
-        bet: 0,
-        folded: false,
-        allin: false,
-        last_played_turn: null,
+    const playerObject = {
+        id: userId, globalName: user.globalName || user.username,
+        hand: [], bank: bank, bet: 0, folded: false, allin: false,
+        last_played_turn: null, solve: null
     };
 
-    if(isFake) pokerRooms[roomId].fakeMoney = true;
+    const room = pokerRooms[roomId];
+    if (room.playing) {
+        room.queue[userId] = playerObject;
+    } else {
+        room.players[userId] = playerObject;
+    }
 
-    io.emit('poker-update', { type: 'player-join', roomId, player: pokerRooms[roomId].players[userId] });
+    if (isFake) room.fakeMoney = true;
+    await emitPokerUpdate({ room: room, type: 'player-joined' });
 }
 
 async function startNewHand(room, io) {
+    const playerIds = Object.keys(room.players);
+    if (playerIds.length < 2) {
+        room.playing = false; // Not enough players to continue
+        await emitPokerUpdate({ room: room });
+        return;
+    }
+
     room.playing = true;
     room.current_turn = 0; // Pre-flop
     room.pioche = initialShuffledCards();
@@ -198,32 +230,31 @@ async function startNewHand(room, io) {
     room.waiting_for_restart = false;
     room.highest_bet = 20;
 
-    // Reset players for the new hand
+    // Rotate dealer
+    const oldDealerIndex = playerIds.indexOf(room.dealer);
+    room.dealer = playerIds[(oldDealerIndex + 1) % playerIds.length];
+
     Object.values(room.players).forEach(p => {
         p.hand = [room.pioche.pop(), room.pioche.pop()];
-        p.bet = 0;
-        p.folded = false;
-        p.allin = false;
-        p.last_played_turn = null;
+        p.bet = 0; p.folded = false; p.allin = false; p.last_played_turn = null;
     });
+    updatePlayerHandSolves(room); // NEW: Calculate initial hand strength
 
-    // Handle blinds
-    const playerIds = Object.keys(room.players);
-    const sbPlayer = room.players[playerIds[0]];
-    const bbPlayer = room.players[playerIds[1]];
+    // Handle blinds based on new dealer
+    const dealerIndex = playerIds.indexOf(room.dealer);
+    const sbPlayer = room.players[playerIds[(dealerIndex + 1) % playerIds.length]];
+    const bbPlayer = room.players[playerIds[(dealerIndex + 2) % playerIds.length]];
+    room.sb = sbPlayer.id;
+    room.bb = bbPlayer.id;
 
-    sbPlayer.bet = 10;
-    sbPlayer.bank -= 10;
+    sbPlayer.bank -= 10; sbPlayer.bet = 10;
     updatePlayerCoins(sbPlayer, -10, room.fakeMoney);
-
-    bbPlayer.bet = 20;
-    bbPlayer.bank -= 20;
+    bbPlayer.bank -= 20; bbPlayer.bet = 20;
     updatePlayerCoins(bbPlayer, -20, room.fakeMoney);
 
     bbPlayer.last_played_turn = 0;
-    room.current_player = playerIds[2 % playerIds.length];
-
-    io.emit('poker-update', { type: 'new-hand', room });
+    room.current_player = playerIds[(dealerIndex + 3) % playerIds.length];
+    await emitPokerUpdate({ room: room, type: 'room-started' });
 }
 
 async function checkRoundCompletion(room, io) {
@@ -232,27 +263,23 @@ async function checkRoundCompletion(room, io) {
 
     if (roundResult.endRound) {
         if (roundResult.winner) {
-            // Handle single winner case (everyone else folded)
             await handleShowdown(room, io, [roundResult.winner]);
         } else {
-            // Proceed to the next phase
             await advanceToNextPhase(room, io, roundResult.nextPhase);
         }
     } else {
-        // Continue the round
         room.current_player = getNextActivePlayer(room);
-        io.emit('poker-update', { type: 'next-player', room });
+        await emitPokerUpdate({ room: room });
     }
 }
 
 async function advanceToNextPhase(room, io, phase) {
-    // Reset player turn markers for the new betting round
-    Object.values(room.players).forEach(p => p.last_played_turn = null);
+    Object.values(room.players).forEach(p => { if (!p.folded) p.last_played_turn = null; });
 
     switch(phase) {
         case 'flop':
             room.current_turn = 1;
-            room.tapis = [room.pioche.pop(), room.pioche.pop(), room.pioche.pop()];
+            room.tapis.push(room.pioche.pop(), room.pioche.pop(), room.pioche.pop());
             break;
         case 'turn':
             room.current_turn = 2;
@@ -263,23 +290,22 @@ async function advanceToNextPhase(room, io, phase) {
             room.tapis.push(room.pioche.pop());
             break;
         case 'showdown':
-            const winners = checkRoomWinners(room);
-            await handleShowdown(room, io, winners);
+            await handleShowdown(room, io, checkRoomWinners(room));
             return;
         case 'progressive-showdown':
-            // Show cards and deal remaining community cards one by one
-            io.emit('poker-update', { type: 'show-cards', room });
+            await emitPokerUpdate({ room: room });
             while(room.tapis.length < 5) {
-                await sleep(1500);
+                await sleep(500);
                 room.tapis.push(room.pioche.pop());
-                io.emit('poker-update', { type: 'community-card-deal', room });
+                updatePlayerHandSolves(room);
+                await emitPokerUpdate({ room: room });
             }
-            const finalWinners = checkRoomWinners(room);
-            await handleShowdown(room, io, finalWinners);
+            await handleShowdown(room, io, checkRoomWinners(room));
             return;
     }
+    updatePlayerHandSolves(room); // NEW: Update hand strength after new cards
     room.current_player = getFirstActivePlayerAfterDealer(room);
-    io.emit('poker-update', { type: 'phase-change', room });
+    await emitPokerUpdate({ room: room });
 }
 
 async function handleShowdown(room, io, winners) {
@@ -288,17 +314,37 @@ async function handleShowdown(room, io, winners) {
     room.waiting_for_restart = true;
     room.winners = winners;
 
-    const totalPot = Object.values(room.players).reduce((sum, p) => sum + p.bet, 0);
-    const winAmount = Math.floor(totalPot / winners.length);
+    let totalPot = 0;
+    Object.values(room.players).forEach(p => { totalPot += p.bet; });
+
+    const winAmount = winners.length > 0 ? Math.floor(totalPot / winners.length) : 0;
 
     winners.forEach(winnerId => {
         const winnerPlayer = room.players[winnerId];
-        winnerPlayer.bank += winAmount;
-        updatePlayerCoins(winnerPlayer, winAmount, room.fakeMoney);
+        if(winnerPlayer) {
+            winnerPlayer.bank += winAmount;
+            updatePlayerCoins(winnerPlayer, winAmount, room.fakeMoney);
+        }
     });
 
     //await pokerEloHandler(room);
-    io.emit('poker-update', { type: 'showdown', room, winners, winAmount });
+    await emitPokerUpdate({ room: room });
+    await emitPokerToast({
+        type: 'player-winner',
+        playerIds: winners,
+        roomId: room.id,
+    })
+}
+
+// NEW: Function to calculate and update hand strength for all players
+function updatePlayerHandSolves(room) {
+    const communityCards = room.tapis;
+    for (const player of Object.values(room.players)) {
+        if (!player.folded) {
+            const allCards = [...communityCards, ...player.hand];
+            player.solve = Hand.solve(allCards).descr;
+        }
+    }
 }
 
 function updatePlayerCoins(player, amount, isFake) {
@@ -306,14 +352,12 @@ function updatePlayerCoins(player, amount, isFake) {
     const user = getUser.get(player.id);
     if (!user) return;
 
-    const newCoins = user.coins + amount;
+    const newCoins = player.bank; // The bank is the source of truth now
     updateUserCoins.run({ id: player.id, coins: newCoins });
     insertLog.run({
         id: `${player.id}-poker-${Date.now()}`,
-        user_id: player.id,
-        target_user_id: null,
+        user_id: player.id, target_user_id: null,
         action: `POKER_${amount > 0 ? 'WIN' : 'BET'}`,
-        coins_amount: amount,
-        user_new_amount: newCoins,
+        coins_amount: amount, user_new_amount: newCoins,
     });
 }

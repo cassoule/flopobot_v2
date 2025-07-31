@@ -39,17 +39,18 @@ export function solitaireRoutes(client, io) {
         if (userSeed) {
             // Use the provided seed to create a deterministic game
             seed = userSeed;
-            let numericSeed = 0;
-            for (let i = 0; i < seed.length; i++) {
-                numericSeed = (numericSeed + seed.charCodeAt(i)) & 0xFFFFFFFF;
-            }
-            const rng = createSeededRNG(numericSeed);
-            deck = seededShuffle(createDeck(), rng);
         } else {
-            // Create a standard random game
+            // Create a random seed if none is provided
             seed = Date.now().toString(36) + Math.random().toString(36).substr(2);
-            deck = shuffle(createDeck());
         }
+
+        let numericSeed = 0;
+        for (let i = 0; i < seed.length; i++) {
+            numericSeed = (numericSeed + seed.charCodeAt(i)) & 0xFFFFFFFF;
+        }
+
+        const rng = createSeededRNG(numericSeed);
+        deck = seededShuffle(createDeck(), rng);
 
         const gameState = deal(deck);
         gameState.seed = seed;

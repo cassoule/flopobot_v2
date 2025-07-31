@@ -37,7 +37,12 @@ server.listen(PORT, async () => {
     console.log(`[Connected with ${FLAPI_URL}]`);
 
     // Initial data fetch and setup
-    await getAkhys(client);
+    try {
+        await getAkhys(client);
+    } catch (error) {
+        console.log('Initial Fetch Error');
+    }
+
 
     // Setup scheduled tasks
     setupCronJobs(client, io);
