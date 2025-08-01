@@ -45,7 +45,7 @@ server.listen(PORT, async () => {
 
 
     // Setup scheduled tasks
-    setupCronJobs(client, io);
+    //setupCronJobs(client, io);
     console.log('[Cron Jobs Initialized]');
 
     console.log('--- FlopoBOT is ready ---');
