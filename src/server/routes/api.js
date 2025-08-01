@@ -18,7 +18,7 @@ import { DiscordRequest } from '../../api/discord.js';
 // --- Discord.js Builder Imports ---
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import {emitDataUpdated, socketEmit} from "../socket.js";
-import {formatTime} from "../../../utils.js";
+import { formatTime } from "../../utils/index.js";
 
 // Create a new router instance
 const router = express.Router();

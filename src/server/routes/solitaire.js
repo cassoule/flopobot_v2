@@ -62,9 +62,9 @@ export function solitaireRoutes(client, io) {
 
     router.post('/start/sotd', (req, res) => {
         const { userId } = req.body;
-        if (!userId || !getUser.get(userId)) {
+        /*if (!userId || !getUser.get(userId)) {
             return res.status(404).json({ error: 'User not found.' });
-        }
+        }*/
 
         if (activeSolitaireGames[userId]?.isSOTD) {
             return res.json({ success: true, gameState: activeSolitaireGames[userId] });
@@ -177,7 +177,7 @@ function updateGameStats(gameState, actionType, moveData = {}) {
     }
     if(actionType === 'draw' && gameState.wastePile.length === 0) {
         // Penalty for cycling through an empty stock pile
-        gameState.score -= 100;
+        gameState.score -= 5;
     }
 }
 
@@ -189,6 +189,7 @@ function handleWin(userId, gameState, io) {
     const timeTaken = gameState.endTime - gameState.startTime;
 
     const currentUser = getUser.get(userId);
+    if (!currentUser) return;
     const existingStats = getUserSOTDStats.get(userId);
 
     if (!existingStats) {
