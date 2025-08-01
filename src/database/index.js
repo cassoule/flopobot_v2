@@ -39,7 +39,7 @@ stmtSkins.run()
 export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests) VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests)');
 export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, warns = @warns, allTimeWarns = @allTimeWarns, totalRequests = @totalRequests WHERE id = @id');
 export const queryDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 1 WHERE id = ?`);
-export const resetDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 0 WHERE id = ?`);
+export const resetDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 0`);
 export const updateUserCoins = flopoDB.prepare('UPDATE users SET coins = @coins WHERE id = @id');
 export const getUser = flopoDB.prepare('SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id WHERE users.id = ?');
 export const getAllUsers = flopoDB.prepare('SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id ORDER BY coins DESC');

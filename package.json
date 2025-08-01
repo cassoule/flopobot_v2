@@ -13,7 +13,7 @@
     "register": "node commands.js",
     "dev": "nodemon index.js"
   },
-  "author": "Shay DeWael",
+  "author": "Milo Gourvest",
   "license": "MIT",
   "dependencies": {
     "@google/genai": "^0.8.0",

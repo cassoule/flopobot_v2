@@ -133,9 +133,9 @@ export function setupCronJobs(client, io) {
     });
 
     // Daily at 7 AM: Re-sync users and skins
-    cron.schedule('0 7 * * *', () => {
+    cron.schedule('0 7 * * *', async () => {
         console.log('[Cron] Running daily 7 AM data sync...');
-        getAkhys(client);
+        await getAkhys(client);
     });
 }
 
