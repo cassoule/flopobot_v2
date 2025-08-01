@@ -124,9 +124,9 @@ export function setupCronJobs(client, io) {
         try {
             resetDailyReward.run();
             console.log('[Cron] Daily rewards have been reset for all users.');
-            if (!getSOTD.get()) {
-                initTodaysSOTD();
-            }
+            //if (!getSOTD.get()) {
+            initTodaysSOTD();
+            //}
         } catch (e) {
             console.error('[Cron] Error during daily reset:', e);
         }
