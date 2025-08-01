@@ -60,10 +60,10 @@ export const updateManyUsers = flopoDB.transaction(async (users) => {
 });
 
 export const insertManySkins = flopoDB.transaction(async (skins) => {
-  for (const skin of skins) try { await insertSkin.run(skin) } catch (e) { console.log('skin insert failed') }
+  for (const skin of skins) try { await insertSkin.run(skin) } catch (e) {}
 });
 export const updateManySkins = flopoDB.transaction(async (skins) => {
-  for (const skin of skins) try { await updateSkin.run(skin) } catch (e) { console.log('skin insert failed') }
+  for (const skin of skins) try { await updateSkin.run(skin) } catch (e) {}
 });
 
 
@@ -124,13 +124,13 @@ export const getUsersByElo = flopoDB.prepare('SELECT * FROM users JOIN elos ON e
 
 export const stmtSOTD = flopoDB.prepare(`
   CREATE TABLE IF NOT EXISTS sotd (
-    id INT PRIMARY KEY,
-    tableauPiles TEXT,
-    foundationPiles TEXT,
-    stockPile TEXT,
-    wastePile TEXT,
-    isDone BOOLEAN DEFAULT false,
-    seed TEXT
+                                    id INT PRIMARY KEY,
+                                    tableauPiles TEXT,
+                                    foundationPiles TEXT,
+                                    stockPile TEXT,
+                                    wastePile TEXT,
+                                    isDone BOOLEAN DEFAULT false,
+                                    seed TEXT
   )
 `);
 stmtSOTD.run()
@@ -140,13 +140,13 @@ export const insertSOTD = flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, f
 export const deleteSOTD = flopoDB.prepare(`DELETE FROM sotd WHERE id = '0'`)
 
 export const stmtSOTDStats = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS sotd_stats (
-        id TEXT PRIMARY KEY,
-        user_id TEXT REFERENCES users,
-        time INTEGER,
-        moves INTEGER,
-        score INTEGER
-    )
+  CREATE TABLE IF NOT EXISTS sotd_stats (
+                                          id TEXT PRIMARY KEY,
+                                          user_id TEXT REFERENCES users,
+                                          time INTEGER,
+                                          moves INTEGER,
+                                          score INTEGER
+  )
 `);
 stmtSOTDStats.run()
 
@@ -155,3 +155,31 @@ export const getUserSOTDStats = flopoDB.prepare(`SELECT * FROM sotd_stats WHERE 
 export const insertSOTDStats = flopoDB.prepare(`INSERT INTO sotd_stats (id, user_id, time, moves, score) VALUES (@id, @user_id, @time, @moves, @score)`);
 export const clearSOTDStats = flopoDB.prepare(`DELETE FROM sotd_stats`);
 export const deleteUserSOTDStats = flopoDB.prepare(`DELETE FROM sotd_stats WHERE user_id = ?`);
+
+export async function pruneOldLogs() {
+  const users = flopoDB.prepare(`
+        SELECT user_id
+        FROM logs
+        GROUP BY user_id
+        HAVING COUNT(*) > ${process.env.LOGS_BY_USER}
+    `).all();
+
+  const transaction = flopoDB.transaction(() => {
+    for (const { user_id } of users) {
+      flopoDB.prepare(`
+                DELETE FROM logs
+                WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id,
+                        ROW_NUMBER() OVER (ORDER BY id DESC) AS rn
+                        FROM logs
+                        WHERE user_id = ?
+                    )               
+                    WHERE rn > ${process.env.LOGS_BY_USER}
+                )
+            `).run(user_id);
+    }
+  });
+
+  transaction()
+}
