@@ -136,7 +136,7 @@ export const stmtSOTD = flopoDB.prepare(`
 stmtSOTD.run()
 
 export const getSOTD = flopoDB.prepare(`SELECT * FROM sotd WHERE id = '0'`)
-export const insertSOTD = flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, foundationPiles, stockPile, wastePile, seed) VALUES (@id, @tableauPiles, @foundationPiles, @stockPile, @wastePile, @seed)`)
+export const insertSOTD = flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, foundationPiles, stockPile, wastePile, seed) VALUES (0, @tableauPiles, @foundationPiles, @stockPile, @wastePile, @seed)`)
 export const deleteSOTD = flopoDB.prepare(`DELETE FROM sotd WHERE id = '0'`)
 
 export const stmtSOTDStats = flopoDB.prepare(`
