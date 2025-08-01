@@ -153,6 +153,7 @@ export function initTodaysSOTD() {
             updateUserCoins.run({ id: winnerId, coins: newCoinTotal });
             insertLog.run({
                 id: `${winnerId}-sotd-win-${Date.now()}`,
+                target_user_id: null,
                 user_id: winnerId,
                 action: 'SOTD_FIRST_PLACE',
                 coins_amount: reward,
