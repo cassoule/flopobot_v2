@@ -5,7 +5,7 @@ import {
     getAllSkins,
     insertSOTD,
     clearSOTDStats,
-    getAllSOTDStats,
+    getAllSOTDStats, deleteSOTD,
 } from '../database/index.js';
 import { messagesTimestamps, activeSlowmodes, skins } from './state.js';
 import { deal, createSeededRNG, seededShuffle, createDeck } from './solitaire.js';
@@ -178,6 +178,7 @@ export function initTodaysSOTD() {
     // 3. Clear old stats and save the new game state to the database
     try {
         clearSOTDStats.run();
+        deleteSOTD.run();
         insertSOTD.run({
             tableauPiles: JSON.stringify(todaysSOTD.tableauPiles),
             foundationPiles: JSON.stringify(todaysSOTD.foundationPiles),
