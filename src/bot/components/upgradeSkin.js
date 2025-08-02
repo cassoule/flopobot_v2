@@ -54,11 +54,11 @@ export async function handleUpgradeSkin(req, res) {
     // --- 2. Handle Payment ---
     const upgradePrice = parseFloat(process.env.VALO_UPGRADE_PRICE) || parseFloat(skinToUpgrade.maxPrice) / 10;
     try {
-        const buyResponse = await postAPOBuy(userId, upgradePrice.toFixed(0));
+        const buyResponse = await postAPOBuy(userId, upgradePrice);
         if (!buyResponse.ok) {
             return res.send({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: `Il vous faut ${upgradePrice.toFixed(0)}€ pour tenter cette amélioration.`, flags: InteractionResponseFlags.EPHEMERAL },
+                data: { content: `Il vous faut ${upgradePrice.toFixed(2)}€ pour tenter cette amélioration.`, flags: InteractionResponseFlags.EPHEMERAL },
             });
         }
     } catch (paymentError) {
@@ -90,14 +90,14 @@ export async function handleUpgradeSkin(req, res) {
 
     if (isLevelUpgrade) {
         // Upgrading Level
-        const successProb = 1 - (skinToUpgrade.currentLvl / skinData.levels.length) * (skinToUpgrade.tierRank / 5 + 0.5);
+        const successProb = 1 - (skinToUpgrade.currentLvl / skinData.levels.length) * (parseInt(skinToUpgrade.tierRank) / 5 + 0.5);
         if (Math.random() < successProb) {
             succeeded = true;
             skinToUpgrade.currentLvl++;
         }
     } else {
         // Upgrading Chroma
-        const successProb = 1 - (skinToUpgrade.currentChroma / skinData.chromas.length) * (skinToUpgrade.tierRank / 5 + 0.5);
+        const successProb = 1 - (skinToUpgrade.currentChroma / skinData.chromas.length) * (parseInt(skinToUpgrade.tierRank) / 5 + 0.5);
         if (Math.random() < successProb) {
             succeeded = true;
             skinToUpgrade.currentChroma++;
