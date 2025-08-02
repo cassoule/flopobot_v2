@@ -9,6 +9,7 @@ import { apiRoutes } from './routes/api.js';
 import { pokerRoutes } from './routes/poker.js';
 import { solitaireRoutes } from './routes/solitaire.js';
 import {getSocketIo} from "./socket.js";
+import {eryniesRoutes} from "./routes/erynies.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -48,6 +49,9 @@ app.use('/api/poker', pokerRoutes(client, io));
 
 // Solitaire-specific routes
 app.use('/api/solitaire', solitaireRoutes(client, io));
+
+// Erynies-specific routes
+app.use('/api/erynies', eryniesRoutes(client, io));
 
 
 export { app };
