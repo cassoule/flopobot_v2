@@ -12,6 +12,7 @@ import {
     getSOTD, getUser, insertSOTDStats, deleteUserSOTDStats,
     getUserSOTDStats, updateUserCoins, insertLog, getAllSOTDStats
 } from '../../database/index.js';
+import {socketEmit} from "../socket.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -122,7 +123,7 @@ export function solitaireRoutes(client, io) {
         res.json({ success: true, message: "Game reset."});
     });
 
-    router.post('/move', (req, res) => {
+    router.post('/move', async (req, res) => {
         const { userId, ...moveData } = req.body;
         const gameState = activeSolitaireGames[userId];
 
@@ -136,7 +137,7 @@ export function solitaireRoutes(client, io) {
             const win = checkWinCondition(gameState);
             if (win) {
                 gameState.isDone = true;
-                handleWin(userId, gameState, io);
+                await handleWin(userId, gameState, io);
             }
             res.json({ success: true, gameState, win });
         } else {
@@ -182,7 +183,7 @@ function updateGameStats(gameState, actionType, moveData = {}) {
 }
 
 /** Handles the logic when a game is won. */
-function handleWin(userId, gameState, io) {
+async function handleWin(userId, gameState, io) {
     if (!gameState.isSOTD) return;
 
     gameState.endTime = Date.now();
@@ -202,7 +203,7 @@ function handleWin(userId, gameState, io) {
             action: 'SOTD_WIN', target_user_id: null,
             coins_amount: bonus, user_new_amount: newCoins,
         });
-        io.emit('data-updated', { table: 'users' });
+        await socketEmit('data-updated', { table: 'users' });
     }
 
     // Save the score if it's better than the previous one
@@ -218,7 +219,7 @@ function handleWin(userId, gameState, io) {
             moves: gameState.moves,
             score: gameState.score,
         });
-        io.emit('sotd-update'); // Notify frontend of new rankings
+        await socketEmit('sotd-update')
         console.log(`New SOTD high score for ${currentUser.globalName}: ${gameState.score} points.`);
     }
 }
