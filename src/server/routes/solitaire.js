@@ -198,7 +198,8 @@ function handleWin(userId, gameState, io) {
         const newCoins = currentUser.coins + bonus;
         updateUserCoins.run({ id: userId, coins: newCoins });
         insertLog.run({
-            id: `${userId}-sotd-complete-${Date.now()}`, user_id: userId, action: 'SOTD_WIN',
+            id: `${userId}-sotd-complete-${Date.now()}`, user_id: userId,
+            action: 'SOTD_WIN', target_user_id: null,
             coins_amount: bonus, user_new_amount: newCoins,
         });
         io.emit('data-updated', { table: 'users' });
