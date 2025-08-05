@@ -125,7 +125,7 @@ export function apiRoutes(client, io) {
         }
     });
 
-    router.post('/user/:id/daily', async (req, res) => {
+    router.get('/user/:id/daily', async (req, res) => {
         const { id } = req.params;
         try {
             const akhy = getUser.get(id);
