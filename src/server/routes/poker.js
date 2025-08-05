@@ -17,7 +17,7 @@ const router = express.Router();
 /**
  * Factory function to create and configure the poker API routes.
  * @param {object} client - The Discord.js client instance.
- * @param {object} io - The Socket.IO server instance. // FIX: Pass io in as a parameter
+ * @param {object} io - The Socket.IO server instance.
  * @returns {object} The configured Express router.
  */
 export function pokerRoutes(client, io) {
@@ -78,7 +78,6 @@ export function pokerRoutes(client, io) {
         res.status(200).json({ message: 'Successfully joined.' });
     });
 
-    // NEW: Endpoint to accept a player from the queue
     router.post('/accept', async (req, res) => {
         const { hostId, playerId, roomId } = req.body;
         const room = pokerRooms[roomId];

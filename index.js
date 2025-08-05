@@ -43,7 +43,6 @@ server.listen(PORT, async () => {
         console.log('Initial Fetch Error');
     }
 
-
     // Setup scheduled tasks
     //setupCronJobs(client, io);
     console.log('[Cron Jobs Initialized]');
