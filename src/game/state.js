@@ -17,8 +17,8 @@ export let activeSolitaireGames = {};
 // Stores active Poker rooms, keyed by a unique room ID (uuidv4).
 export let pokerRooms = {};
 
-// Stores active Erynies rooms, keyed by a unique room ID (uuidv4).
-export let eryniesRooms = {};
+// Stores active erinyes rooms, keyed by a unique room ID (uuidv4).
+export let erinyesRooms = {};
 
 // --- User and Session State ---
 
