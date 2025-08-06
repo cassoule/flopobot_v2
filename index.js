@@ -7,6 +7,7 @@ import { client } from './src/bot/client.js';
 import { initializeEvents } from './src/bot/events.js';
 import { initializeSocket } from './src/server/socket.js';
 import { getAkhys, setupCronJobs } from './src/utils/index.js';
+import {initializeWSS} from "./src/server/ws.js";
 
 // --- SERVER INITIALIZATION ---
 const PORT = process.env.PORT || 25578;
@@ -21,6 +22,7 @@ export const io = new Server(server, {
     },
 });
 initializeSocket(io, client);
+initializeWSS();
 
 
 // --- BOT INITIALIZATION ---
