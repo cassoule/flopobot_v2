@@ -176,6 +176,7 @@ export function apiRoutes(client, io) {
         try {
             const guild = await client.guilds.fetch(process.env.GUILD_ID);
             const member = await guild.members.fetch(userId);
+            const old_nickname = member.nickname;
             await member.setNickname(nickname);
 
             const newCoins = commandUser.coins - 1000;
@@ -188,6 +189,27 @@ export function apiRoutes(client, io) {
                 coins_amount: -1000,
                 user_new_amount: newCoins,
             });
+
+            console.log(`${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`)
+
+            try {
+                const generalChannel = guild.channels.cache.find(
+                    ch => ch.name === 'général' || ch.name === 'general'
+                );
+                const embed = new EmbedBuilder()
+                    .setDescription(`<@${commandUserId}> a modifié le pseudo de <@${userId}>`)
+                    .addFields(
+                        { name: `${old_nickname}`, value: ``, inline: true },
+                        { name: `➡️`, value: ``, inline: true },
+                        { name: `${nickname}`, value: ``, inline: true }
+                    )
+                    .setColor('#5865f2')
+                    .setTimestamp(new Date());
+
+                await generalChannel.send({ embeds: [embed] });
+            } catch (e) {
+                console.log(e)
+            }
 
             res.status(200).json({ message: `Le pseudo de ${member.user.username} a été changé.` });
         } catch (error) {
