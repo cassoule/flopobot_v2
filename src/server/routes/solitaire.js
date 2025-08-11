@@ -213,6 +213,7 @@ async function handleWin(userId, gameState, io) {
         (gameState.score === existingStats.score && gameState.moves === existingStats.moves && timeTaken < existingStats.time);
 
     if (isNewBest) {
+        deleteUserSOTDStats.run(userId)
         insertSOTDStats.run({
             id: userId, user_id: userId,
             time: timeTaken,
