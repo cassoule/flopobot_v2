@@ -30,7 +30,12 @@ export async function DiscordRequest(endpoint, options) {
 
     // If the request was not successful, throw a detailed error
     if (!res.ok) {
-        const data = await res.json();
+        let data
+        try {
+            data = await res.json();
+        } catch (err) {
+            data = res;
+        }
         console.error(`Discord API Error on endpoint ${endpoint}:`, res.status, data);
         throw new Error(JSON.stringify(data));
     }
