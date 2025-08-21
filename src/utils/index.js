@@ -8,7 +8,7 @@ import { DiscordRequest } from '../api/discord.js';
 import { initTodaysSOTD } from '../game/points.js';
 import {
     insertManyUsers, insertManySkins, resetDailyReward,
-    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD, getUser, getAllUsers,
+    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD, getUser, getAllUsers, insertUser,
 } from '../database/index.js';
 import { activeInventories, activeSearchs, activePredis, pokerRooms, skins } from '../game/state.js';
 
@@ -39,14 +39,21 @@ export async function getAkhys(client) {
         const members = await guild.members.fetch();
         const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
 
+
         const usersToInsert = akhys.map(akhy => ({
             id: akhy.user.id,
             username: akhy.user.username,
             globalName: akhy.user.globalName,
+            warned: 0,
+            warns: 0,
+            allTimeWarns: 0,
+            totalRequests: 0,
         }));
 
         if (usersToInsert.length > 0) {
-            insertManyUsers(usersToInsert);
+            usersToInsert.forEach(user => {
+                try { insertUser.run(user) } catch (err) {}
+            })
         }
 
         const new_akhys = getAllUsers.all().length;
