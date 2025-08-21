@@ -1,9 +1,10 @@
 import { sleep } from 'openai/core';
 import { gork } from '../../utils/ai.js';
-import { formatTime, postAPOBuy, getAPOUsers } from '../../utils/index.js';
+import {formatTime, postAPOBuy, getAPOUsers, getAkhys} from '../../utils/index.js';
 import { channelPointsHandler, slowmodesHandler, randomSkinPrice, initTodaysSOTD } from '../../game/points.js';
 import { requestTimestamps, activeSlowmodes, activePolls, skins } from '../../game/state.js';
 import { flopoDB, getUser, getAllUsers, updateManyUsers } from '../../database/index.js';
+import {client} from "../client.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -187,5 +188,7 @@ async function handleAdminCommands(message) {
                 message.reply(`SQL Error: ${e.message}`);
             }
             break;
+        case `${prefix}:fetch-data`:
+            await getAkhys(client);
     }
 }

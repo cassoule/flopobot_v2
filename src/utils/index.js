@@ -8,7 +8,7 @@ import { DiscordRequest } from '../api/discord.js';
 import { initTodaysSOTD } from '../game/points.js';
 import {
     insertManyUsers, insertManySkins, resetDailyReward,
-    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD,
+    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD, getUser, getAllUsers,
 } from '../database/index.js';
 import { activeInventories, activeSearchs, activePredis, pokerRooms, skins } from '../game/state.js';
 
@@ -34,6 +34,7 @@ export async function InstallGlobalCommands(appId, commands) {
 export async function getAkhys(client) {
     try {
         // 1. Fetch Discord Members
+        const initial_akhys = getAllUsers.all().length;
         const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const members = await guild.members.fetch();
         const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
@@ -47,7 +48,11 @@ export async function getAkhys(client) {
         if (usersToInsert.length > 0) {
             insertManyUsers(usersToInsert);
         }
-        console.log(`[Sync] Found and synced ${akhys.size} users with the 'Akhy' role.`);
+
+        const new_akhys = getAllUsers.all().length;
+        const diff = new_akhys - initial_akhys
+        
+        console.log(`[Sync] Found and synced ${usersToInsert.length} ${diff !== 0 ? '(' + (diff > 0 ? '+' + diff : diff) + ') ' : ''}users with the 'Akhy' role. (ID:${process.env.AKHY_ROLE_ID})`);
 
         // 2. Fetch Valorant Skins
         const [fetchedSkins, fetchedTiers] = await Promise.all([getValorantSkins(), getSkinTiers()]);
