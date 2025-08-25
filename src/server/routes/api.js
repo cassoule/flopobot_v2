@@ -125,6 +125,15 @@ export function apiRoutes(client, io) {
         }
     });
 
+    router.get('/user/:id/games-history', async (req, res) => {
+        try {
+            const games = getUserGames.all({ user_id: req.params.id });
+            res.json({ games })
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to fetch games history.' });
+        }
+    })
+
     router.get('/user/:id/daily', async (req, res) => {
         const { id } = req.params;
         try {

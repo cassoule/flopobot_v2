@@ -281,7 +281,7 @@ async function joinRoom(roomId, userId, io) {
     const room = pokerRooms[roomId];
 
     const playerObject = {
-        id: userId, globalName: user.globalName || user.username,
+        id: userId, globalName: user.globalName || user.username, avatar: user.displayAvatarURL({ dynamic: true, size: 256 }),
         hand: [], bank: room.minBet, bet: 0, folded: false, allin: false,
         last_played_turn: null, solve: null
     };

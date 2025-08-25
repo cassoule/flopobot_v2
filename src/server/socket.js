@@ -191,9 +191,9 @@ async function createGame(client, gameType) {
 
     let lobby;
     if (gameType === 'tictactoe') {
-        lobby = { p1: { id: p1Id, name: p1.globalName, val: 'X' }, p2: { id: p2Id, name: p2.globalName, val: 'O' }, sum: 1, xs: [], os: [], gameOver: false, lastmove: Date.now() };
+        lobby = { p1: { id: p1Id, name: p1.globalName, val: 'X', avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }) }, p2: { id: p2Id, name: p2.globalName, val: 'O', avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }) }, sum: 1, xs: [], os: [], gameOver: false, lastmove: Date.now() };
     } else { // connect4
-        lobby = { p1: { id: p1Id, name: p1.globalName, val: 'R' }, p2: { id: p2Id, name: p2.globalName, val: 'Y' }, turn: p1Id, board: createConnect4Board(), gameOver: false, lastmove: Date.now(), winningPieces: [] };
+        lobby = { p1: { id: p1Id, name: p1.globalName, val: 'R', avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }) }, p2: { id: p2Id, name: p2.globalName, val: 'Y', avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }) }, turn: p1Id, board: createConnect4Board(), gameOver: false, lastmove: Date.now(), winningPieces: [] };
     }
 
     const msgId = await updateDiscordMessage(client, lobby, title);
