@@ -13,7 +13,8 @@ export const stmtUsers = flopoDB.prepare(`
     allTimeWarns INTEGER DEFAULT 0,
     totalRequests INTEGER DEFAULT 0,
     coins INTEGER DEFAULT 0,
-    dailyQueried BOOLEAN DEFAULT 0
+    dailyQueried BOOLEAN DEFAULT 0,
+    avatarUrl TEXT DEFAULT NULL
   )
 `);
 stmtUsers.run();
@@ -36,8 +37,9 @@ export const stmtSkins = flopoDB.prepare(`
 `);
 stmtSkins.run()
 
-export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests) VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests)');
+export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests, avatarUrl) VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests, @avatarUrl)');
 export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, warns = @warns, allTimeWarns = @allTimeWarns, totalRequests = @totalRequests WHERE id = @id');
+export const updateUserAvatar = flopoDB.prepare('UPDATE users SET avatarUrl = @avatarUrl WHERE id = @id');
 export const queryDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 1 WHERE id = ?`);
 export const resetDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 0`);
 export const updateUserCoins = flopoDB.prepare('UPDATE users SET coins = @coins WHERE id = @id');

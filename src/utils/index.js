@@ -8,7 +8,7 @@ import { DiscordRequest } from '../api/discord.js';
 import { initTodaysSOTD } from '../game/points.js';
 import {
     insertManyUsers, insertManySkins, resetDailyReward,
-    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD, getUser, getAllUsers, insertUser,
+    pruneOldLogs, getAllUsers as dbGetAllUsers, getSOTD, getUser, getAllUsers, insertUser, stmtUsers,
 } from '../database/index.js';
 import { activeInventories, activeSearchs, activePredis, pokerRooms, skins } from '../game/state.js';
 
@@ -48,6 +48,7 @@ export async function getAkhys(client) {
             warns: 0,
             allTimeWarns: 0,
             totalRequests: 0,
+            avatarUrl: akhy.user.displayAvatarURL({ dynamic: true, size: 256 }),
         }));
 
         if (usersToInsert.length > 0) {

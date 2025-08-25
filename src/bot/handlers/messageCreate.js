@@ -3,7 +3,7 @@ import { gork } from '../../utils/ai.js';
 import {formatTime, postAPOBuy, getAPOUsers, getAkhys} from '../../utils/index.js';
 import { channelPointsHandler, slowmodesHandler, randomSkinPrice, initTodaysSOTD } from '../../game/points.js';
 import { requestTimestamps, activeSlowmodes, activePolls, skins } from '../../game/state.js';
-import { flopoDB, getUser, getAllUsers, updateManyUsers } from '../../database/index.js';
+import {flopoDB, getUser, getAllUsers, updateManyUsers, insertUser, updateUserAvatar} from '../../database/index.js';
 import {client} from "../client.js";
 
 // Constants for the AI rate limiter
@@ -190,5 +190,20 @@ async function handleAdminCommands(message) {
             break;
         case `${prefix}:fetch-data`:
             await getAkhys(client);
+            break;
+        case `${prefix}:avatars`:
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const members = await guild.members.fetch();
+            const akhys = members.filter(m => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
+
+            const usersToUpdate = akhys.map(akhy => ({
+                id: akhy.user.id,
+                avatarUrl: akhy.user.displayAvatarURL({ dynamic: true, size: 256 }),
+            }));
+
+            usersToUpdate.forEach(user => {
+                try { updateUserAvatar.run(user) } catch (err) {}
+            })
+            break;
     }
 }
