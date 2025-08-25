@@ -5,7 +5,7 @@ import {
     getAllSkins,
     insertSOTD,
     clearSOTDStats,
-    getAllSOTDStats, deleteSOTD,
+    getAllSOTDStats, deleteSOTD, insertGame,
 } from '../database/index.js';
 import { messagesTimestamps, activeSlowmodes, skins } from './state.js';
 import { deal, createSeededRNG, seededShuffle, createDeck } from './solitaire.js';
@@ -160,6 +160,19 @@ export function initTodaysSOTD() {
                 user_new_amount: newCoinTotal,
             });
             console.log(`${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`);
+            insertGame.run({
+                id: `${winnerId}-${Date.now()}`,
+                p1: winnerId,
+                p2: null,
+                p1_score: rankings[0].score,
+                p2_score: null,
+                p1_elo: winnerUser.elo,
+                p2_elo: null,
+                p1_new_elo: winnerUser.elo,
+                p2_new_elo: null,
+                type: 'SOTD',
+                timestamp: Date.now(),
+            });
         }
     }
 

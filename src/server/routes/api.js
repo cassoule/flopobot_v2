@@ -147,12 +147,14 @@ export function apiRoutes(client, io) {
             updateUserCoins.run({ id, coins: newCoins });
             insertLog.run({
                 id: `${id}-daily-${Date.now()}`, user_id: id, action: 'DAILY_REWARD',
+                target_user_id: null,
                 coins_amount: amount, user_new_amount: newCoins,
             });
 
-            await emitDataUpdated({ table: 'users' });
+            await socketEmit('daily-queried', {});
             res.status(200).json({ message: `+${amount} FlopoCoins! Récompense récupérée !` });
         } catch (error) {
+            console.log()
             res.status(500).json({ error: "Failed to process daily reward." });
         }
     });

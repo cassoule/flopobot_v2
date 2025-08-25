@@ -105,7 +105,7 @@ stmtGames.run()
 
 export const insertGame = flopoDB.prepare('INSERT INTO games (id, p1, p2, p1_score, p2_score, p1_elo, p2_elo, p1_new_elo, p2_new_elo, type, timestamp) VALUES (@id, @p1, @p2, @p1_score, @p2_score, @p1_elo, @p2_elo, @p1_new_elo, @p2_new_elo, @type, @timestamp)');
 export const getGames = flopoDB.prepare('SELECT * FROM games');
-export const getUserGames = flopoDB.prepare('SELECT * FROM games WHERE p1 = @user_id OR p2 = @user_id ORDER BY timestamp DESC');
+export const getUserGames = flopoDB.prepare('SELECT * FROM games WHERE p1 = @user_id OR p2 = @user_id ORDER BY timestamp');
 
 
 export const stmtElos = flopoDB.prepare(`
