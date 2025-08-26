@@ -212,10 +212,25 @@ export function moveCard(gameState, moveData) {
     // Add the stack to the destination pile.
     destPile.push(...cardsToMove);
 
+    const histMove = {
+        move: 'move',
+        sourcePileType: sourcePileType,
+        sourcePileIndex: sourcePileIndex,
+        sourceCardIndex: sourceCardIndex,
+        destPileType: destPileType,
+        destPileIndex: destPileIndex,
+        cardsMoved: cardsToMove,
+        cardWasFlipped: false,
+        points: destPileType === 'foundationPiles' ? 11 : 1 // Points for moving to foundation
+    }
+
     // If the source was a tableau pile and there are cards left, flip the new top card.
     if (sourcePileType === 'tableauPiles' && sourcePile.length > 0) {
         sourcePile[sourcePile.length - 1].faceUp = true;
+        histMove.cardWasFlipped = true;
     }
+
+    gameState.hist.push(histMove)
 }
 
 /**
@@ -227,12 +242,48 @@ export function drawCard(gameState) {
         const card = gameState.stockPile.pop();
         card.faceUp = true;
         gameState.wastePile.push(card);
+        gameState.hist.push({
+            move: 'draw',
+            card: card
+        })
     } else if (gameState.wastePile.length > 0) {
         // When stock is empty, move the entire waste pile back to stock, face down.
         gameState.stockPile = gameState.wastePile.reverse();
         gameState.stockPile.forEach(card => (card.faceUp = false));
         gameState.wastePile = [];
+        gameState.hist.push({
+            move: 'draw-reset',
+        })
     }
+}
+
+export function draw3Cards(gameState) {
+    if (gameState.stockPile.length > 0) {
+        let cards = []
+        for (let i = 0; i < 3; i++) {
+            if (gameState.stockPile.length > 0) {
+                const card = gameState.stockPile.pop();
+                card.faceUp = true;
+                gameState.wastePile.push(card);
+                cards.push(card);
+            } else {
+                break; // Stop if stock runs out
+            }
+        }
+        gameState.hist.push({
+            move: 'draw-3',
+            cards: cards,
+        })
+    } else if (gameState.wastePile.length > 0) {
+        // When stock is empty, move the entire waste pile back to stock, face down.
+        gameState.stockPile = gameState.wastePile.reverse();
+        gameState.stockPile.forEach(card => (card.faceUp = false));
+        gameState.wastePile = [];
+        gameState.hist.push({
+            move: 'draw-reset',
+        })
+    }
+
 }
 
 /**
@@ -243,4 +294,106 @@ export function drawCard(gameState) {
 export function checkWinCondition(gameState) {
     const foundationCardCount = gameState.foundationPiles.reduce((acc, pile) => acc + pile.length, 0);
     return foundationCardCount === 52;
+}
+
+/**
+ * Reverts the game state to its previous state based on the last move in the history.
+ * This function mutates the gameState object directly.
+ * @param {Object} gameState - The current game state, which includes a `hist` array.
+ */
+export function undoMove(gameState) {
+    if (!gameState.hist || gameState.hist.length === 0) {
+        console.log("No moves to undo.");
+        return; // Nothing to undo
+    }
+
+    const lastMove = gameState.hist.pop(); // Get and remove the last move from history
+    gameState.moves++; // Undoing a move counts as a new move
+    gameState.score -= lastMove.points || 1; // Revert score based on points from the last move
+
+    switch (lastMove.move) {
+        case 'move':
+            undoCardMove(gameState, lastMove);
+            break;
+        case 'draw':
+            undoDraw(gameState, lastMove);
+            break;
+        case 'draw-3':
+            undoDraw3(gameState, lastMove);
+            break;
+        case 'draw-reset':
+            undoDrawReset(gameState, lastMove);
+            break;
+        default:
+            // If an unknown move type is found, push it back to avoid corrupting the history
+            gameState.hist.push(lastMove);
+            gameState.moves--; // Revert the move count increment
+            gameState.score += lastMove.points || 1; // Revert the score decrement
+            console.error("Unknown move type in history:", lastMove);
+            break;
+    }
+}
+
+// --- Helper functions for undoing specific moves ---
+
+function undoCardMove(gameState, moveData) {
+    const { sourcePileType, sourcePileIndex, sourceCardIndex, destPileType, destPileIndex, cardsMoved, cardWasFlipped } = moveData;
+
+    // 1. Find the destination pile (where the cards are NOW)
+    let currentPile;
+    if (destPileType === 'tableauPiles') currentPile = gameState.tableauPiles[destPileIndex];
+    else if (destPileType === 'foundationPiles') currentPile = gameState.foundationPiles[destPileIndex];
+
+    // 2. Remove the moved cards from their current pile
+    // Using splice with a negative index removes from the end of the array
+    currentPile.splice(-cardsMoved.length);
+
+    // 3. Find the original source pile
+    let originalPile;
+    if (sourcePileType === 'tableauPiles') originalPile = gameState.tableauPiles[sourcePileIndex];
+    else if (sourcePileType === 'wastePile') originalPile = gameState.wastePile;
+    else if (sourcePileType === 'foundationPiles') originalPile = gameState.foundationPiles[sourcePileIndex];
+
+    // 4. Put the cards back where they came from
+    // Using splice to insert the cards back at their original index
+    originalPile.splice(sourceCardIndex, 0, ...cardsMoved);
+
+    // 5. If a card was flipped during the move, flip it back to face-down
+    if (cardWasFlipped) {
+        const cardToUnflip = originalPile[sourceCardIndex - 1];
+        if (cardToUnflip) {
+            cardToUnflip.faceUp = false;
+        }
+    }
+}
+
+function undoDraw(gameState, moveData) {
+    // A 'draw' move means a card went from stock to waste.
+    // To undo, move it from waste back to stock and flip it face-down.
+    const cardToReturn = gameState.wastePile.pop();
+    if (cardToReturn) {
+        cardToReturn.faceUp = false;
+        gameState.stockPile.push(cardToReturn);
+    }
+}
+
+function undoDraw3(gameState, moveData) {
+    // A 'draw-3' move means up to 3 cards went from stock to
+    // waste. To undo, move them back to stock and flip them face-down.
+    const cardsToReturn = moveData.cards || [];
+    for (let i = 0; i < cardsToReturn.length; i++) {
+        const card = gameState.wastePile.pop();
+        if (card) {
+            card.faceUp = false;
+            gameState.stockPile.push(card);
+        }
+    }
+}
+
+function undoDrawReset(gameState, moveData) {
+    // A 'draw-reset' means the waste pile was moved to the stock pile.
+    // To undo, move the stock pile back to the waste pile and flip cards face-up.
+    gameState.wastePile = gameState.stockPile.reverse();
+    gameState.wastePile.forEach(card => (card.faceUp = true));
+    gameState.stockPile = [];
 }

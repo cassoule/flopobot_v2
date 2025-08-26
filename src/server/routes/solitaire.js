@@ -3,7 +3,7 @@ import express from 'express';
 // --- Game Logic Imports ---
 import {
     createDeck, shuffle, deal, isValidMove, moveCard, drawCard,
-    checkWinCondition, createSeededRNG, seededShuffle
+    checkWinCondition, createSeededRNG, seededShuffle, undoMove, draw3Cards
 } from '../../game/solitaire.js';
 
 // --- Game State & Database Imports ---
@@ -28,7 +28,7 @@ export function solitaireRoutes(client, io) {
     // --- Game Initialization Endpoints ---
 
     router.post('/start', (req, res) => {
-        const { userId, userSeed } = req.body;
+        const { userId, userSeed, hardMode } = req.body;
         if (!userId) return res.status(400).json({ error: 'User ID is required.' });
 
         // If a game already exists for the user, return it instead of creating a new one.
@@ -56,6 +56,10 @@ export function solitaireRoutes(client, io) {
         const gameState = deal(deck);
         gameState.seed = seed;
         gameState.isSOTD = false;
+        gameState.score = 0;
+        gameState.moves = 0;
+        gameState.hist = [];
+        gameState.hardMode = hardMode ?? false;
         activeSolitaireGames[userId] = gameState;
 
         res.json({ success: true, gameState });
@@ -88,6 +92,8 @@ export function solitaireRoutes(client, io) {
             moves: 0,
             score: 0,
             seed: sotd.seed,
+            hist: [],
+            hardMode: false,
         };
 
         activeSolitaireGames[userId] = gameState;
@@ -152,10 +158,26 @@ export function solitaireRoutes(client, io) {
         if (!gameState) return res.status(404).json({ error: 'Game not found.' });
         if (gameState.isDone) return res.status(400).json({ error: 'This game is already completed.'});
 
-        drawCard(gameState);
+        if (gameState.hardMode) {
+            draw3Cards(gameState);
+        } else {
+            drawCard(gameState);
+        }
         updateGameStats(gameState, 'draw');
         res.json({ success: true, gameState });
     });
+
+    router.post('/undo', (req, res) => {
+        const { userId } = req.body;
+        const gameState = activeSolitaireGames[userId];
+
+        if (!gameState) return res.status(404).json({ error: 'Game not found.' });
+        if (gameState.isDone) return res.status(400).json({ error: 'This game is already completed.'});
+        if (gameState.hist.length === 0) return res.status(400).json({ error: 'No moves to undo.'});
+
+        undoMove(gameState);
+        res.json({ success: true, gameState });
+    })
 
     return router;
 }
@@ -165,7 +187,7 @@ export function solitaireRoutes(client, io) {
 
 /** Updates game stats like moves and score after an action. */
 function updateGameStats(gameState, actionType, moveData = {}) {
-    if (!gameState.isSOTD) return; // Only track stats for SOTD
+    // if (!gameState.isSOTD) return; // Only track stats for SOTD
 
     gameState.moves++;
     if (actionType === 'move') {
