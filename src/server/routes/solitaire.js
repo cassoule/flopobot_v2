@@ -206,13 +206,26 @@ function updateGameStats(gameState, actionType, moveData = {}) {
 
 /** Handles the logic when a game is won. */
 async function handleWin(userId, gameState, io) {
-    if (!gameState.isSOTD) return;
+    const currentUser = getUser.get(userId);
+    if (!currentUser) return;
+
+    if (gameState.hardMode) {
+        const bonus = 100;
+        const newCoins = currentUser.coins + bonus;
+        updateUserCoins.run({ id: userId, coins: newCoins });
+        insertLog.run({
+            id: `${userId}-hardmode-solitaire-${Date.now()}`, user_id: userId,
+            action: 'HARDMODE_SOLITAIRE_WIN', target_user_id: null,
+            coins_amount: bonus, user_new_amount: newCoins,
+        });
+        await socketEmit('data-updated', { table: 'users' });
+    }
+
+    if (!gameState.isSOTD) return; // Only process SOTD wins here
 
     gameState.endTime = Date.now();
     const timeTaken = gameState.endTime - gameState.startTime;
 
-    const currentUser = getUser.get(userId);
-    if (!currentUser) return;
     const existingStats = getUserSOTDStats.get(userId);
 
     if (!existingStats) {
