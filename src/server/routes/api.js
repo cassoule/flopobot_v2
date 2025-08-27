@@ -9,7 +9,7 @@ import {
 } from '../../database/index.js';
 
 // --- Game State Imports ---
-import { activePolls, activeSlowmodes, activePredis } from '../../game/state.js';
+import {activePolls, activeSlowmodes, activePredis, skins} from '../../game/state.js';
 
 // --- Utility and API Imports ---
 import { getOnlineUsersWithRole } from '../../utils/index.js';
@@ -45,6 +45,47 @@ export function apiRoutes(client, io) {
             res.status(500).json({ error: 'Failed to fetch users.' });
         }
     });
+
+    router.get('/skins', (req, res) => {
+        try {
+            res.json(skins)
+        } catch (error) {
+            console.error("Error fetching skins:", error);
+            res.status(500).json({ error: 'Failed to fetch skins.' });
+        }
+    })
+
+    router.get('/skin/:id', (req, res) => {
+        try {
+            const skinData = skins.find((s) => s.uuid === req.params.id);
+            res.json(skinData)
+        } catch (error) {
+            console.error("Error fetching skin:", error);
+            res.status(500).json({ error: 'Failed to fetch skin.' });
+        }
+    })
+
+    router.post('/skin/:id', (req, res) => {
+        const { level, chroma } = req.body;
+        try {
+            const skinData = skins.find((s) => s.uuid === req.params.id);
+            if (!skinData) res.status(404).json({ error: 'Invalid skin.' });
+
+            const levelData = skinData.levels[level - 1] || {};
+            const chromaData = skinData.chromas[chroma - 1] || {};
+
+            let videoUrl = null;
+            if (level === skinData.levels.length) {
+                videoUrl = chromaData.streamedVideo;
+            }
+            videoUrl = videoUrl || levelData.streamedVideo;
+
+            res.json({ url: videoUrl });
+        } catch (error) {
+            console.error("Error fetching skins:", error);
+            res.status(500).json({ error: 'Failed to fetch skins.' });
+        }
+    })
 
     router.get('/users/by-elo', (req, res) => {
         try {
