@@ -164,7 +164,6 @@ export async function handleTimeoutCommand(req, res, client) {
                         type: MessageComponentTypes.ACTION_ROW,
                         components: [
                             { type: MessageComponentTypes.BUTTON, custom_id: `vote_for_${pollId}`, label: 'Oui ✅', style: ButtonStyleTypes.SUCCESS },
-                            { type: MessageComponentTypes.BUTTON, custom_id: `vote_against_${pollId}`, label: 'Non ❌', style: ButtonStyleTypes.DANGER },
                         ],
                     }],
                 },
@@ -204,7 +203,6 @@ export async function handleTimeoutCommand(req, res, client) {
                 type: MessageComponentTypes.ACTION_ROW,
                 components: [
                     { type: MessageComponentTypes.BUTTON, custom_id: `vote_for_${pollId}`, label: 'Oui ✅', style: ButtonStyleTypes.SUCCESS },
-                    { type: MessageComponentTypes.BUTTON, custom_id: `vote_against_${pollId}`, label: 'Non ❌', style: ButtonStyleTypes.DANGER },
                 ],
             }],
         },
