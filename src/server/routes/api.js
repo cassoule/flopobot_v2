@@ -192,7 +192,7 @@ export function apiRoutes(client, io) {
                 coins_amount: amount, user_new_amount: newCoins,
             });
 
-            await socketEmit('daily-queried', {});
+            await socketEmit('daily-queried', { userId: id });
             res.status(200).json({ message: `+${amount} FlopoCoins! Récompense récupérée !` });
         } catch (error) {
             console.log()
@@ -277,7 +277,7 @@ export function apiRoutes(client, io) {
 
         if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
 
-        if (commandUser.coins < 10000) return res.status(403).json({ message: 'Pas assez de coins' });
+        if (commandUser.coins < 5000) return res.status(403).json({ message: 'Pas assez de coins' });
 
         try {
             const discordUser = await client.users.fetch(userId);
@@ -288,22 +288,39 @@ export function apiRoutes(client, io) {
 
             updateUserCoins.run({
                 id: commandUserId,
-                coins: commandUser.coins - 10000,
+                coins: commandUser.coins - 5000,
             })
             insertLog.run({
                 id: commandUserId + '-' + Date.now(),
                 user_id: commandUserId,
                 action: 'SPAM_PING',
                 target_user_id: userId,
-                coins_amount: -10000,
-                user_new_amount: commandUser.coins - 10000,
+                coins_amount: -5000,
+                user_new_amount: commandUser.coins - 5000,
             })
             await emitDataUpdated({ table: 'users', action: 'update' });
 
-            for (let i = 0; i < 29; i++) {
-                await discordUser.send(`<@${userId}>`)
-                await sleep(1000);
+            try {
+                const guild = await client.guilds.fetch(process.env.GUILD_ID);
+                const generalChannel = guild.channels.cache.find(
+                    ch => ch.name === 'général' || ch.name === 'general'
+                );
+                const embed = new EmbedBuilder()
+                    .setDescription(`<@${commandUserId}> a envoyé un spam ping à <@${userId}>`)
+                    .setColor('#5865f2')
+                    .setTimestamp(new Date());
+
+                await generalChannel.send({ embeds: [embed] });
+            } catch (e) {
+                console.log(e)
             }
+
+            for (let i = 1; i < 120; i++) {
+                await discordUser.send(`<@${userId}>`)
+                await sleep(250);
+            }
+
+
         } catch (err) {
             console.log(err)
             res.status(500).json({ message : "Oups ça n'a pas marché" });
@@ -331,6 +348,35 @@ export function apiRoutes(client, io) {
         if (activeSlowmodes[userId]) {
             if (userId === commandUserId) {
                 delete activeSlowmodes[userId];
+                await socketEmit('new-slowmode', { action: 'new slowmode' });
+
+                updateUserCoins.run({
+                    id: commandUserId,
+                    coins: commandUser.coins - 10000,
+                })
+                insertLog.run({
+                    id: commandUserId + '-' + Date.now(),
+                    user_id: commandUserId,
+                    action: 'SLOWMODE',
+                    target_user_id: userId,
+                    coins_amount: -10000,
+                    user_new_amount: commandUser.coins - 10000,
+                })
+
+                try {
+                    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+                    const generalChannel = guild.channels.cache.find(
+                        ch => ch.name === 'général' || ch.name === 'general'
+                    );
+                    const embed = new EmbedBuilder()
+                        .setDescription(`<@${commandUserId}> a retiré son slowmode`)
+                        .setColor('#5865f2')
+                        .setTimestamp(new Date());
+
+                    await generalChannel.send({ embeds: [embed] });
+                } catch (e) {
+                    console.log(e)
+                }
                 return res.status(200).json({ message: 'Slowmode retiré'})
             } else {
                 let timeLeft = (activeSlowmodes[userId].endAt - Date.now())/1000
@@ -362,7 +408,138 @@ export function apiRoutes(client, io) {
         })
         await emitDataUpdated({ table: 'users', action: 'update' });
 
+        try {
+            const guild = await client.guilds.fetch(process.env.GUILD_ID);
+            const generalChannel = guild.channels.cache.find(
+                ch => ch.name === 'général' || ch.name === 'general'
+            );
+            const embed = new EmbedBuilder()
+                .setDescription(`<@${commandUserId}> a mis <@${userId}> en slowmode pendant 1h`)
+                .setColor('#5865f2')
+                .setTimestamp(new Date());
+
+            await generalChannel.send({ embeds: [embed] });
+        } catch (e) {
+            console.log(e)
+        }
+
         return res.status(200).json({ message: `${user.globalName} est maintenant en slowmode pour 1h`})
+    });
+
+    // --- Time-Out Route ---
+
+    router.post('/timeout', async (req, res) => {
+        let { userId, commandUserId} = req.body
+
+        const user = getUser.get(userId)
+        const commandUser = getUser.get(commandUserId);
+
+        if (!commandUser || !user) return res.status(404).json({ message: 'Oups petit soucis' });
+
+        if (commandUser.coins < 100000) return res.status(403).json({ message: 'Pas assez de coins' });
+
+        if (!user) return res.status(403).send({ message: 'Oups petit problème'})
+
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const member = await guild.members.fetch(userId);
+
+        if (userId === commandUserId) {
+            if (member &&
+                (!member.communicationDisabledUntilTimestamp ||
+                member.communicationDisabledUntilTimestamp < Date.now())) {
+                return res.status(403).json({ message: `Impossible de t'auto time-out`})
+            }
+            await socketEmit('new-timeout', { action: 'new slowmode' });
+
+            try {
+                const endpointTimeout = `guilds/${process.env.GUILD_ID}/members/${userId}`;
+                await DiscordRequest(endpointTimeout, {
+                    method: 'PATCH',
+                    body: { communication_disabled_until: new Date(Date.now()).toISOString() },
+                });
+            } catch (e) {
+                console.log(e)
+                return res.status(403).send({ message: `Impossible de time-out ${user.globalName}` });
+            }
+
+            updateUserCoins.run({
+                id: commandUserId,
+                coins: commandUser.coins - 10000,
+            })
+            insertLog.run({
+                id: commandUserId + '-' + Date.now(),
+                user_id: commandUserId,
+                action: 'TIMEOUT',
+                target_user_id: userId,
+                coins_amount: -10000,
+                user_new_amount: commandUser.coins - 10000,
+            })
+
+            try {
+                const generalChannel = guild.channels.cache.find(
+                    ch => ch.name === 'général' || ch.name === 'general'
+                );
+                const embed = new EmbedBuilder()
+                    .setDescription(`<@${commandUserId}> a retiré son time-out`)
+                    .setColor('#5865f2')
+                    .setTimestamp(new Date());
+
+                await generalChannel.send({ embeds: [embed] });
+            } catch (e) {
+                console.log(e)
+            }
+            return res.status(200).json({ message: 'Time-out retiré'})
+        }
+
+        if (member &&
+            member.communicationDisabledUntilTimestamp &&
+            member.communicationDisabledUntilTimestamp > Date.now()) {
+            return res.status(403).json({ message: `${user.globalName} est déjà time-out`})
+        }
+
+        try {
+            const timeoutUntil = new Date(Date.now() + 43200 * 1000).toISOString();
+            const endpointTimeout = `guilds/${process.env.GUILD_ID}/members/${userId}`;
+            await DiscordRequest(endpointTimeout, {
+                method: 'PATCH',
+                body: { communication_disabled_until: timeoutUntil },
+            });
+        } catch (e) {
+            console.log(e)
+            return res.status(403).send({ message: `Impossible de time-out ${user.globalName}` });
+        }
+
+        await socketEmit('new-timeout', { action: 'new timeout' });
+
+        updateUserCoins.run({
+            id: commandUserId,
+            coins: commandUser.coins - 100000,
+        })
+        insertLog.run({
+            id: commandUserId + '-' + Date.now(),
+            user_id: commandUserId,
+            action: 'TIMEOUT',
+            target_user_id: userId,
+            coins_amount: -100000,
+            user_new_amount: commandUser.coins - 100000,
+        })
+        await emitDataUpdated({ table: 'users', action: 'update' });
+
+        try {
+            const generalChannel = guild.channels.cache.find(
+                ch => ch.name === 'général' || ch.name === 'general'
+            );
+            const embed = new EmbedBuilder()
+                .setDescription(`<@${commandUserId}> a time-out <@${userId}> pour 12h`)
+                .setColor('#5865f2')
+                .setTimestamp(new Date());
+
+            await generalChannel.send({ embeds: [embed] });
+        } catch (e) {
+            console.log(e)
+        }
+
+        return res.status(200).json({ message: `${user.globalName} est maintenant time-out pour 12h`})
     });
 
     // --- Prediction Routes ---

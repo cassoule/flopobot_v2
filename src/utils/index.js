@@ -225,6 +225,37 @@ export function getRandomEmoji(list = 0) {
     return selectedList[Math.floor(Math.random() * selectedList.length)];
 }
 
+export function formatAmount(amount) {
+    if (amount >= 1000000000) {
+        amount /= 1000000000
+        return (
+            amount
+                .toFixed(2)
+                .toString()
+                .replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + 'Md'
+        )
+    }
+    if (amount >= 1000000) {
+        amount /= 1000000
+        return (
+            amount
+                .toFixed(2)
+                .toString()
+                .replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + 'M'
+        )
+    }
+    if (amount >= 10000) {
+        amount /= 1000
+        return (
+            amount
+                .toFixed(2)
+                .toString()
+                .replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + 'K'
+        )
+    }
+    return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
 
 // --- Private Helpers ---
 

@@ -11,6 +11,8 @@ import { getUser, updateUserCoins, insertLog } from '../../database/index.js';
 import { sleep } from "openai/core";
 import {client} from "../../bot/client.js";
 import {emitPokerToast, emitPokerUpdate} from "../socket.js";
+import {ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder} from "discord.js";
+import {formatAmount} from "../../utils/index.js";
 
 const router = express.Router();
 
@@ -45,6 +47,7 @@ export function pokerRoutes(client, io) {
             return res.status(403).json({ message: 'You are already in a poker room.' });
         }
 
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
         const creator = await client.users.fetch(creatorId);
         const id = uuidv4();
         const name = uniqueNamesGenerator({ dictionaries: [adjectives, ['Poker']], separator: ' ', style: 'capital' });
@@ -60,6 +63,34 @@ export function pokerRoutes(client, io) {
 
         await joinRoom(id, creatorId, io); // Auto-join the creator
         await emitPokerUpdate({ room: pokerRooms[id], type: 'room-created' });
+
+        try {
+            const generalChannel = guild.channels.cache.find(
+                ch => ch.name === 'général' || ch.name === 'general'
+            );
+            const embed = new EmbedBuilder()
+                .setTitle('Flopoker 🃏')
+                .setDescription(`<@${creatorId}> a créé une table de poker`)
+                .addFields(
+                    { name: `Nom`, value: `**${name}**`, inline: true },
+                    { name: `${fakeMoney ? 'Mise initiale' : 'Prix d\'entrée'}`, value: `**${formatAmount(minBet)}** 🪙`, inline: true },
+                    { name: `Fake Money`, value: `${fakeMoney ? '**Oui** ✅' : '**Non** ❌'}`, inline: true },
+                )
+                .setColor('#5865f2')
+                .setTimestamp(new Date());
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel(`Rejoindre la table ${name}`)
+                    .setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}/poker/${id}`)
+                    .setStyle(ButtonStyle.Link)
+            );
+
+            await generalChannel.send({ embeds: [embed], components: [row] });
+        } catch (e) {
+            console.log(e)
+        }
+
         res.status(201).json({ roomId: id });
     });
 
@@ -141,7 +172,7 @@ export function pokerRoutes(client, io) {
                 }
             }
         } catch (e) {
-            //
+            console.log(e)
         }
 
         await emitPokerUpdate({ type: 'player-left' });
@@ -173,7 +204,7 @@ export function pokerRoutes(client, io) {
                 }
             }
         } catch (e) {
-            //
+            console.log(e)
         }
 
         await emitPokerUpdate({ type: 'player-kicked' });
@@ -418,8 +449,6 @@ async function handleShowdown(room, io, winners) {
 
     await clearAfkPlayers(room);
 
-    console.log(room)
-
     //await pokerEloHandler(room);
     await emitPokerUpdate({ room: room, type: 'showdown' });
     await emitPokerToast({
@@ -451,7 +480,7 @@ function updatePlayerCoins(player, amount, isFake) {
     insertLog.run({
         id: `${player.id}-poker-${Date.now()}`,
         user_id: player.id, target_user_id: null,
-        action: `POKER_${amount > 0 ? 'WIN' : 'BET'}`,
+        action: `POKER_${amount > 0 ? 'WIN' : 'LOSE'}`,
         coins_amount: amount, user_new_amount: userDB.coins + amount,
     });
 }
