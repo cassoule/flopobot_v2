@@ -37,7 +37,7 @@ export async function gork(messageHistory) {
         // --- OpenAI Provider ---
         if (modelProvider === 'OpenAI' && openai) {
             const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini", // Using a modern, cost-effective model
+                model: "gpt-4", // Using a modern, cost-effective model
                 messages: messageHistory,
             });
             return completion.choices[0].message.content;
