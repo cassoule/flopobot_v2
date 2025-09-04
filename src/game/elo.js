@@ -5,6 +5,8 @@ import {
     updateElo,
     insertGame,
 } from '../database/index.js';
+import {ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder} from "discord.js";
+import {client} from "../bot/client.js";
 
 /**
  * Handles Elo calculation for a standard 1v1 game.
@@ -57,6 +59,21 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 
     console.log(`Elo Update (${type}) for ${p1DB.globalName}: ${p1CurrentElo} -> ${finalP1Elo}`);
     console.log(`Elo Update (${type}) for ${p2DB.globalName}: ${p2CurrentElo} -> ${finalP2Elo}`);
+    try {
+        const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+        const user1 = await client.users.fetch(p1Id);
+        const user2 = await client.users.fetch(p2Id);
+        const diff1 = finalP1Elo - p1CurrentElo;
+        const diff2 = finalP2Elo - p2CurrentElo;
+        const embed = new EmbedBuilder()
+            .setTitle(`FlopoRank - ${type}`)
+            .setDescription(`
+                **${user1.globalName || user1.username}** a ${diff1 > 0 ? 'gagné' : 'perdu'} **${Math.abs(diff1)}** elo 🏆 ${p1CurrentElo} ${diff1 > 0 ? '↗️' : '↘️'} **${finalP1Elo}**\n
+                **${user2.globalName || user2.username}** a ${diff2 > 0 ? 'gagné' : 'perdu'} **${Math.abs(diff2)}** elo 🏆 ${p2CurrentElo} ${diff2 > 0 ? '↗️' : '↘️'} **${finalP2Elo}**\n
+            `)
+            .setColor('#5865f2');
+        await generalChannel.send({ embeds: [embed] });
+    } catch (e) { console.error(`Failed to post elo update message`, e); }
 
     // --- 4. Update Database ---
     updateElo.run({ id: p1Id, elo: finalP1Elo });
