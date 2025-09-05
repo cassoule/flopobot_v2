@@ -131,7 +131,7 @@ export function randomSkinPrice() {
     result *= (1 + (randomLevel / Math.max(randomSkinData.levels.length, 2)));
     result *= (1 + (randomChroma / 4));
 
-    return result.toFixed(2);
+    return result.toFixed(0);
 }
 
 /**

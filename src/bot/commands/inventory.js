@@ -113,9 +113,9 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
                 embeds: [{
                     title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
                     color: parseInt(currentSkin.tierColor, 16) || 0xF2F3F3,
-                    footer: { text: `Page 1/${inventorySkins.length} | Valeur Totale : ${totalPrice.toFixed(2)}€` },
+                    footer: { text: `Page 1/${inventorySkins.length} | Valeur Totale : ${totalPrice.toFixed(0)}€` },
                     fields: [{
-                        name: `${currentSkin.displayName} | ${currentSkin.currentPrice.toFixed(2)}€`,
+                        name: `${currentSkin.displayName} | ${currentSkin.currentPrice.toFixed(0)}€`,
                         value: `${currentSkin.tierText}\nChroma : ${getChromaText(currentSkin, skinData)} | ${getChromaName(currentSkin, skinData)}\nLvl : **${currentSkin.currentLvl}**/${skinData.levels.length}`,
                     }],
                     image: { url: getImageUrl(currentSkin, skinData) },
