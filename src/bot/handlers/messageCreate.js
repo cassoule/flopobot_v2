@@ -1,9 +1,24 @@
 import { sleep } from 'openai/core';
 import { gork } from '../../utils/ai.js';
-import {formatTime, postAPOBuy, getAPOUsers, getAkhys} from '../../utils/index.js';
+import {
+    formatTime,
+    postAPOBuy,
+    getAPOUsers,
+    getAkhys,
+    calculateBasePrice,
+    calculateMaxPrice
+} from '../../utils/index.js';
 import { channelPointsHandler, slowmodesHandler, randomSkinPrice, initTodaysSOTD } from '../../game/points.js';
 import { requestTimestamps, activeSlowmodes, activePolls, skins } from '../../game/state.js';
-import {flopoDB, getUser, getAllUsers, updateManyUsers, insertUser, updateUserAvatar} from '../../database/index.js';
+import {
+    flopoDB,
+    getUser,
+    getAllUsers,
+    updateManyUsers,
+    insertUser,
+    updateUserAvatar,
+    getAllSkins, hardUpdateSkin
+} from '../../database/index.js';
 import {client} from "../client.js";
 
 // Constants for the AI rate limiter
@@ -167,7 +182,7 @@ async function handleAdminCommands(message) {
             for (let i = 0; i < amount; i++) {
                 sum += parseFloat(randomSkinPrice());
             }
-            console.log(`Result for ${amount} skins: Avg: ~${(sum / amount).toFixed(2)}€ | Total: ${sum.toFixed(2)}€ | Elapsed: ${Date.now() - start_at}ms`);
+            console.log(`Result for ${amount} skins: Avg: ~${(sum / amount).toFixed(0)}€ | Total: ${sum.toFixed(0)}€ | Elapsed: ${Date.now() - start_at}ms`);
             break;
         case `${prefix}:sotd`:
             initTodaysSOTD();
@@ -204,6 +219,38 @@ async function handleAdminCommands(message) {
             usersToUpdate.forEach(user => {
                 try { updateUserAvatar.run(user) } catch (err) {}
             })
+            break;
+        case `${prefix}:rework-skins`:
+            console.log("Reworking all skin prices...");
+            const dbSkins = getAllSkins.all();
+            dbSkins.forEach(skin => {
+                const fetchedSkin = skins.find(s => s.uuid === skin.uuid);
+                const basePrice = calculateBasePrice(fetchedSkin, skin.tierRank)?.toFixed(0);
+                const calculatePrice = () => {
+                    if (!skin.basePrice) return null;
+                    let result = parseFloat(basePrice);
+                    result *= (1 + (skin.currentLvl / Math.max(fetchedSkin.levels.length, 2)));
+                    result *= (1 + (skin.currentChroma / 4));
+                    return parseFloat(result.toFixed(0));
+                };
+                const maxPrice = calculateMaxPrice(basePrice, fetchedSkin).toFixed(0);
+                hardUpdateSkin.run({
+                    uuid: skin.uuid,
+                    displayName: skin.displayName,
+                    contentTierUuid: skin.contentTierUuid,
+                    displayIcon: skin.displayIcon,
+                    user_id: skin.user_id,
+                    tierRank: skin.tierRank,
+                    tierColor: skin.tierColor,
+                    tierText: skin.tierText,
+                    basePrice: basePrice,
+                    currentLvl: skin.currentLvl || null,
+                    currentChroma: skin.currentChroma || null,
+                    currentPrice: skin.currentPrice ? calculatePrice() : null,
+                    maxPrice: maxPrice,
+                })
+            })
+            console.log('Reworked', dbSkins.length, 'skins.');
             break;
     }
 }

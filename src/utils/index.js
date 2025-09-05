@@ -83,8 +83,8 @@ export async function getAkhys(client) {
                     tierRank: tier.rank,
                     tierColor: tier.highlightColor?.slice(0, 6) || 'F2F3F3',
                     tierText: formatTierText(tier.rank, skin.displayName),
-                    basePrice: basePrice.toFixed(2),
-                    maxPrice: calculateMaxPrice(basePrice, skin).toFixed(2),
+                    basePrice: basePrice.toFixed(0),
+                    maxPrice: calculateMaxPrice(basePrice, skin).toFixed(0),
                 };
             });
 
@@ -259,24 +259,34 @@ export function formatAmount(amount) {
 
 // --- Private Helpers ---
 
-function calculateBasePrice(skin, tierRank) {
+export function calculateBasePrice(skin, tierRank) {
     const name = skin.displayName.toLowerCase();
     let price = 6000; // Default for melee
     if (name.includes('classic')) price = 150;
     else if (name.includes('shorty')) price = 300;
     else if (name.includes('frenzy')) price = 450;
     else if (name.includes('ghost')) price = 500;
-    // ... add all other weapon prices ...
+    else if (name.includes('sheriff')) price = 800;
+    else if (name.includes('stinger')) price = 1000;
+    else if (name.includes('spectre')) price = 1600;
+    else if (name.includes('bucky')) price = 900;
+    else if (name.includes('judge')) price = 1500;
+    else if (name.includes('bulldog')) price = 2100;
+    else if (name.includes('guardian')) price = 2700
     else if (name.includes('vandal') || name.includes('phantom')) price = 2900;
+    else if (name.includes('marshal')) price = 950;
+    else if (name.includes('operator')) price = 4500;
+    else if (name.includes('ares')) price = 1700;
+    else if (name.includes('odin')) price = 3200;
 
     price *= (1 + (tierRank || 0));
     if (name.includes('vct')) price *= 1.25;
     if (name.includes('champions')) price *= 2;
 
-    return price / 1111;
+    return price / 124;
 }
 
-function calculateMaxPrice(basePrice, skin) {
+export function calculateMaxPrice(basePrice, skin) {
     let res = basePrice;
     res *= (1 + (skin.levels.length / Math.max(skin.levels.length, 2)));
     res *= (1 + (skin.chromas.length / 4));

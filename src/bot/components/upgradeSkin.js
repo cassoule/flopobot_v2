@@ -20,6 +20,16 @@ export async function handleUpgradeSkin(req, res) {
     const { member, data } = req.body;
     const { custom_id } = data;
 
+    return res.send({
+        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+        data: {
+            content: "Les améliorations de skins sont temporairement désactivées.",
+            flags: InteractionResponseFlags.EPHEMERAL,
+        },
+    });
+
+    //TODO paiement en FlopoCoins
+
     const interactionId = custom_id.replace('upgrade_', '');
     const userId = member.user.id;
 
@@ -58,7 +68,7 @@ export async function handleUpgradeSkin(req, res) {
         if (!buyResponse.ok) {
             return res.send({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: `Il vous faut ${upgradePrice.toFixed(2)}€ pour tenter cette amélioration.`, flags: InteractionResponseFlags.EPHEMERAL },
+                data: { content: `Il vous faut ${upgradePrice.toFixed(0)}€ pour tenter cette amélioration.`, flags: InteractionResponseFlags.EPHEMERAL },
             });
         }
     } catch (paymentError) {
@@ -110,7 +120,7 @@ export async function handleUpgradeSkin(req, res) {
             let result = parseFloat(skinToUpgrade.basePrice);
             result *= (1 + (skinToUpgrade.currentLvl / Math.max(skinData.levels.length, 2)));
             result *= (1 + (skinToUpgrade.currentChroma / 4));
-            return parseFloat(result.toFixed(2));
+            return parseFloat(result.toFixed(0));
         };
         skinToUpgrade.currentPrice = calculatePrice();
 

@@ -19,9 +19,17 @@ import { skins } from '../../game/state.js';
 export async function handleValorantCommand(req, res, client) {
     const { member, token } = req.body;
     const userId = member.user.id;
-    const valoPrice = parseInt(process.env.VALO_PRICE, 10) || 150;
+    const valoPrice = parseInt(process.env.VALO_PRICE, 10) || 500;
 
     try {
+        // TODO acheter en FlopoCoins
+        return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+                content: "Les caisses Valorant sont temporairement désactivées.",
+                flags: InteractionResponseFlags.EPHEMERAL,
+            },
+        });
         // --- 1. Verify and process payment ---
         const buyResponse = await postAPOBuy(userId, valoPrice);
 
@@ -78,7 +86,7 @@ export async function handleValorantCommand(req, res, client) {
                     let result = parseFloat(dbSkin.basePrice);
                     result *= (1 + (randomLevel / Math.max(randomSkinData.levels.length, 2)));
                     result *= (1 + (randomChroma / 4));
-                    return parseFloat(result.toFixed(2));
+                    return parseFloat(result.toFixed(0));
                 };
                 const finalPrice = calculatePrice();
 
