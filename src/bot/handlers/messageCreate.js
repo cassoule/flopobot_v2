@@ -139,13 +139,16 @@ async function handleAiMention(message, client, io) {
         // Format the conversation for the AI
         const messageHistory = messagesArray.map(msg => ({
             role: msg.author.id === client.user.id ? 'assistant' : 'user',
-            content: `<@${msg.author.id}> a dit: ${msg.content}`
+            content: `${authorId} a dit: ${msg.content}`
         }));
+
+        const idToUser = getAllUsers.all().map(u => `<@${u.id}> est ${u.username}/${u.globalName}`).join(', ');
 
         // Add system prompts
         messageHistory.unshift(
-            { role: 'system', content: "Adopte une attitude détendue de membre du serveur. Réponds comme si tu participais à la conversation, pas trop long, pas de retour à la ligne. Utilise les emojis du serveur quand c'est pertinent. Ton id est <@132380758368780288>, ton nom est FlopoBot." },
-            { role: 'system', content: `L'utilisateur qui s'adresse à toi est <@${authorId}>. Son message est une réponse à ${message.mentions.repliedUser ? `<@${message.mentions.repliedUser.id}>` : 'personne'}.` }
+            { role: 'system', content: "Adopte une attitude détendue de membre du serveur. Réponds comme si tu participais à la conversation, pas trop long, évite de te répéter, évite de te citer toi-même ou quelqu'un d'autre. Utilise les emojis du serveur quand c'est pertinent. Ton id est 132380758368780288, ton nom est FlopoBot." },
+            { role: 'system', content: `L'utilisateur qui s'adresse à toi est <@${authorId}>. Son message est une réponse à ${message.mentions.repliedUser ? `<@${message.mentions.repliedUser.id}>` : 'personne'}.` },
+            { role: 'system', content: `Voici les différents utilisateurs : ${idToUser} },
         );
 
         const reply = await gork(messageHistory);
