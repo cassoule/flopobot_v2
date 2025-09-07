@@ -167,7 +167,13 @@ function buildFinalEmbed(dbSkin, skinData, level, chroma, price) {
         return levelData?.displayIcon || skinData.displayIcon;
     };
 
-    const lvlText = '1️⃣'.repeat(level) + '◾'.repeat(skinData.levels.length - level);
+    const lvlText = (level >= 1 ? '1️⃣' : '') +
+        (level >= 2 ? '2️⃣' : '') +
+        (level >= 3 ? '3️⃣' : '') +
+        (level >= 4 ? '4️⃣' : '') +
+        (level >= 5 ? '5️⃣' : '') +
+        (level >= 6 ? '6️⃣' : '') +
+        '◾'.repeat(skinData.levels.length - level);
     const chromaText = '💠'.repeat(chroma) + '◾'.repeat(skinData.chromas.length - chroma);
 
     return new EmbedBuilder()
