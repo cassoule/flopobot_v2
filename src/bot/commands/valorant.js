@@ -6,7 +6,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 
 import { postAPOBuy } from '../../utils/index.js';
 import { DiscordRequest } from '../../api/discord.js';
-import { getAllAvailableSkins, updateSkin } from '../../database/index.js';
+import {getAllAvailableSkins, getUser, insertLog, updateSkin, updateUserCoins} from '../../database/index.js';
 import { skins } from '../../game/state.js';
 
 /**
@@ -22,28 +22,40 @@ export async function handleValorantCommand(req, res, client) {
     const valoPrice = parseInt(process.env.VALO_PRICE, 10) || 500;
 
     try {
-        // TODO acheter en FlopoCoins
-        return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-                content: "Les caisses Valorant sont temporairement désactivées.",
-                flags: InteractionResponseFlags.EPHEMERAL,
-            },
-        });
         // --- 1. Verify and process payment ---
-        const buyResponse = await postAPOBuy(userId, valoPrice);
 
-        if (!buyResponse.ok) {
-            const errorData = await buyResponse.json();
-            const errorMessage = errorData.message || `Tu n'as pas assez d'argent... Il te faut ${valoPrice}€.`;
+        const commandUser = getUser.get(userId);
+        if (!commandUser) {
             return res.send({
                 type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                 data: {
-                    content: errorMessage,
+                    content: "Erreur lors de la récupération de votre profil utilisateur.",
                     flags: InteractionResponseFlags.EPHEMERAL,
                 },
             });
         }
+        if (commandUser.coins < valoPrice) {
+            return res.send({
+                type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                data: {
+                    content: `Pas assez de FlopoCoins (${valoPrice} requis).`,
+                    flags: InteractionResponseFlags.EPHEMERAL,
+                },
+            });
+        }
+
+        insertLog.run({
+            id: `${userId}-${Date.now()}`,
+            user_id: userId,
+            action: 'VALO_CASE_OPEN',
+            target_user_id: null,
+            coins_amount: -valoPrice,
+            user_new_amount: commandUser.coins - valoPrice,
+        });
+        updateUserCoins.run({
+            userId: userId,
+            coins: commandUser.coins - valoPrice,
+        })
 
         // --- 2. Send Initial "Opening" Response ---
         // Acknowledge the interaction immediately with a loading message.

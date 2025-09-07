@@ -9,7 +9,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { DiscordRequest } from '../../api/discord.js';
 import { postAPOBuy } from '../../utils/index.js';
 import { activeInventories, skins } from '../../game/state.js';
-import { getSkin, updateSkin } from '../../database/index.js';
+import {getSkin, getUser, insertLog, updateSkin, updateUserCoins} from '../../database/index.js';
 
 /**
  * Handles the click of the 'Upgrade' button on a skin in the inventory.
@@ -19,16 +19,6 @@ import { getSkin, updateSkin } from '../../database/index.js';
 export async function handleUpgradeSkin(req, res) {
     const { member, data } = req.body;
     const { custom_id } = data;
-
-    return res.send({
-        type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: {
-            content: "Les améliorations de skins sont temporairement désactivées.",
-            flags: InteractionResponseFlags.EPHEMERAL,
-        },
-    });
-
-    //TODO paiement en FlopoCoins
 
     const interactionId = custom_id.replace('upgrade_', '');
     const userId = member.user.id;
@@ -63,18 +53,40 @@ export async function handleUpgradeSkin(req, res) {
 
     // --- 2. Handle Payment ---
     const upgradePrice = parseFloat(process.env.VALO_UPGRADE_PRICE) || parseFloat(skinToUpgrade.maxPrice) / 10;
-    try {
-        const buyResponse = await postAPOBuy(userId, upgradePrice);
-        if (!buyResponse.ok) {
-            return res.send({
-                type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                data: { content: `Il vous faut ${upgradePrice.toFixed(0)}€ pour tenter cette amélioration.`, flags: InteractionResponseFlags.EPHEMERAL },
-            });
-        }
-    } catch (paymentError) {
-        console.error("Payment API error:", paymentError);
-        return res.status(500).json({ error: "Payment service unavailable."});
+
+    const commandUser = getUser.get(userId);
+
+    if (!commandUser) {
+        return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+                content: "Erreur lors de la récupération de votre profil utilisateur.",
+                flags: InteractionResponseFlags.EPHEMERAL,
+            },
+        });
     }
+    if (commandUser.coins < upgradePrice) {
+        return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+                content: `Pas assez de FlopoCoins (${upgradePrice.toFixed(0)} requis).`,
+                flags: InteractionResponseFlags.EPHEMERAL,
+            },
+        });
+    }
+
+    insertLog.run({
+        id: `${userId}-${Date.now()}`,
+        user_id: userId,
+        action: 'VALO_SKIN_UPGRADE',
+        target_user_id: null,
+        coins_amount: -upgradePrice.toFixed(0),
+        user_new_amount: commandUser.coins - upgradePrice.toFixed(0),
+    });
+    updateUserCoins.run({
+        userId: userId,
+        coins: commandUser.coins - upgradePrice.toFixed(0),
+    })
 
 
     // --- 3. Show Loading Animation ---
