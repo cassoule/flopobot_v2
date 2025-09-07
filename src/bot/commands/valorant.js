@@ -53,7 +53,7 @@ export async function handleValorantCommand(req, res, client) {
             user_new_amount: commandUser.coins - valoPrice,
         });
         updateUserCoins.run({
-            userId: userId,
+            id: userId,
             coins: commandUser.coins - valoPrice,
         })
 

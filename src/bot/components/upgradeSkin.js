@@ -84,7 +84,7 @@ export async function handleUpgradeSkin(req, res) {
         user_new_amount: commandUser.coins - upgradePrice.toFixed(0),
     });
     updateUserCoins.run({
-        userId: userId,
+        id: userId,
         coins: commandUser.coins - upgradePrice.toFixed(0),
     })
 
