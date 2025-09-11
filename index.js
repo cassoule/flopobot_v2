@@ -19,6 +19,8 @@ export const io = new Server(server, {
         origin: FLAPI_URL,
         methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
     },
+    pingInterval: 5000,
+    pingTimeout: 5000,
 });
 initializeSocket(io, client);
 

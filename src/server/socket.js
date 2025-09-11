@@ -1,5 +1,11 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { activeTicTacToeGames, tictactoeQueue, activeConnect4Games, connect4Queue } from '../game/state.js';
+import {
+    activeTicTacToeGames,
+    tictactoeQueue,
+    activeConnect4Games,
+    connect4Queue,
+    queueMessagesEndpoints, activePredis
+} from '../game/state.js';
 import { createConnect4Board, formatConnect4BoardForDiscord, checkConnect4Win, checkConnect4Draw, C4_ROWS } from '../game/various.js';
 import { eloHandler } from '../game/elo.js';
 import { getUser } from "../database/index.js";
@@ -20,6 +26,14 @@ export function initializeSocket(server, client) {
 
         registerTicTacToeEvents(socket, client);
         registerConnect4Events(socket, client);
+
+        socket.on('tictactoe:queue:leave', async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+
+        // catch tab kills / network drops
+        socket.on('disconnecting', async () => {
+            const discordId = socket.handshake.auth?.discordId; // or your mapping
+            await refreshQueuesForUser(discordId, client);
+        });
 
         socket.on('disconnect', () => {
             //
@@ -211,10 +225,34 @@ async function createGame(client, gameType) {
 async function refreshQueuesForUser(userId, client) {
     // FIX: Mutate the array instead of reassigning it.
     let index = tictactoeQueue.indexOf(userId);
-    if (index > -1) tictactoeQueue.splice(index, 1);
+    if (index > -1) {
+        tictactoeQueue.splice(index, 1);
+        try {
+            const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+            const user = await client.users.fetch(userId);
+            const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId])
+            const updatedEmbed = new EmbedBuilder().setTitle('Tic Tac Toe').setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`).setColor(0xED4245).setTimestamp(new Date());
+            await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+            delete queueMessagesEndpoints[userId];
+        } catch (e) {
+            console.error('Error updating queue message : ', e);
+        }
+    }
 
     index = connect4Queue.indexOf(userId);
-    if (index > -1) connect4Queue.splice(index, 1);
+    if (index > -1) {
+        connect4Queue.splice(index, 1);
+        try {
+            const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+            const user = await client.users.fetch(userId);
+            const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId])
+            const updatedEmbed = new EmbedBuilder().setTitle('Puissance 4').setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`).setColor(0xED4245).setTimestamp(new Date());
+            await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+            delete queueMessagesEndpoints[userId];
+        } catch (e) {
+            console.error('Error updating queue message : ', e);
+        }
+    }
 
     await emitQueueUpdate(client, 'tictactoe');
     await emitQueueUpdate(client, 'connect4');
@@ -239,9 +277,10 @@ async function postQueueToDiscord(client, playerId, title, url) {
     try {
         const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
         const user = await client.users.fetch(playerId);
-        const embed = new EmbedBuilder().setTitle(title).setDescription(`**${user.globalName || user.username}** est dans la file d'attente.`).setColor('#5865F2');
+        const embed = new EmbedBuilder().setTitle(title).setDescription(`**${user.globalName || user.username}** est dans la file d'attente.`).setColor('#5865F2').setTimestamp(new Date());
         const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel(`Jouer contre ${user.username}`).setURL(`${process.env.DEV_SITE === 'true' ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL}${url}`).setStyle(ButtonStyle.Link));
-        await generalChannel.send({ embeds: [embed], components: [row] });
+        const msg = await generalChannel.send({ embeds: [embed], components: [row] });
+        queueMessagesEndpoints[playerId] = msg.id
     } catch (e) { console.error(`Failed to post queue message for ${title}:`, e); }
 }
 
@@ -303,3 +342,6 @@ export async function emitPokerUpdate(data) {
 export async function emitPokerToast(data) {
     io.emit('poker-toast', data);
 }
+
+export const emitUpdate = (type, room) => io.emit("blackjack:update", { type, room });
+export const emitToast  = (payload) => io.emit("blackjack:toast", payload);

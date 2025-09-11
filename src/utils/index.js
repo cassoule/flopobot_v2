@@ -209,7 +209,7 @@ export async function getOnlineUsersWithRole(guild, roleId) {
     if (!guild || !roleId) return new Map();
     try {
         const members = await guild.members.fetch();
-        return members.filter(m => !m.user.bot && m.presence?.status !== 'offline' && m.roles.cache.has(roleId));
+        return members.filter(m => !m.user.bot && m.presence?.status !== 'offline' && m.presence?.status !== undefined && m.roles.cache.has(roleId));
     } catch (err) {
         console.error('Error fetching online members with role:', err);
         return new Map();
