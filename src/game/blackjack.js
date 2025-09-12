@@ -254,14 +254,16 @@ export function settleAll(room) {
     if (res.result === 'win' || res.result === 'push') {
       const userDB = getUser.get(p.id);
       if (userDB) {
+        const coins = userDB.coins;
         try {
-          updateUserCoins.run({ id: p.id, coins: userDB.coins + p.currentBet + res.delta });
+          updateUserCoins.run({ id: p.id, coins: coins + p.currentBet + res.delta });
           insertLog.run({
             id: `${p.id}-blackjack-${Date.now()}`,
             user_id: p.id, target_user_id: null,
             action: 'BLACKJACK_PAYOUT',
-            coins_amount: res.delta + p.currentBet, user_new_amount: userDB.coins + p.currentBet + res.delta,
+            coins_amount: res.delta + p.currentBet, user_new_amount: coins + p.currentBet + res.delta,
           });
+          p.bank = coins + p.currentBet + res.delta
         } catch (e) {
           console.log(e)
         }
