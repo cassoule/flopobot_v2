@@ -2,6 +2,9 @@
 // Core blackjack helpers for a single continuous room.
 // Inspired by your poker helpers API style.
 
+import {emitToast} from "../server/socket.js";
+import {getUser, insertLog, updateUserCoins} from "../database/index.js";
+
 export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
 export const SUITS = ["d","s","c","h"];
 
@@ -88,7 +91,7 @@ export function settleHand({ bet, playerCards, dealerCards, doubled = false, sur
   if (pBJ && dBJ) return { delta: 0, result: "push" };
 
   const outcome = compareHands(playerCards, dealerCards);
-  let unit = bet * (doubled ? 2 : 1);
+  let unit = bet;
   if (outcome === "win") return { delta: unit, result: "win" };
   if (outcome === "lose") return { delta: -unit, result: "lose" };
   return { delta: 0, result: "push" };
@@ -131,7 +134,16 @@ export function createBlackjackRoom({
   hitSoft17 = false,
   blackjackPayout = 1.5,
   cutCardRatio = 0.25, // reshuffle when 25% of shoe remains
-  phaseDurations = { bettingMs: 15000, dealMs: 1000, playMsPerPlayer: 15000, revealMs: 1000, payoutMs: 2000 }
+  phaseDurations = {
+    bettingMs: 15000,
+    dealMs: 1000,
+    playMsPerPlayer: 15000,
+    revealMs: 1000,
+    payoutMs: 10000,
+  },
+  animation = {
+    dealerDrawMs: 500,
+  }
 } = {}) {
   return {
     id: "blackjack-room",
@@ -140,7 +152,7 @@ export function createBlackjackRoom({
     status: "betting", // betting | dealing | playing | dealer | payout | shuffle
     phase_ends_at: Date.now() + phaseDurations.bettingMs,
     minBet, maxBet, fakeMoney,
-    settings: { decks, hitSoft17, blackjackPayout, cutCardRatio, phaseDurations },
+    settings: { decks, hitSoft17, blackjackPayout, cutCardRatio, phaseDurations, animation },
     shoe: buildShoe(decks),
     discard: [],
     dealer: { cards: [], holeHidden: true },
@@ -226,6 +238,7 @@ export function dealerPlay(room) {
 
 export function settleAll(room) {
   room.status = "payout";
+  const allRes = {}
   for (const p of Object.values(room.players)) {
     if (!p.inRound) continue;
     const hand = p.hands[p.activeHand];
@@ -237,6 +250,24 @@ export function settleAll(room) {
       surrendered: hand.surrendered,
       blackjackPayout: room.settings.blackjackPayout,
     });
+    allRes[p.id] = res;
+    if (res.result === 'win' || res.result === 'push') {
+      const userDB = getUser.get(p.id);
+      if (userDB) {
+        try {
+          updateUserCoins.run({ id: p.id, coins: userDB.coins + p.currentBet + res.delta });
+          insertLog.run({
+            id: `${p.id}-blackjack-${Date.now()}`,
+            user_id: p.id, target_user_id: null,
+            action: 'BLACKJACK_PAYOUT',
+            coins_amount: res.delta + p.currentBet, user_new_amount: userDB.coins + p.currentBet + res.delta,
+          });
+        } catch (e) {
+          console.log(e)
+        }
+      }
+    }
+    emitToast({ type: `payout-res`, allRes });
     hand.result = res.result;
     hand.delta = res.delta;
   }
@@ -264,6 +295,7 @@ export function applyAction(room, playerId, action) {
     case "double": {
       if (!canDouble(hand)) throw new Error("Cannot double now");
       hand.doubled = true;
+      p.currentBet*=2
       hand.hasActed = true;
       // The caller (routes) must also handle additional balance lock on the bet if using real coins
       hand.cards.push(draw(room.shoe));

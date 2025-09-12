@@ -1,6 +1,18 @@
 // /routes/blackjack.js
 import express from "express";
-import { createBlackjackRoom, startBetting, dealInitial, autoActions, everyoneDone, dealerPlay, settleAll, applyAction, publicPlayerView, handValue } from "../../game/blackjack.js";
+import {
+  createBlackjackRoom,
+  startBetting,
+  dealInitial,
+  autoActions,
+  everyoneDone,
+  dealerPlay,
+  settleAll,
+  applyAction,
+  publicPlayerView,
+  handValue,
+  dealerShouldHit, draw
+} from "../../game/blackjack.js";
 
 // Optional: hook into your DB & Discord systems if available
 import { getUser, updateUserCoins, insertLog } from "../../database/index.js";
@@ -19,8 +31,64 @@ export function blackjackRoutes(io) {
     hitSoft17: false,      // S17 (dealer stands on soft 17) if false
     blackjackPayout: 1.5,  // 3:2
     cutCardRatio: 0.25,
-    phaseDurations: { bettingMs: 15000, dealMs: 1000, playMsPerPlayer: 15000, revealMs: 1000, payoutMs: 2000 },
+    phaseDurations: { bettingMs: 10000, dealMs: 2000, playMsPerPlayer: 15000, revealMs: 1000, payoutMs: 7000 },
+    animation: { dealerDrawMs: 1000 }
   });
+
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+  let animatingDealer = false;
+
+  async function runDealerAnimation() {
+    if (animatingDealer) return;
+    animatingDealer = true;
+
+    room.status = "dealer";
+    room.dealer.holeHidden = false;
+    await sleep(room.settings.phaseDurations.revealMs ?? 1000);
+    room.phase_ends_at = Date.now() + (room.settings.phaseDurations.revealMs ?? 1000);
+    emitUpdate("dealer-reveal", snapshot(room));
+    await sleep(room.settings.phaseDurations.revealMs ?? 1000);
+
+    while (dealerShouldHit(room.dealer.cards, room.settings.hitSoft17)) {
+      room.dealer.cards.push(draw(room.shoe));
+      room.phase_ends_at = Date.now() + (room.settings.animation?.dealerDrawMs ?? 500);
+      emitUpdate("dealer-hit", snapshot(room));
+      await sleep(room.settings.animation?.dealerDrawMs ?? 500);
+    }
+
+    settleAll(room);
+    room.status = "payout";
+    room.phase_ends_at = Date.now() + (room.settings.phaseDurations.payoutMs ?? 10000);
+    emitUpdate("payout", snapshot(room))
+
+    animatingDealer = false;
+  }
+
+  function autoTimeoutAFK(now) {
+    if (room.status !== "playing") return false;
+    if (!room.phase_ends_at || now < room.phase_ends_at) return false;
+
+    let changed = false;
+    for (const p of Object.values(room.players)) {
+      if (!p.inRound) continue;
+      const h = p.hands[p.activeHand];
+      if (!h.hasActed && !h.busted && !h.stood && !h.surrendered) {
+        h.surrendered = true;
+        h.stood = true;
+        h.hasActed = true;
+        room.leavingAfterRound[p.id] = true; // kick at end of round
+        emitToast({ type: "player-timeout", userId: p.id });
+        changed = true;
+      } else if (h.hasActed && !h.stood) {
+        h.stood = true;
+        room.leavingAfterRound[p.id] = true; // kick at end of round
+        emitToast({ type: "player-auto-stand", userId: p.id });
+        changed = true;
+      }
+    }
+    if (changed) emitUpdate("auto-surrender", snapshot(room));
+    return changed;
+  }
 
   function snapshot(r) {
     return {
@@ -144,7 +212,7 @@ export function blackjackRoutes(io) {
 
   // --- Game loop ---
   // Simple phase machine that runs regardless of player count.
-  setInterval(() => {
+  setInterval(async () => {
     const now = Date.now();
 
     if (room.status === "betting" && now >= room.phase_ends_at) {
@@ -158,41 +226,28 @@ export function blackjackRoutes(io) {
       dealInitial(room);
       autoActions(room);
       emitUpdate("initial-deal", snapshot(room));
+
+      room.phase_ends_at = Date.now() + room.settings.phaseDurations.playMsPerPlayer;
+      emitUpdate("playing-start", snapshot(room));
+      return;
     }
 
     if (room.status === "playing") {
-      // When all active players are done, proceed to dealer play
-      if (everyoneDone(room)) {
-        dealerPlay(room);
-        emitUpdate("dealer-start", snapshot(room));
-      }
-    }
-
-    if (room.status === "dealer") {
-      settleAll(room);
-
-      // Apply coin deltas
-      for (const p of Object.values(room.players)) {
-        if (!p.inRound) continue;
-        const h = p.hands[p.activeHand];
-        if (room.settings.fakeMoney) continue;
-        if (typeof h.delta === "number" && h.delta !== 0) {
-          const userDB = getUser.get(p.id);
-          if (userDB) {
-            updateUserCoins.run({ id: p.id, coins: userDB.coins + h.delta });
-            insertLog.run({
-              id: `${p.id}-blackjack-${Date.now()}`,
-              user_id: p.id, target_user_id: null,
-              action: `BLACKJACK_${h.delta > 0 ? "WIN" : "LOSE"}`,
-              coins_amount: h.delta, user_new_amount: userDB.coins + h.delta,
-            });
-          }
-        }
+      // If the per-round playing timer expired, auto-surrender AFKs (you already added this)
+      if (room.phase_ends_at && now >= room.phase_ends_at) {
+        autoTimeoutAFK(now);
       }
 
-      room.phase_ends_at = now + room.settings.phaseDurations.payoutMs;
-      emitUpdate("payout", snapshot(room));
-      room.status = "payout";
+      // Everyone acted before the timer? Cut short and go straight to dealer.
+      if (everyoneDone(room) && !animatingDealer) {
+        // Set a new server-driven deadline for the reveal pause,
+        // so the client's countdown immediately reflects the phase change.
+        room.phase_ends_at = Date.now();
+        emitUpdate("playing-cut-short", snapshot(room));
+
+        // Now run the animated dealer with per-step updates
+        runDealerAnimation();
+      }
     }
 
     if (room.status === "payout" && now >= room.phase_ends_at) {
@@ -204,7 +259,7 @@ export function blackjackRoutes(io) {
       startBetting(room, now);
       emitUpdate("new-round", snapshot(room));
     }
-  }, 400);
+  }, 100);
 
   return router;
 }
