@@ -53,6 +53,8 @@ export let tictactoeQueue = [];
 // Stores user IDs waiting to play Connect 4.
 export let connect4Queue = [];
 
+export let queueMessagesEndpoints = [];
+
 
 // --- Rate Limiting and Caching ---
 
