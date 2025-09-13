@@ -12,7 +12,7 @@ export function initializeEvents(client, io) {
     // --- on 'ready' ---
     // This event fires once the bot has successfully logged in and is ready to operate.
     // It's a good place for setup tasks that require the bot to be online.
-    client.once('clientReady', async () => {
+    client.once('ready', async () => {
         console.log(`Bot is ready and logged in as ${client.user.tag}!`);
         console.log('[Startup] Bot is ready, performing initial data sync...');
         await getAkhys(client);
