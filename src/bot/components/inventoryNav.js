@@ -128,11 +128,13 @@ export async function handleInventoryNav(req, res, client) {
                     image: { url: getImageUrl(currentSkin, skinData) },
                 }],
                 components: [{ type: MessageComponentTypes.ACTION_ROW, components: components },
-                            { type: MessageComponentTypes.ACTION_ROW, components: {
-                                    type: MessageComponentTypes.BUTTON,
-                                    url: `${process.env.FLAPI_URL}/akhy/${targetMember.id}`,
-                                    label: 'Voir sur FlopoSite',
-                                    style: ButtonStyleTypes.LINK,}}],
+                             { type: MessageComponentTypes.ACTION_ROW,
+                               components: [{
+                                type: MessageComponentTypes.BUTTON,
+                                url: `${process.env.FLAPI_URL}/akhy/${targetMember.id}`,
+                                label: 'Voir sur FlopoSite',
+                                style: ButtonStyleTypes.LINK,}]
+                             }],
             },
         });
 
