@@ -100,7 +100,7 @@ export async function handleSearchCommand(req, res, client, interactionId) {
             color: parseInt(currentSkin.tierColor, 16) || 0xF2F3F3,
             fields: [{
                 name: `**${currentSkin.displayName}**`,
-                value: `${currentSkin.tierText}\nValeur Max: **${currentSkin.maxPrice}€** ${ownerText}`,
+                value: `${currentSkin.tierText}\nValeur Max: **${currentSkin.maxPrice} Flopos** ${ownerText}`,
             }],
             image: { url: getImageUrl(skinData) },
             footer: { text: `Résultat 1/${resultSkins.length}` },

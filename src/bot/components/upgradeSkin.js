@@ -179,7 +179,7 @@ function buildFinalEmbed(succeeded, skin, skinData) {
         embed.addFields(
             { name: 'Nouveau Niveau', value: `${skin.currentLvl}/${skinData.levels.length}`, inline: true },
             { name: 'Nouveau Chroma', value: `${skin.currentChroma}/${skinData.chromas.length}`, inline: true },
-            { name: 'Nouvelle Valeur', value: `**${skin.currentPrice}€**`, inline: true }
+            { name: 'Nouvelle Valeur', value: `**${skin.currentPrice} Flopos**`, inline: true }
         );
     } else {
         embed.addFields({ name: 'Statut', value: 'Aucun changement.' });

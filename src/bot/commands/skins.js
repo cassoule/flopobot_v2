@@ -38,7 +38,7 @@ export async function handleSkinsCommand(req, res, client) {
             // Add the formatted skin info to our fields array
             fields.push({
                 name: `#${index + 1} - **${skin.displayName}**`,
-                value: `Valeur Max: **${skin.maxPrice}€** | ${ownerText}`,
+                value: `Valeur Max: **${skin.maxPrice} Flopos** | ${ownerText}`,
                 inline: false,
             });
         }

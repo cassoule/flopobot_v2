@@ -108,7 +108,7 @@ export async function handleInventoryNav(req, res, client) {
             components.push({
                 type: MessageComponentTypes.BUTTON,
                 custom_id: `upgrade_${interactionId}`,
-                label: `Upgrade ⏫ (${process.env.VALO_UPGRADE_PRICE || (currentSkin.maxPrice/10).toFixed(0)}€)`,
+                label: `Upgrade ⏫ (${process.env.VALO_UPGRADE_PRICE || (currentSkin.maxPrice/10).toFixed(0)} Flopos)`,
                 style: ButtonStyleTypes.PRIMARY,
             });
         }
@@ -120,14 +120,19 @@ export async function handleInventoryNav(req, res, client) {
                 embeds: [{
                     title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
                     color: parseInt(currentSkin.tierColor, 16) || 0xF2F3F3,
-                    footer: { text: `Page ${page + 1}/${amount} | Valeur Totale : ${totalPrice.toFixed(0)}€` },
+                    footer: { text: `Page ${page + 1}/${amount} | Valeur Totale : ${totalPrice.toFixed(0)} Flopos` },
                     fields: [{
-                        name: `${currentSkin.displayName} | ${currentSkin.currentPrice.toFixed(0)}€`,
+                        name: `${currentSkin.displayName} | ${currentSkin.currentPrice.toFixed(0)} Flopos`,
                         value: `${currentSkin.tierText}\nChroma : ${getChromaText(currentSkin, skinData)} | ${getChromaName(currentSkin, skinData)}\nLvl : **${currentSkin.currentLvl}**/${skinData.levels.length}`,
                     }],
                     image: { url: getImageUrl(currentSkin, skinData) },
                 }],
-                components: [{ type: MessageComponentTypes.ACTION_ROW, components: components }],
+                components: [{ type: MessageComponentTypes.ACTION_ROW, components: components },
+                            { type: MessageComponentTypes.ACTION_ROW, components: {
+                                    type: MessageComponentTypes.BUTTON,
+                                    url: `${process.env.FLAPI_URL}/akhy/${targetMember.id}`,
+                                    label: 'Voir sur FlopoSite',
+                                    style: ButtonStyleTypes.LINK,}}],
             },
         });
 

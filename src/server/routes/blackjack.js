@@ -18,6 +18,7 @@ import {
 import { getUser, updateUserCoins, insertLog } from "../../database/index.js";
 import { client } from "../../bot/client.js";
 import {emitToast, emitUpdate} from "../socket.js";
+import {EmbedBuilder} from "discord.js";
 
 export function blackjackRoutes(io) {
   const router = express.Router();
@@ -56,7 +57,7 @@ export function blackjackRoutes(io) {
       await sleep(room.settings.animation?.dealerDrawMs ?? 500);
     }
 
-    settleAll(room);
+    await settleAll(room);
     room.status = "payout";
     room.phase_ends_at = Date.now() + (room.settings.phaseDurations.payoutMs ?? 10000);
     emitUpdate("payout", snapshot(room))
@@ -126,15 +127,62 @@ export function blackjackRoutes(io) {
       hands: [{ cards: [], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false }],
       activeHand: 0,
       joined_at: Date.now(),
+      msgId: null,
+      totalDelta: 0,
     };
+
+    try {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const generalChannel = guild.channels.cache.find(
+          ch => ch.name === 'général' || ch.name === 'general'
+      );
+      const embed = new EmbedBuilder()
+          .setDescription(`<@${userId}> joue au Blackjack`)
+          .addFields(
+      {
+              name: `Gains`,
+              value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
+              inline: true
+            },
+          )
+          .setColor('#5865f2')
+          .setTimestamp(new Date());
+
+      const msg = await generalChannel.send({ embeds: [embed] });
+      room.players[userId].msgId = msg.id;
+    } catch (e) {
+      console.log(e);
+    }
 
     emitUpdate("player-joined", snapshot(room));
     return res.status(200).json({ message: "joined" });
   });
 
-  router.post("/leave", (req, res) => {
+  router.post("/leave", async (req, res) => {
     const { userId } = req.body;
     if (!userId || !room.players[userId]) return res.status(404).json({ message: "not in room" });
+
+    try {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const generalChannel = guild.channels.cache.find(
+          ch => ch.name === 'général' || ch.name === 'general'
+      );
+      const msg = await generalChannel.messages.fetch(room.players[userId].msgId);
+      const updatedEmbed = new EmbedBuilder()
+          .setDescription(`<@${userId}> a quitté la table de Blackjack.`)
+          .addFields(
+        {
+                name: `Gains`,
+                value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
+                inline: true
+              },
+          )
+          .setColor(room.players[userId].totalDelta >= 0 ? 0x22A55B : 0xED4245)
+          .setTimestamp(new Date());
+      await msg.edit({ embeds: [updatedEmbed], components: [] });
+    } catch (e) {
+      console.log(e);
+    }
 
     const p = room.players[userId];
     if (p.inRound) {

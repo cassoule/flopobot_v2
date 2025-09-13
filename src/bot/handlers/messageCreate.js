@@ -185,7 +185,7 @@ async function handleAdminCommands(message) {
             for (let i = 0; i < amount; i++) {
                 sum += parseFloat(randomSkinPrice());
             }
-            console.log(`Result for ${amount} skins: Avg: ~${(sum / amount).toFixed(0)}€ | Total: ${sum.toFixed(0)}€ | Elapsed: ${Date.now() - start_at}ms`);
+            console.log(`Result for ${amount} skins: Avg: ~${(sum / amount).toFixed(0)} Flopos | Total: ${sum.toFixed(0)} Flopos | Elapsed: ${Date.now() - start_at}ms`);
             break;
         case `${prefix}:sotd`:
             initTodaysSOTD();

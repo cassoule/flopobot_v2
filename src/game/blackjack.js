@@ -4,6 +4,8 @@
 
 import {emitToast} from "../server/socket.js";
 import {getUser, insertLog, updateUserCoins} from "../database/index.js";
+import {client} from "../bot/client.js";
+import {EmbedBuilder} from "discord.js";
 
 export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
 export const SUITS = ["d","s","c","h"];
@@ -236,7 +238,7 @@ export function dealerPlay(room) {
   }
 }
 
-export function settleAll(room) {
+export async function settleAll(room) {
   room.status = "payout";
   const allRes = {}
   for (const p of Object.values(room.players)) {
@@ -251,6 +253,7 @@ export function settleAll(room) {
       blackjackPayout: room.settings.blackjackPayout,
     });
     allRes[p.id] = res;
+    p.totalDelta += res.delta
     if (res.result === 'win' || res.result === 'push') {
       const userDB = getUser.get(p.id);
       if (userDB) {
@@ -272,6 +275,27 @@ export function settleAll(room) {
     emitToast({ type: `payout-res`, allRes });
     hand.result = res.result;
     hand.delta = res.delta;
+    try {
+      const guild = await client.guilds.fetch(process.env.GUILD_ID);
+      const generalChannel = guild.channels.cache.find(
+          ch => ch.name === 'général' || ch.name === 'general'
+      );
+      const msg = await generalChannel.messages.fetch(p.msgId);
+      const updatedEmbed = new EmbedBuilder()
+          .setDescription(`<@${p.id}> joue au Blackjack.`)
+          .addFields(
+              {
+                name: `Gains`,
+                value: `**${p.totalDelta >= 0 ? '+' + p.totalDelta : p.totalDelta}** Flopos`,
+                inline: true
+              },
+          )
+          .setColor(p.totalDelta >= 0 ? 0x22A55B : 0xED4245)
+          .setTimestamp(new Date());
+      await msg.edit({ embeds: [updatedEmbed], components: [] });
+    } catch (e) {
+      console.log(e);
+    }
   }
 }
 
