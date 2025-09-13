@@ -57,7 +57,7 @@ export function blackjackRoutes(io) {
       await sleep(room.settings.animation?.dealerDrawMs ?? 500);
     }
 
-    await settleAll(room);
+    settleAll(room);
     room.status = "payout";
     room.phase_ends_at = Date.now() + (room.settings.phaseDurations.payoutMs ?? 10000);
     emitUpdate("payout", snapshot(room))
