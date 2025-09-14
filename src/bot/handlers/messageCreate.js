@@ -1,5 +1,12 @@
 import { sleep } from 'openai/core';
-import { gork } from '../../utils/ai.js';
+import {
+    buildAiMessages,
+    buildParticipantsMap,
+    buildTranscript,
+    CONTEXT_LIMIT,
+    gork, INCLUDE_ATTACHMENT_URLS, MAX_ATTS_PER_MESSAGE,
+    stripMentionsOfBot
+} from '../../utils/ai.js';
 import {
     formatTime,
     postAPOBuy,
@@ -129,29 +136,47 @@ async function handleAiMention(message, client, io) {
 
     // --- AI Processing ---
     try {
-        message.channel.sendTyping();
-        // Fetch last 20 messages for context
-        const fetchedMessages = await message.channel.messages.fetch({ limit: 20 });
-        const messagesArray = Array.from(fetchedMessages.values()).reverse(); // Oldest to newest
+        await message.channel.sendTyping();
 
-        const requestMessage = message.content.replace(`<@${client.user.id}>`, '').trim();
+        // 1) Récup contexte
+        const fetched = await message.channel.messages.fetch({ limit: Math.min(CONTEXT_LIMIT, 100) });
+        const messagesArray = Array.from(fetched.values()).reverse(); // oldest -> newest
 
-        // Format the conversation for the AI
-        const messageHistory = messagesArray.map(msg => ({
-            role: msg.author.id === client.user.id ? 'assistant' : 'user',
-            content: `${authorId} a dit: ${msg.content}`
+        const requestText = stripMentionsOfBot(message.content, client.user.id);
+        const invokerId = message.author.id;
+        const invokerName = message.member?.nickname || message.author.globalName || message.author.username;
+        const repliedUserId = message.mentions?.repliedUser?.id || null;
+
+        // 2) Compact transcript & participants
+        const participants = buildParticipantsMap(messagesArray);
+        const transcript = buildTranscript(messagesArray, client.user.id);
+
+        const invokerAttachments = Array.from(message.attachments?.values?.() || []).slice(0, MAX_ATTS_PER_MESSAGE).map(a => ({
+            id: a.id,
+            name: a.name,
+            type: a.contentType || 'application/octet-stream',
+            size: a.size,
+            isImage: !!(a.contentType && a.contentType.startsWith('image/')),
+            url: INCLUDE_ATTACHMENT_URLS ? a.url : undefined,
         }));
 
-        const idToUser = getAllUsers.all().map(u => `${u.id} est ${u.username}/${u.globalName}`).join(', ');
+        // 3) Construire prompts
+        const messageHistory = buildAiMessages({
+            botId: client.user.id,
+            botName: 'FlopoBot',
+            invokerId,
+            invokerName,
+            requestText,
+            transcript,
+            participants,
+            repliedUserId,
+            invokerAttachments,
+        });
 
-        // Add system prompts
-        messageHistory.unshift(
-            { role: 'system', content: "Adopte une attitude détendue de membre du serveur. Réponds comme si tu participais à la conversation ne commence surtout pas tes messages par 'tel utilisateur a dit' il faut que ce soit fluide, pas trop long, évite de te répéter, évite de te citer toi-même ou quelqu'un d'autre. Utilise les emojis du serveur quand c'est pertinent. Ton id est 132380758368780288, ton nom est FlopoBot." },
-            { role: 'system', content: `L'utilisateur qui s'adresse à toi est <@${authorId}>. Son message est une réponse à ${message.mentions.repliedUser ? `<@${message.mentions.repliedUser.id}>` : 'personne'}.` },
-            { role: 'system', content: `Voici les différents utilisateurs : ${idToUser}, si tu veux t'adresser ou nommer un utilisateur, utilise leur ID comme suit : <@ID>` },
-        );
-
+        // 4) Appel modèle
         const reply = await gork(messageHistory);
+
+        // 5) Réponse
         await message.reply(reply);
 
     } catch (err) {
