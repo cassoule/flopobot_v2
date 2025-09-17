@@ -275,6 +275,7 @@ export function calculateBasePrice(skin, tierRank) {
     else if (name.includes('guardian')) price = 2700
     else if (name.includes('vandal') || name.includes('phantom')) price = 2900;
     else if (name.includes('marshal')) price = 950;
+    else if (name.includes('outlaw')) price = 2400;
     else if (name.includes('operator')) price = 4500;
     else if (name.includes('ares')) price = 1700;
     else if (name.includes('odin')) price = 3200;
