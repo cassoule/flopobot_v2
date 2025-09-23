@@ -254,7 +254,8 @@ export async function settleAll(room) {
     });
     allRes[p.id] = res;
     p.totalDelta += res.delta
-    if (res.result === 'win' || res.result === 'push') {
+    p.totalBets++
+    if (res.result === 'win' || res.result === 'push' || res.result === 'blackjack') {
       const userDB = getUser.get(p.id);
       if (userDB) {
         const coins = userDB.coins;
@@ -289,6 +290,11 @@ export async function settleAll(room) {
                 value: `**${p.totalDelta >= 0 ? '+' + p.totalDelta : p.totalDelta}** Flopos`,
                 inline: true
               },
+              {
+                name: `Mises jouées`,
+                value: `**${p.totalBets}**`,
+                inline: true
+              }
           )
           .setColor(p.totalDelta >= 0 ? 0x22A55B : 0xED4245)
           .setTimestamp(new Date());

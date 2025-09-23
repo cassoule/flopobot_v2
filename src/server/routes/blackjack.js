@@ -129,6 +129,7 @@ export function blackjackRoutes(io) {
       joined_at: Date.now(),
       msgId: null,
       totalDelta: 0,
+      totalBets: 0,
     };
 
     try {
@@ -139,11 +140,16 @@ export function blackjackRoutes(io) {
       const embed = new EmbedBuilder()
           .setDescription(`<@${userId}> joue au Blackjack`)
           .addFields(
-      {
-              name: `Gains`,
-              value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
-              inline: true
-            },
+        {
+                name: `Gains`,
+                value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
+                inline: true
+              },
+              {
+                name: `Mises jouées`,
+                value: `**${room.players[userId].totalBets}**`,
+                inline: true
+              }
           )
           .setColor('#5865f2')
           .setTimestamp(new Date());
@@ -176,6 +182,11 @@ export function blackjackRoutes(io) {
                 value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
                 inline: true
               },
+              {
+                name: `Mises jouées`,
+                value: `**${room.players[userId].totalBets}**`,
+                inline: true
+              }
           )
           .setColor(room.players[userId].totalDelta >= 0 ? 0x22A55B : 0xED4245)
           .setTimestamp(new Date());
