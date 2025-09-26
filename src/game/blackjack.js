@@ -201,7 +201,7 @@ export function dealInitial(room) {
   const actives = Object.values(room.players).filter(p => p.currentBet >= room.minBet);
   for (const p of actives) {
     p.inRound = true;
-    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false } ];
+    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: 0 } ];
   }
   room.dealer.cards = [draw(room.shoe), draw(room.shoe)];
   room.dealer.holeHidden = true;
@@ -243,7 +243,7 @@ export async function settleAll(room) {
   const allRes = {}
   for (const p of Object.values(room.players)) {
     if (!p.inRound) continue;
-    for (const hand of Object.values(p.hands)) {
+    for (const hand of p.hands) {
       const res = settleHand({
         bet: hand.bet,
         playerCards: hand.cards,
