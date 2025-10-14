@@ -297,6 +297,71 @@ export function checkWinCondition(gameState) {
 }
 
 /**
+ * Checks if the game can be automatically solved (all tableau cards are face-up).
+ * @param {Object} gameState - The current state of the game.
+ * @returns {boolean} True if the game can be auto-solved.
+ */
+export function checkAutoSolve(gameState) {
+    if (gameState.stockPile.length > 0 || gameState.wastePile.length > 0) return false;
+    for (const pile of gameState.tableauPiles) {
+        for (const card of pile) {
+            if (!card.faceUp) return false;
+        }
+    }
+    return true;
+}
+
+export function autoSolveMoves(gameState) {
+    const moves = [];
+    const foundations = gameState.foundationPiles;
+    const tableau = gameState.tableauPiles;
+
+    function canMoveToFoundation(card) {
+        const foundationPile = foundations.find(pile => pile[pile.length - 1].suit === card.suit || pile.length === 0);
+        if (foundationPile.length === 0) {
+            return card.rank === 'A'; // Only Ace can be placed on empty foundation
+        } else {
+            const topCard = foundationPile[foundationPile.length - 1];
+            return card.suit === topCard.suit && getRankValue(card.rank) === getRankValue(topCard.rank) + 1;
+        }
+    }
+
+    let moved;
+    do {
+        moved = false;
+
+        for (let i = 0; i < tableau.length; i++) {
+            const column = tableau[i];
+            if (column.length === 0) continue;
+
+            const card = column[column.length - 1]; // Top card of the tableau column
+            const foundationIndex = foundations.findIndex(pile => pile[pile.length - 1].suit === card.suit || pile.length === 0);
+            console.log(card.rank + card.suit + " to " + foundationIndex)
+            if(canMoveToFoundation(card)) {
+                tableau[i].pop()
+                foundations[foundationIndex].push(card)
+                console.log("moved" + card.rank + card.suit + " to " + foundationIndex)
+                moved = true;
+                moves.push({
+                    sourcePileType: 'tableauPiles',
+                    sourcePileIndex: i,
+                    sourceCardIndex: column.length - 1,
+                    destPileType: 'foundationPiles',
+                    destPileIndex: foundationIndex,
+                    cardsMoved: [card],
+                    cardWasFlipped: false,
+                    points: 11
+                });
+            }
+        }
+    } while (moved)//(foundations.reduce((acc, pile) => acc + pile.length, 0));
+
+    console.log("Auto-solve moves:");
+    console.log(moves);
+    return moves;
+}
+
+/**
  * Reverts the game state to its previous state based on the last move in the history.
  * This function mutates the gameState object directly.
  * @param {Object} gameState - The current game state, which includes a `hist` array.
