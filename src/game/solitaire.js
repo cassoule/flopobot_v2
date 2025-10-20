@@ -1,5 +1,6 @@
 // --- Constants for Deck Creation ---
 import {sleep} from "openai/core";
+import {emitSolitaireUpdate, emitUpdate} from "../server/socket.js";
 
 const SUITS = ['h', 'd', 's', 'c']; // Hearts, Diamonds, Spades, Clubs
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
@@ -353,10 +354,11 @@ export async function autoSolveMoves(gameState) {
                     sourcePileType: 'tableauPiles',
                     userId: gameState.userId,
                 }
-                moveCard(gameState, moveData);
+                moveCard(gameState, moveData)
+                emitSolitaireUpdate(gameState.userId, moveData);
                 moved = true;
                 await sleep(500); // Pause for visualization
-                //TODO: maybe needs an emit here to update clients?
+
             }
         }
     } while (moved)//(foundations.reduce((acc, pile) => acc + pile.length, 0));
