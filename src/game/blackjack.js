@@ -7,8 +7,7 @@ import {getUser, insertLog, updateUserCoins} from "../database/index.js";
 import {client} from "../bot/client.js";
 import {EmbedBuilder} from "discord.js";
 
-// export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
-export const RANKS = ["A", "2"];
+export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
 export const SUITS = ["d","s","c","h"];
 
 // Build a single 52-card deck like "Ad","Ts", etc.
