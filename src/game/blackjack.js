@@ -7,7 +7,8 @@ import {getUser, insertLog, updateUserCoins} from "../database/index.js";
 import {client} from "../bot/client.js";
 import {EmbedBuilder} from "discord.js";
 
-export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
+// export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
+export const RANKS = ["A", "2"];
 export const SUITS = ["d","s","c","h"];
 
 // Build a single 52-card deck like "Ad","Ts", etc.
@@ -201,7 +202,7 @@ export function dealInitial(room) {
   const actives = Object.values(room.players).filter(p => p.currentBet >= room.minBet);
   for (const p of actives) {
     p.inRound = true;
-    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: 0 } ];
+    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: p.currentBet } ];
   }
   room.dealer.cards = [draw(room.shoe), draw(room.shoe)];
   room.dealer.holeHidden = true;
@@ -252,7 +253,12 @@ export async function settleAll(room) {
         surrendered: hand.surrendered,
         blackjackPayout: room.settings.blackjackPayout,
       });
-      allRes[p.id] = res;
+      if (allRes[p.id]) {
+        allRes[p.id].push(res);
+      } else {
+        allRes[p.id] = [res];
+      }
+
       p.totalDelta += res.delta
       p.totalBets++
       if (res.result === 'win' || res.result === 'push' || res.result === 'blackjack') {
@@ -323,26 +329,21 @@ export function applyAction(room, playerId, action) {
     case "stand": {
       hand.stood = true;
       hand.hasActed = true;
+      p.activeHand++;
       return "stand";
     }
     case "double": {
       if (!canDouble(hand)) throw new Error("Cannot double now");
       hand.doubled = true;
       hand.bet*=2
-      p.currentBet*=2
+      p.currentBet+=hand.bet/2
       hand.hasActed = true;
       // The caller (routes) must also handle additional balance lock on the bet if using real coins
       hand.cards.push(draw(room.shoe));
       if (isBust(hand.cards)) hand.busted = true;
       else hand.stood = true;
+      p.activeHand++;
       return "double";
-    }
-    case "surrender": {
-      if (hand.cards.length !== 2 || hand.hasActed) throw new Error("Cannot surrender now");
-      hand.surrendered = true;
-      hand.stood = true;
-      hand.hasActed = true;
-      return "surrender";
     }
     case "split": {
       if (hand.cards.length !== 2) throw new Error("Cannot split: not exactly 2 cards");
