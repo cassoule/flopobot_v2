@@ -346,4 +346,4 @@ export async function emitPokerToast(data) {
 export const emitUpdate = (type, room) => io.emit("blackjack:update", { type, room });
 export const emitToast  = (payload) => io.emit("blackjack:toast", payload);
 
-export const emitSolitaireUpdate = (userId, moveData) => io.emit('solitaire:update', {userId, moveData});
+export const emitSolitaireUpdate = (userId, moves) => io.emit('solitaire:update', {userId, moves});

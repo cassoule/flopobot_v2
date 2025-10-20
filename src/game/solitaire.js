@@ -314,10 +314,10 @@ export function checkAutoSolve(gameState) {
     return true;
 }
 
-export async function autoSolveMoves(gameState) {
+export function autoSolveMoves(userId, gameState) {
     const moves = [];
-    const foundations = gameState.foundationPiles;
-    const tableau = gameState.tableauPiles;
+    const foundations = JSON.parse(JSON.stringify(gameState.foundationPiles));
+    const tableau = JSON.parse(JSON.stringify(gameState.tableauPiles));
 
     function canMoveToFoundation(card) {
         let foundationPile = foundations.find(pile => pile[pile.length - 1]?.suit === card.suit);
@@ -352,17 +352,17 @@ export async function autoSolveMoves(gameState) {
                     sourceCardIndex: column.length - 1,
                     sourcePileIndex: i,
                     sourcePileType: 'tableauPiles',
-                    userId: gameState.userId,
+                    userId: userId,
                 }
-                moveCard(gameState, moveData)
-                emitSolitaireUpdate(gameState.userId, moveData);
+                tableau[i].pop()
+                foundations[foundationIndex].push(card)
+                //moveCard(gameState, moveData)
+                moves.push(moveData);
                 moved = true;
-                await sleep(500); // Pause for visualization
-
             }
         }
     } while (moved)//(foundations.reduce((acc, pile) => acc + pile.length, 0));
-    return moves;
+    emitSolitaireUpdate(userId, moves)
 }
 
 /**

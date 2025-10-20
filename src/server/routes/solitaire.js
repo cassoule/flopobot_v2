@@ -142,15 +142,17 @@ export function solitaireRoutes(client, io) {
             moveCard(gameState, moveData);
             updateGameStats(gameState, 'move', moveData);
 
-            const canAutoSolve = checkAutoSolve(gameState);
-            if (canAutoSolve) {
-                gameState.autocompleting = true;
-                // TODO: start auto-completing moves with interval
-                await autoSolveMoves(gameState)
+            if (!gameState.autocompleting) {
+                const canAutoSolve = checkAutoSolve(gameState);
+                if (canAutoSolve) {
+                    gameState.autocompleting = true;
+                    autoSolveMoves(userId, gameState)
+                }
             }
 
             const win = checkWinCondition(gameState);
             if (win) {
+                console.log("win")
                 gameState.isDone = true;
                 await handleWin(userId, gameState, io);
             }
