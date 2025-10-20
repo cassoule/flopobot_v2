@@ -146,7 +146,7 @@ export function solitaireRoutes(client, io) {
             if (canAutoSolve) {
                 gameState.autocompleting = true;
                 // TODO: start auto-completing moves with interval
-                autoSolveMoves(gameState)
+                await autoSolveMoves(gameState)
             }
 
             const win = checkWinCondition(gameState);

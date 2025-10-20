@@ -1,4 +1,6 @@
 // --- Constants for Deck Creation ---
+import {sleep} from "openai/core";
+
 const SUITS = ['h', 'd', 's', 'c']; // Hearts, Diamonds, Spades, Clubs
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'];
 
@@ -311,13 +313,16 @@ export function checkAutoSolve(gameState) {
     return true;
 }
 
-export function autoSolveMoves(gameState) {
+export async function autoSolveMoves(gameState) {
     const moves = [];
     const foundations = gameState.foundationPiles;
     const tableau = gameState.tableauPiles;
 
     function canMoveToFoundation(card) {
-        const foundationPile = foundations.find(pile => pile[pile.length - 1].suit === card.suit || pile.length === 0);
+        let foundationPile = foundations.find(pile => pile[pile.length - 1]?.suit === card.suit);
+        if (!foundationPile) {
+            foundationPile = foundations.find(pile => pile.length === 0);
+        }
         if (foundationPile.length === 0) {
             return card.rank === 'A'; // Only Ace can be placed on empty foundation
         } else {
@@ -335,29 +340,26 @@ export function autoSolveMoves(gameState) {
             if (column.length === 0) continue;
 
             const card = column[column.length - 1]; // Top card of the tableau column
-            const foundationIndex = foundations.findIndex(pile => pile[pile.length - 1].suit === card.suit || pile.length === 0);
-            console.log(card.rank + card.suit + " to " + foundationIndex)
+            let foundationIndex = foundations.findIndex(pile => pile[pile.length - 1]?.suit === card.suit);
+            if (foundationIndex === -1) {
+                foundationIndex = foundations.findIndex(pile => pile.length === 0);
+            }
             if(canMoveToFoundation(card)) {
-                tableau[i].pop()
-                foundations[foundationIndex].push(card)
-                console.log("moved" + card.rank + card.suit + " to " + foundationIndex)
-                moved = true;
-                moves.push({
-                    sourcePileType: 'tableauPiles',
-                    sourcePileIndex: i,
-                    sourceCardIndex: column.length - 1,
-                    destPileType: 'foundationPiles',
+                let moveData = {
                     destPileIndex: foundationIndex,
-                    cardsMoved: [card],
-                    cardWasFlipped: false,
-                    points: 11
-                });
+                    destPileType: 'foundationPiles',
+                    sourceCardIndex: column.length - 1,
+                    sourcePileIndex: i,
+                    sourcePileType: 'tableauPiles',
+                    userId: gameState.userId,
+                }
+                moveCard(gameState, moveData);
+                moved = true;
+                await sleep(500); // Pause for visualization
+                //TODO: maybe needs an emit here to update clients?
             }
         }
     } while (moved)//(foundations.reduce((acc, pile) => acc + pile.length, 0));
-
-    console.log("Auto-solve moves:");
-    console.log(moves);
     return moves;
 }
 
