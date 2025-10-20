@@ -32,7 +32,7 @@ export function blackjackRoutes(io) {
     hitSoft17: false,      // S17 (dealer stands on soft 17) if false
     blackjackPayout: 1.5,  // 3:2
     cutCardRatio: 0.25,
-    phaseDurations: { bettingMs: 10000, dealMs: 2000, playMsPerPlayer: 15000, revealMs: 1000, payoutMs: 7000 },
+    phaseDurations: { bettingMs: 10000, dealMs: 2000, playMsPerPlayer: 20000, revealMs: 1000, payoutMs: 7000 },
     animation: { dealerDrawMs: 1000 }
   });
 
@@ -124,11 +124,12 @@ export function blackjackRoutes(io) {
       bank,
       currentBet: 0,
       inRound: false,
-      hands: [{ cards: [], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false }],
+      hands: [{ cards: [], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: 0 }],
       activeHand: 0,
       joined_at: Date.now(),
       msgId: null,
       totalDelta: 0,
+      totalBets: 0,
     };
 
     try {
@@ -139,11 +140,16 @@ export function blackjackRoutes(io) {
       const embed = new EmbedBuilder()
           .setDescription(`<@${userId}> joue au Blackjack`)
           .addFields(
-      {
-              name: `Gains`,
-              value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
-              inline: true
-            },
+        {
+                name: `Gains`,
+                value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
+                inline: true
+              },
+              {
+                name: `Mises jouées`,
+                value: `**${room.players[userId].totalBets}**`,
+                inline: true
+              }
           )
           .setColor('#5865f2')
           .setTimestamp(new Date());
@@ -176,6 +182,11 @@ export function blackjackRoutes(io) {
                 value: `**${room.players[userId].totalDelta >= 0 ? '+' + room.players[userId].totalDelta : room.players[userId].totalDelta}** Flopos`,
                 inline: true
               },
+              {
+                name: `Mises jouées`,
+                value: `**${room.players[userId].totalBets}**`,
+                inline: true
+              }
           )
           .setColor(room.players[userId].totalDelta >= 0 ? 0x22A55B : 0xED4245)
           .setTimestamp(new Date());
@@ -220,6 +231,7 @@ export function blackjackRoutes(io) {
     }
 
     p.currentBet = bet;
+    p.hands[p.activeHand].bet = bet;
     emitToast({ type: "player-bet", userId, amount: bet });
     emitUpdate("bet-placed", snapshot(room));
     return res.status(200).json({ message: "bet-accepted" });
@@ -236,15 +248,32 @@ export function blackjackRoutes(io) {
     if (action === "double" && !room.settings.fakeMoney) {
       const userDB = getUser.get(userId);
       const coins = userDB?.coins ?? 0;
-      if (coins < p.currentBet) return res.status(403).json({ message: "insufficient-funds-for-double" });
-      updateUserCoins.run({ id: userId, coins: coins - p.currentBet });
+      const hand = p.hands[p.activeHand];
+      if (coins < hand.bet) return res.status(403).json({ message: "insufficient-funds-for-double" });
+      updateUserCoins.run({ id: userId, coins: coins - hand.bet });
       insertLog.run({
         id: `${userId}-blackjack-${Date.now()}`,
         user_id: userId, target_user_id: null,
         action: 'BLACKJACK_DOUBLE',
-        coins_amount: -p.currentBet, user_new_amount: coins - p.currentBet,
+        coins_amount: -hand.bet, user_new_amount: coins - hand.bet,
       });
-      p.bank = coins - p.currentBet;
+      p.bank = coins - hand.bet;
+      // effective bet size is handled in settlement via hand.doubled flag
+    }
+
+    if (action === "split" && !room.settings.fakeMoney) {
+      const userDB = getUser.get(userId);
+      const coins = userDB?.coins ?? 0;
+      const hand = p.hands[p.activeHand];
+      if (coins < hand.bet) return res.status(403).json({ message: "insufficient-funds-for-split" });
+      updateUserCoins.run({ id: userId, coins: coins - hand.bet });
+      insertLog.run({
+        id: `${userId}-blackjack-${Date.now()}`,
+        user_id: userId, target_user_id: null,
+        action: 'BLACKJACK_SPLIT',
+        coins_amount: -hand.bet, user_new_amount: coins - hand.bet,
+      });
+      p.bank = coins - hand.bet;
       // effective bet size is handled in settlement via hand.doubled flag
     }
 

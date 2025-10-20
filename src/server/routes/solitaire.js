@@ -3,7 +3,7 @@ import express from 'express';
 // --- Game Logic Imports ---
 import {
     createDeck, shuffle, deal, isValidMove, moveCard, drawCard,
-    checkWinCondition, createSeededRNG, seededShuffle, undoMove, draw3Cards
+    checkWinCondition, createSeededRNG, seededShuffle, undoMove, draw3Cards, checkAutoSolve, autoSolveMoves
 } from '../../game/solitaire.js';
 
 // --- Game State & Database Imports ---
@@ -60,6 +60,7 @@ export function solitaireRoutes(client, io) {
         gameState.moves = 0;
         gameState.hist = [];
         gameState.hardMode = hardMode ?? false;
+        gameState.autocompleting = false;
         activeSolitaireGames[userId] = gameState;
 
         res.json({ success: true, gameState });
@@ -94,6 +95,7 @@ export function solitaireRoutes(client, io) {
             seed: sotd.seed,
             hist: [],
             hardMode: false,
+            autocompleting: false,
         };
 
         activeSolitaireGames[userId] = gameState;
@@ -140,8 +142,17 @@ export function solitaireRoutes(client, io) {
             moveCard(gameState, moveData);
             updateGameStats(gameState, 'move', moveData);
 
+            if (!gameState.autocompleting) {
+                const canAutoSolve = checkAutoSolve(gameState);
+                if (canAutoSolve) {
+                    gameState.autocompleting = true;
+                    autoSolveMoves(userId, gameState)
+                }
+            }
+
             const win = checkWinCondition(gameState);
             if (win) {
+                console.log("win")
                 gameState.isDone = true;
                 await handleWin(userId, gameState, io);
             }

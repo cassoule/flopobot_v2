@@ -7,7 +7,8 @@ import {getUser, insertLog, updateUserCoins} from "../database/index.js";
 import {client} from "../bot/client.js";
 import {EmbedBuilder} from "discord.js";
 
-export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
+// export const RANKS = ["A","2","3","4","5","6","7","8","9","T","J","Q","K"];
+export const RANKS = ["A", "2"];
 export const SUITS = ["d","s","c","h"];
 
 // Build a single 52-card deck like "Ad","Ts", etc.
@@ -123,6 +124,7 @@ export function publicPlayerView(player) {
       result: h.result ?? null,
       total: handValue(h.cards).total,
       soft: handValue(h.cards).soft,
+      bet: h.bet,
     })),
   };
 }
@@ -139,7 +141,7 @@ export function createBlackjackRoom({
   phaseDurations = {
     bettingMs: 15000,
     dealMs: 1000,
-    playMsPerPlayer: 15000,
+    playMsPerPlayer: 20000,
     revealMs: 1000,
     payoutMs: 10000,
   },
@@ -178,7 +180,7 @@ export function resetForNewRound(room) {
   for (const p of Object.values(room.players)) {
     p.inRound = false;
     p.currentBet = 0;
-    p.hands = [ { cards: [], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false } ];
+    p.hands = [ { cards: [], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: 0 } ];
     p.activeHand = 0;
   }
 }
@@ -200,7 +202,7 @@ export function dealInitial(room) {
   const actives = Object.values(room.players).filter(p => p.currentBet >= room.minBet);
   for (const p of actives) {
     p.inRound = true;
-    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false } ];
+    p.hands = [ { cards: [draw(room.shoe)], stood: false, busted: false, doubled: false, surrendered: false, hasActed: false, bet: p.currentBet } ];
   }
   room.dealer.cards = [draw(room.shoe), draw(room.shoe)];
   room.dealer.holeHidden = true;
@@ -225,8 +227,7 @@ export function autoActions(room) {
 export function everyoneDone(room) {
   return Object.values(room.players).every(p => {
     if (!p.inRound) return true;
-    const h = p.hands[p.activeHand];
-    return h.stood || h.busted || isBlackjack(h.cards) || h.surrendered;
+    return p.hands.filter(h => !h.stood && !h.busted && !h.surrendered)?.length === 0;
   });
 }
 
@@ -243,58 +244,70 @@ export async function settleAll(room) {
   const allRes = {}
   for (const p of Object.values(room.players)) {
     if (!p.inRound) continue;
-    const hand = p.hands[p.activeHand];
-    const res = settleHand({
-      bet: p.currentBet,
-      playerCards: hand.cards,
-      dealerCards: room.dealer.cards,
-      doubled: hand.doubled,
-      surrendered: hand.surrendered,
-      blackjackPayout: room.settings.blackjackPayout,
-    });
-    allRes[p.id] = res;
-    p.totalDelta += res.delta
-    if (res.result === 'win' || res.result === 'push') {
-      const userDB = getUser.get(p.id);
-      if (userDB) {
-        const coins = userDB.coins;
-        try {
-          updateUserCoins.run({ id: p.id, coins: coins + p.currentBet + res.delta });
-          insertLog.run({
-            id: `${p.id}-blackjack-${Date.now()}`,
-            user_id: p.id, target_user_id: null,
-            action: 'BLACKJACK_PAYOUT',
-            coins_amount: res.delta + p.currentBet, user_new_amount: coins + p.currentBet + res.delta,
-          });
-          p.bank = coins + p.currentBet + res.delta
-        } catch (e) {
-          console.log(e)
+    for (const hand of p.hands) {
+      const res = settleHand({
+        bet: hand.bet,
+        playerCards: hand.cards,
+        dealerCards: room.dealer.cards,
+        doubled: hand.doubled,
+        surrendered: hand.surrendered,
+        blackjackPayout: room.settings.blackjackPayout,
+      });
+      if (allRes[p.id]) {
+        allRes[p.id].push(res);
+      } else {
+        allRes[p.id] = [res];
+      }
+
+      p.totalDelta += res.delta
+      p.totalBets++
+      if (res.result === 'win' || res.result === 'push' || res.result === 'blackjack') {
+        const userDB = getUser.get(p.id);
+        if (userDB) {
+          const coins = userDB.coins;
+          try {
+            updateUserCoins.run({ id: p.id, coins: coins + hand.bet + res.delta });
+            insertLog.run({
+              id: `${p.id}-blackjack-${Date.now()}`,
+              user_id: p.id, target_user_id: null,
+              action: 'BLACKJACK_PAYOUT',
+              coins_amount: res.delta + hand.bet, user_new_amount: coins + hand.bet + res.delta,
+            });
+            p.bank = coins + hand.bet + res.delta
+          } catch (e) {
+            console.log(e)
+          }
         }
       }
-    }
-    emitToast({ type: `payout-res`, allRes });
-    hand.result = res.result;
-    hand.delta = res.delta;
-    try {
-      const guild = await client.guilds.fetch(process.env.GUILD_ID);
-      const generalChannel = guild.channels.cache.find(
-          ch => ch.name === 'général' || ch.name === 'general'
-      );
-      const msg = await generalChannel.messages.fetch(p.msgId);
-      const updatedEmbed = new EmbedBuilder()
-          .setDescription(`<@${p.id}> joue au Blackjack.`)
-          .addFields(
-              {
-                name: `Gains`,
-                value: `**${p.totalDelta >= 0 ? '+' + p.totalDelta : p.totalDelta}** Flopos`,
-                inline: true
-              },
-          )
-          .setColor(p.totalDelta >= 0 ? 0x22A55B : 0xED4245)
-          .setTimestamp(new Date());
-      await msg.edit({ embeds: [updatedEmbed], components: [] });
-    } catch (e) {
-      console.log(e);
+      emitToast({ type: `payout-res`, allRes });
+      hand.result = res.result;
+      hand.delta = res.delta;
+      try {
+        const guild = await client.guilds.fetch(process.env.GUILD_ID);
+        const generalChannel = guild.channels.cache.find(
+            ch => ch.name === 'général' || ch.name === 'general'
+        );
+        const msg = await generalChannel.messages.fetch(p.msgId);
+        const updatedEmbed = new EmbedBuilder()
+            .setDescription(`<@${p.id}> joue au Blackjack.`)
+            .addFields(
+                {
+                  name: `Gains`,
+                  value: `**${p.totalDelta >= 0 ? '+' + p.totalDelta : p.totalDelta}** Flopos`,
+                  inline: true
+                },
+                {
+                  name: `Mises jouées`,
+                  value: `**${p.totalBets}**`,
+                  inline: true
+                }
+            )
+            .setColor(p.totalDelta >= 0 ? 0x22A55B : 0xED4245)
+            .setTimestamp(new Date());
+        await msg.edit({ embeds: [updatedEmbed], components: [] });
+      } catch (e) {
+        console.log(e);
+      }
     }
   }
 }
@@ -316,25 +329,56 @@ export function applyAction(room, playerId, action) {
     case "stand": {
       hand.stood = true;
       hand.hasActed = true;
+      p.activeHand++;
       return "stand";
     }
     case "double": {
       if (!canDouble(hand)) throw new Error("Cannot double now");
       hand.doubled = true;
-      p.currentBet*=2
+      hand.bet*=2
+      p.currentBet+=hand.bet/2
       hand.hasActed = true;
       // The caller (routes) must also handle additional balance lock on the bet if using real coins
       hand.cards.push(draw(room.shoe));
       if (isBust(hand.cards)) hand.busted = true;
       else hand.stood = true;
+      p.activeHand++;
       return "double";
     }
-    case "surrender": {
-      if (hand.cards.length !== 2 || hand.hasActed) throw new Error("Cannot surrender now");
-      hand.surrendered = true;
-      hand.stood = true;
-      hand.hasActed = true;
-      return "surrender";
+    case "split": {
+      if (hand.cards.length !== 2) throw new Error("Cannot split: not exactly 2 cards");
+      const r0 = hand.cards[0][0];
+      const r1 = hand.cards[1][0];
+      if (r0 !== r1) throw new Error("Cannot split: cards not same rank");
+
+      const cardA = hand.cards[0];
+      const cardB = hand.cards[1];
+
+      hand.cards = [cardA];
+      hand.stood = false;
+      hand.busted = false;
+      hand.doubled = false;
+      hand.surrendered = false;
+      hand.hasActed = false;
+
+      const newHand = {
+        cards: [cardB],
+        stood: false,
+        busted: false,
+        doubled: false,
+        surrendered: false,
+        hasActed: false,
+        bet: hand.bet,
+      }
+
+      p.currentBet *= 2
+
+      p.hands.splice(p.activeHand + 1, 0, newHand);
+
+      hand.cards.push(draw(room.shoe));
+      newHand.cards.push(draw(room.shoe));
+
+      return "split";
     }
     default:
       throw new Error("Invalid action");
