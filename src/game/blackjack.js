@@ -141,7 +141,7 @@ export function createBlackjackRoom({
   phaseDurations = {
     bettingMs: 15000,
     dealMs: 1000,
-    playMsPerPlayer: 15000,
+    playMsPerPlayer: 20000,
     revealMs: 1000,
     payoutMs: 10000,
   },

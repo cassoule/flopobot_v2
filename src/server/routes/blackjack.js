@@ -32,7 +32,7 @@ export function blackjackRoutes(io) {
     hitSoft17: false,      // S17 (dealer stands on soft 17) if false
     blackjackPayout: 1.5,  // 3:2
     cutCardRatio: 0.25,
-    phaseDurations: { bettingMs: 10000, dealMs: 2000, playMsPerPlayer: 15000, revealMs: 1000, payoutMs: 7000 },
+    phaseDurations: { bettingMs: 10000, dealMs: 2000, playMsPerPlayer: 20000, revealMs: 1000, payoutMs: 7000 },
     animation: { dealerDrawMs: 1000 }
   });
 
