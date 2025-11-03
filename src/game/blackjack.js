@@ -131,7 +131,7 @@ export function publicPlayerView(player) {
 // Build initial room object
 export function createBlackjackRoom({
   minBet = 10,
-  maxBet = 1000,
+  maxBet = 10000,
   fakeMoney = false,
   decks = 6,
   hitSoft17 = false,

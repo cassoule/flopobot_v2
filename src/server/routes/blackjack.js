@@ -26,7 +26,7 @@ export function blackjackRoutes(io) {
   // --- Singleton continuous room ---
   const room = createBlackjackRoom({
     minBet: 10,
-    maxBet: 5000,
+    maxBet: 10000,
     fakeMoney: false,
     decks: 6,
     hitSoft17: false,      // S17 (dealer stands on soft 17) if false
