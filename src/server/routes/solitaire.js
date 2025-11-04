@@ -152,7 +152,6 @@ export function solitaireRoutes(client, io) {
 
             const win = checkWinCondition(gameState);
             if (win) {
-                console.log("win")
                 gameState.isDone = true;
                 await handleWin(userId, gameState, io);
             }

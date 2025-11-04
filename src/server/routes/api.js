@@ -5,7 +5,7 @@ import { sleep } from 'openai/core';
 import {
     getAllUsers, getUsersByElo, pruneOldLogs, getLogs, getUser,
     getUserLogs, getUserElo, getUserGames, getUserInventory,
-    queryDailyReward, updateUserCoins, insertLog,
+    queryDailyReward, updateUserCoins, insertLog, getAllAkhys, insertUser, insertElos
 } from '../../database/index.js';
 
 // --- Game State Imports ---
@@ -45,6 +45,52 @@ export function apiRoutes(client, io) {
             res.status(500).json({ error: 'Failed to fetch users.' });
         }
     });
+
+    router.get('/akhys', (req, res) => {
+        try {
+            const akhys = getAllAkhys.all()
+            res.json(akhys);
+        } catch (error) {
+            console.error("Error fetching akhys:", error);
+            res.status(500).json({ error: 'Failed to fetch akhys' });
+        }
+    })
+
+    router.post('/register-user', async (req, res) => {
+        const { discordUserId } = req.body;
+        const discordUser = await client.users.fetch(discordUserId);
+
+        try {
+            insertUser.run({
+                id: discordUser.id,
+                username: discordUser.username,
+                globalName: discordUser.globalName,
+                warned: 0,
+                warns: 0,
+                allTimeWarns: 0,
+                totalRequests: 0,
+                avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
+                isAkhy: 0
+            })
+
+            updateUserCoins.run({ id: discordUser.id, coins: 5000 });
+            insertLog.run({
+                id: `${discordUser.id}-welcome-${Date.now()}`,
+                user_id: discordUser.id,
+                action: 'WELCOME_BONUS',
+                target_user_id: null,
+                coins_amount: 5000,
+                user_new_amount: 5000,
+            })
+
+            console.log(`New registered user: ${discordUser.username} (${discordUser.id})`);
+
+            res.status(200).json({ message: `Bienvenue ${discordUser.username} !` });
+        } catch (e) {
+            console.log(`Failed to register user ${discordUser.username} (${discordUser.id})`, e);
+            res.status(500).json({ error: 'Erreur lors de la création du nouvel utilisateur.' });
+        }
+    })
 
     router.get('/skins', (req, res) => {
         try {
@@ -182,7 +228,7 @@ export function apiRoutes(client, io) {
             if (!akhy) return res.status(404).json({ message: 'Utilisateur introuvable' });
             if (akhy.dailyQueried) return res.status(403).json({ message: 'Récompense journalière déjà récupérée.' });
 
-            const amount = 200;
+            const amount = 500;
             const newCoins = akhy.coins + amount;
             queryDailyReward.run(id);
             updateUserCoins.run({ id, coins: newCoins });

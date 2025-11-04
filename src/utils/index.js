@@ -49,6 +49,7 @@ export async function getAkhys(client) {
             allTimeWarns: 0,
             totalRequests: 0,
             avatarUrl: akhy.user.displayAvatarURL({ dynamic: true, size: 256 }),
+            isAkhy: 1
         }));
 
         if (usersToInsert.length > 0) {

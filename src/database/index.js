@@ -14,7 +14,8 @@ export const stmtUsers = flopoDB.prepare(`
     totalRequests INTEGER DEFAULT 0,
     coins INTEGER DEFAULT 0,
     dailyQueried BOOLEAN DEFAULT 0,
-    avatarUrl TEXT DEFAULT NULL
+    avatarUrl TEXT DEFAULT NULL,
+    isAkhy BOOLEAN DEFAULT 0
   )
 `);
 stmtUsers.run();
@@ -37,7 +38,7 @@ export const stmtSkins = flopoDB.prepare(`
 `);
 stmtSkins.run()
 
-export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests, avatarUrl) VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests, @avatarUrl)');
+export const insertUser = flopoDB.prepare('INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests, avatarUrl, isAkhy) VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests, @avatarUrl, @isAkhy)');
 export const updateUser = flopoDB.prepare('UPDATE users SET warned = @warned, warns = @warns, allTimeWarns = @allTimeWarns, totalRequests = @totalRequests WHERE id = @id');
 export const updateUserAvatar = flopoDB.prepare('UPDATE users SET avatarUrl = @avatarUrl WHERE id = @id');
 export const queryDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried = 1 WHERE id = ?`);
@@ -45,6 +46,7 @@ export const resetDailyReward = flopoDB.prepare(`UPDATE users SET dailyQueried =
 export const updateUserCoins = flopoDB.prepare('UPDATE users SET coins = @coins WHERE id = @id');
 export const getUser = flopoDB.prepare('SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id WHERE users.id = ?');
 export const getAllUsers = flopoDB.prepare('SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id ORDER BY coins DESC');
+export const getAllAkhys = flopoDB.prepare('SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id WHERE isAkhy = 1 ORDER BY coins DESC');
 
 export const insertSkin = flopoDB.prepare('INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText, basePrice, currentLvl, currentChroma, currentPrice, maxPrice) VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText, @basePrice, @currentLvl, @currentChroma, @currentPrice, @maxPrice)');
 export const updateSkin = flopoDB.prepare('UPDATE skins SET user_id = @user_id, currentLvl = @currentLvl, currentChroma = @currentChroma, currentPrice = @currentPrice WHERE uuid = @uuid');
