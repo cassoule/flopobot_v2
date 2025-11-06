@@ -1,5 +1,5 @@
-import { registerCommands } from './src/config/commands.js';
+import { registerCommands } from "./src/config/commands.js";
 
-console.log('Registering global commands...');
+console.log("Registering global commands...");
 registerCommands();
-console.log('Commands registered.');
+console.log("Commands registered.");

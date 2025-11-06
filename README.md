@@ -1,6 +1,7 @@
 # FLOPOBOT DEUXIEME DU NOM
 
 ## Project structure
+
 Below is a basic overview of the project structure:
 
 ```
@@ -15,5 +16,6 @@ Below is a basic overview of the project structure:
 ```
 
 ## FlopoSite
+
 - FlopoBot has its own website to use it a different way
   [FlopoSite's repo](https://github.com/cassoule/floposite)

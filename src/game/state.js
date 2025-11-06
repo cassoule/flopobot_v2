@@ -44,7 +44,6 @@ export let activePredis = {};
 // Format: { [userId]: { endAt, lastMessage } }
 export let activeSlowmodes = {};
 
-
 // --- Queues for Matchmaking ---
 
 // Stores user IDs waiting to play Tic-Tac-Toe.
@@ -54,7 +53,6 @@ export let tictactoeQueue = [];
 export let connect4Queue = [];
 
 export let queueMessagesEndpoints = [];
-
 
 // --- Rate Limiting and Caching ---
 
