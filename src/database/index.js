@@ -137,17 +137,8 @@ export const stmtBids = flopoDB.prepare(`
 stmtBids.run();
 
 export const getMarketOffers = flopoDB.prepare(`
-    SELECT market_offers.*,
-           skins.displayName AS skinName,
-           skins.displayIcon AS skinIcon,
-           seller.username   AS sellerName,
-           seller.globalName AS sellerGlobalName,
-           buyer.username    AS buyerName,
-           buyer.globalName  AS buyerGlobalName
+    SELECT *
     FROM market_offers
-             JOIN skins ON skins.uuid = market_offers.skin_uuid
-             JOIN users AS seller ON seller.id = market_offers.seller_id
-             LEFT JOIN users AS buyer ON buyer.id = market_offers.buyer_id
     ORDER BY market_offers.posted_at DESC
 `);
 
@@ -332,14 +323,14 @@ export const stmtSOTDStats = flopoDB.prepare(`
 stmtSOTDStats.run();
 
 export const getAllSOTDStats = flopoDB.prepare(`SELECT sotd_stats.*, users.globalName
-                   FROM sotd_stats
-                            JOIN users ON users.id = sotd_stats.user_id
-                   ORDER BY score DESC, moves ASC, time ASC`);
+                                                FROM sotd_stats
+                                                         JOIN users ON users.id = sotd_stats.user_id
+                                                ORDER BY score DESC, moves ASC, time ASC`);
 export const getUserSOTDStats = flopoDB.prepare(`SELECT *
                                                  FROM sotd_stats
                                                  WHERE user_id = ?`);
 export const insertSOTDStats = flopoDB.prepare(`INSERT INTO sotd_stats (id, user_id, time, moves, score)
-                   VALUES (@id, @user_id, @time, @moves, @score)`);
+                                                VALUES (@id, @user_id, @time, @moves, @score)`);
 export const clearSOTDStats = flopoDB.prepare(`DELETE
                                                FROM sotd_stats`);
 export const deleteUserSOTDStats = flopoDB.prepare(`DELETE
