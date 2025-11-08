@@ -225,7 +225,8 @@ export const stmtLogs = flopoDB.prepare(`
         action          TEXT,
         target_user_id  TEXT REFERENCES users,
         coins_amount    INTEGER,
-        user_new_amount INTEGER
+        user_new_amount INTEGER,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
 `);
 stmtLogs.run();
@@ -358,7 +359,7 @@ export async function pruneOldLogs() {
               FROM logs
               WHERE id IN (SELECT id
                            FROM (SELECT id,
-                                        ROW_NUMBER() OVER (ORDER BY id DESC) AS rn
+                                        ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
                                  FROM logs
                                  WHERE user_id = ?)
                            WHERE rn > ${process.env.LOGS_BY_USER})

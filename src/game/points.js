@@ -1,16 +1,17 @@
 import {
-	getUser,
-	updateUserCoins,
-	insertLog,
-	getAllSkins,
-	insertSOTD,
 	clearSOTDStats,
-	getAllSOTDStats,
 	deleteSOTD,
+	getAllSkins,
+	getAllSOTDStats,
+	getUser,
 	insertGame,
+	insertLog,
+	insertSOTD,
+	pruneOldLogs,
+	updateUserCoins
 } from "../database/index.js";
-import { messagesTimestamps, activeSlowmodes, skins } from "./state.js";
-import { deal, createSeededRNG, seededShuffle, createDeck } from "./solitaire.js";
+import { activeSlowmodes, messagesTimestamps, skins } from "./state.js";
+import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 
 /**
  * Handles awarding points (coins) to users for their message activity.
@@ -64,6 +65,8 @@ export async function channelPointsHandler(message) {
 		coins_amount: coinsToAdd,
 		user_new_amount: newCoinTotal,
 	});
+
+	await pruneOldLogs();
 
 	return true; // Indicate that points were awarded
 }
