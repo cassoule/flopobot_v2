@@ -24,6 +24,10 @@ export function marketRoutes(client, io) {
 				offer.skin = getSkin.get(offer.skin_uuid);
 				offer.seller = getUser.get(offer.seller_id);
 				offer.buyer = getUser.get(offer.buyer_id) || null;
+				offer.bids = getOfferBids.all(offer.id) || {};
+				offer.bids.forEach((bid) => {
+					bid.bidder = getUser.get(bid.bidder_id);
+				});
 			});
 			res.status(200).send({ offers });
 		} catch (e) {
