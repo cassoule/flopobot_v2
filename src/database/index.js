@@ -157,6 +157,21 @@ export const getMarketOfferById = flopoDB.prepare(`
     WHERE market_offers.id = ?
 `);
 
+export const getMarketOffersBySkin = flopoDB.prepare(`
+    SELECT market_offers.*,
+           skins.displayName AS skinName,
+           skins.displayIcon AS skinIcon,
+           seller.username   AS sellerName,
+           seller.globalName AS sellerGlobalName,
+           buyer.username    AS buyerName,
+           buyer.globalName  AS buyerGlobalName
+    FROM market_offers
+             JOIN skins ON skins.uuid = market_offers.skin_uuid
+             JOIN users AS seller ON seller.id = market_offers.seller_id
+             LEFT JOIN users AS buyer ON buyer.id = market_offers.buyer_id
+    WHERE market_offers.skin_uuid = ?
+`);
+
 export const insertMarketOffer = flopoDB.prepare(`
     INSERT INTO market_offers (id, skin_uuid, seller_id, starting_price, buyout_price, status, opening_at, closing_at)
     VALUES (@id, @skin_uuid, @seller_id, @starting_price, @buyout_price, @status, @opening_at, @closing_at)
