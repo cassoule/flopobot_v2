@@ -6,6 +6,9 @@ import {
 	getAllAkhys,
 	getAllUsers,
 	getLogs,
+	getMarketOffersBySkin,
+	getOfferBids,
+	getSkin,
 	getUser,
 	getUserElo,
 	getUserGames,
@@ -219,6 +222,19 @@ export function apiRoutes(client, io) {
 	router.get("/user/:id/inventory", (req, res) => {
 		try {
 			const inventory = getUserInventory.all({ user_id: req.params.id });
+			inventory.forEach((skin) => {
+				const marketOffers = getMarketOffersBySkin.all(skin.uuid);
+				marketOffers.forEach((offer) => {
+					offer.skin = getSkin.get(offer.skin_uuid);
+					offer.seller = getUser.get(offer.seller_id);
+					offer.buyer = getUser.get(offer.buyer_id) || null;
+					offer.bids = getOfferBids.all(offer.id) || {};
+					offer.bids.forEach((bid) => {
+						bid.bidder = getUser.get(bid.bidder_id);
+					});
+				});
+				skin.offers = marketOffers || {};
+			});
 			res.json({ inventory });
 		} catch (error) {
 			res.status(500).json({ error: "Failed to fetch inventory." });

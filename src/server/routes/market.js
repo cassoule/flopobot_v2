@@ -5,7 +5,7 @@ import express from "express";
 // --- Utility and API Imports ---
 // --- Discord.js Builder Imports ---
 import { ButtonStyle } from "discord.js";
-import { getMarketOfferById, getMarketOffers, getOfferBids } from "../../database/index.js";
+import { getMarketOfferById, getMarketOffers, getOfferBids, getSkin, getUser } from "../../database/index.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -20,6 +20,15 @@ export function marketRoutes(client, io) {
 	router.get("/offers", async (req, res) => {
 		try {
 			const offers = getMarketOffers.all();
+			offers.forEach((offer) => {
+				offer.skin = getSkin.get(offer.skin_uuid);
+				offer.seller = getUser.get(offer.seller_id);
+				offer.buyer = getUser.get(offer.buyer_id) || null;
+				offer.bids = getOfferBids.all(offer.id) || {};
+				offer.bids.forEach((bid) => {
+					bid.bidder = getUser.get(bid.bidder_id);
+				});
+			});
 			res.status(200).send({ offers });
 		} catch (e) {
 			res.status(500).send({ error: e });

@@ -10,24 +10,23 @@ import {
 	stripMentionsOfBot,
 } from "../../utils/ai.js";
 import {
-	formatTime,
-	postAPOBuy,
-	getAPOUsers,
-	getAkhys,
 	calculateBasePrice,
 	calculateMaxPrice,
+	formatTime,
+	getAkhys,
+	getAPOUsers,
+	postAPOBuy,
 } from "../../utils/index.js";
-import { channelPointsHandler, slowmodesHandler, randomSkinPrice, initTodaysSOTD } from "../../game/points.js";
-import { requestTimestamps, activeSlowmodes, activePolls, skins, activeSolitaireGames } from "../../game/state.js";
+import { channelPointsHandler, initTodaysSOTD, randomSkinPrice, slowmodesHandler } from "../../game/points.js";
+import { activePolls, activeSlowmodes, requestTimestamps, skins } from "../../game/state.js";
 import {
 	flopoDB,
-	getUser,
-	getAllUsers,
-	updateManyUsers,
-	insertUser,
-	updateUserAvatar,
 	getAllSkins,
+	getAllUsers,
+	getUser,
 	hardUpdateSkin,
+	updateManyUsers,
+	updateUserAvatar,
 } from "../../database/index.js";
 import { client } from "../client.js";
 import { autoSolveMoves } from "../../game/solitaire.js";
@@ -57,7 +56,7 @@ export async function handleMessageCreate(message, client, io) {
 	// --- Main Guild Features (Points & Slowmode) ---
 	if (message.guildId === process.env.GUILD_ID) {
 		// Award points for activity
-		const pointsAwarded = await channelPointsHandler(message);
+		const pointsAwarded = channelPointsHandler(message);
 		if (pointsAwarded) {
 			io.emit("data-updated", { table: "users", action: "update" });
 		}
