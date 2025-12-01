@@ -200,8 +200,8 @@ export const getOfferBids = flopoDB.prepare(`
 `);
 
 export const insertBid = flopoDB.prepare(`
-    INSERT INTO bids (id, bidder_id, market_offer_id, offer_amount)
-    VALUES (@id, @bidder_id, @market_offer_id, @offer_amount)
+    INSERT INTO bids (bidder_id, market_offer_id, offer_amount)
+    VALUES (@bidder_id, @market_offer_id, @offer_amount)
 `);
 
 export const insertManyUsers = flopoDB.transaction(async (users) => {
