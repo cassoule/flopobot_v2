@@ -46,19 +46,33 @@ export async function gork(messageHistory) {
 		// --- Google Gemini Provider ---
 		else if (modelProvider === "Gemini" && gemini) {
 			// Gemini requires a slightly different history format.
-			const contents = messageHistory.map((msg) => ({
-				role: msg.role === "assistant" ? "model" : msg.role, // Gemini uses 'model' for assistant role
-				parts: [{ text: msg.content }],
-			}));
+			messageHistory.forEach((message) => {
+				console.log(message.role);
+			});
+			const systemMessage = messageHistory.find((msg) => msg.role === "system");
+			const systemInstruction = systemMessage ? systemMessage.content : undefined;
+
+			// 2. Filter out the system message and map the rest to Gemini format
+			const contents = messageHistory
+				.filter((msg) => msg.role !== "system") // Remove system role from contents
+				.map((msg) => ({
+					// Force role to be either 'model' or 'user'.
+					// If msg.role is anything else (e.g. 'function'), default to 'user' or handle accordingly.
+					role: msg.role === "assistant" ? "model" : "user",
+					parts: [{ text: msg.content }],
+				}));
 
 			// The last message should not be from the model
-			if (contents[contents.length - 1].role === "model") {
+			if (contents.length > 0 && contents[contents.length - 1].role === "model") {
 				contents.pop();
 			}
 
-			const result = await gemini.generateContent({ contents });
-			const response = await result.response;
-			return response.text();
+			const result = await gemini.models.generateContent({
+				model: "gemini-2.5-flash",
+				systemInstruction: systemInstruction,
+				contents: contents,
+			});
+			return result.text;
 		}
 
 		// --- Mistral Provider ---

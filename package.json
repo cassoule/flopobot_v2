@@ -16,7 +16,7 @@
 	"author": "Milo Gourvest",
 	"license": "MIT",
 	"dependencies": {
-		"@google/genai": "^0.8.0",
+		"@google/genai": "^1.30.0",
 		"@mistralai/mistralai": "^1.6.0",
 		"axios": "^1.9.0",
 		"better-sqlite3": "^11.9.1",
