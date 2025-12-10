@@ -15,6 +15,7 @@ import {
 	insertLog,
 	updateUserCoins,
 } from "../../database/index.js";
+import { emitMarketUpdate } from "../socket.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -92,11 +93,11 @@ export function marketRoutes(client, io) {
 				if (lastBid?.bidder_id === buyer_id)
 					return res.status(403).send({ error: "You are already the highest bidder" });
 				if (bid_amount < lastBid?.offer_amount + 10) {
-					return res.status(403).send({ message: "Bid amount is below minimum" });
+					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			} else {
 				if (bid_amount < offer.starting_price + 10) {
-					return res.status(403).send({ message: "Bid amount is below minimum" });
+					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			}
 
@@ -105,16 +106,14 @@ export function marketRoutes(client, io) {
 			if (bidder.coins < bid_amount)
 				return res.status(403).send({ error: "You do not have enough coins to place this bid" });
 
-			// TODO:
-			// buyer must refunded on outbid
-
 			insertBid.run({
+				id: Date.now(),
 				bidder_id: buyer_id,
 				market_offer_id: offer.id,
 				offer_amount: bid_amount,
 			});
 			const newCoinsAmount = bidder.coins - bid_amount;
-			updateUserCoins.run({ buyer_id, coins: newCoinsAmount });
+			updateUserCoins.run({ id: buyer_id, coins: newCoinsAmount });
 			insertLog.run({
 				id: `${buyer_id}-bid-${offer.id}-${Date.now()}`,
 				user_id: buyer_id,
@@ -124,7 +123,23 @@ export function marketRoutes(client, io) {
 				user_new_amount: newCoinsAmount,
 			});
 
-			res.status(200).send({ message: "Bid placed successfully" });
+			// Refund the previous highest bidder
+			if (lastBid) {
+				const previousBidder = getUser.get(lastBid.bidder_id);
+				const refundedCoinsAmount = previousBidder.coins + lastBid.offer_amount;
+				updateUserCoins.run({ id: previousBidder.id, coins: refundedCoinsAmount });
+				insertLog.run({
+					id: `${previousBidder.id}-bid-refund-${offer.id}-${Date.now()}`,
+					user_id: previousBidder.id,
+					action: "BID_REFUNDED",
+					target_user_id: null,
+					coins_amount: lastBid.offer_amount,
+					user_new_amount: refundedCoinsAmount,
+				});
+			}
+
+			await emitMarketUpdate();
+			res.status(200).send({ error: "Bid placed successfully" });
 		} catch (e) {
 			console.log(`[${Date.now()}]`, e);
 			res.status(500).send({ error: e });
