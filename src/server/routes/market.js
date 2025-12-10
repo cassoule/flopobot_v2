@@ -126,7 +126,7 @@ export function marketRoutes(client, io) {
 
 			res.status(200).send({ message: "Bid placed successfully" });
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 			res.status(500).send({ error: e });
 		}
 	});

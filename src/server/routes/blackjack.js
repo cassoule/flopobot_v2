@@ -153,7 +153,7 @@ export function blackjackRoutes(io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${userId}> joue au Blackjack`)
 				.addFields(
@@ -174,7 +174,7 @@ export function blackjackRoutes(io) {
 			const msg = await generalChannel.send({ embeds: [embed] });
 			room.players[userId].msgId = msg.id;
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 		}
 
 		emitUpdate("player-joined", snapshot(room));
@@ -187,7 +187,7 @@ export function blackjackRoutes(io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const msg = await generalChannel.messages.fetch(room.players[userId].msgId);
 			const updatedEmbed = new EmbedBuilder()
 				.setDescription(`<@${userId}> a quitté la table de Blackjack.`)
@@ -207,7 +207,7 @@ export function blackjackRoutes(io) {
 				.setTimestamp(new Date());
 			await msg.edit({ embeds: [updatedEmbed], components: [] });
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 		}
 
 		const p = room.players[userId];

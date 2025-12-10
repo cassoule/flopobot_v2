@@ -89,7 +89,7 @@ export function pokerRoutes(client, io) {
 		await emitPokerUpdate({ room: pokerRooms[id], type: "room-created" });
 
 		try {
-			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setTitle("Flopoker 🃏")
 				.setDescription(`<@${creatorId}> a créé une table de poker`)
@@ -118,7 +118,7 @@ export function pokerRoutes(client, io) {
 
 			await generalChannel.send({ embeds: [embed], components: [row] });
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 		}
 
 		res.status(201).json({ roomId: id });
@@ -191,7 +191,7 @@ export function pokerRoutes(client, io) {
 					await checkRoundCompletion(pokerRooms[roomId], io);
 				}
 			} catch (e) {
-				console.log(`[${Date.now().toLocaleString()}]`, e);
+				console.log(`[${Date.now()}]`, e);
 			}
 
 			await emitPokerUpdate({ type: "player-afk" });
@@ -215,7 +215,7 @@ export function pokerRoutes(client, io) {
 				}
 			}
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 		}
 
 		await emitPokerUpdate({ type: "player-left" });
@@ -255,7 +255,7 @@ export function pokerRoutes(client, io) {
 				}
 			}
 		} catch (e) {
-			console.log(`[${Date.now().toLocaleString()}]`, e);
+			console.log(`[${Date.now()}]`, e);
 		}
 
 		await emitPokerUpdate({ type: "player-kicked" });
