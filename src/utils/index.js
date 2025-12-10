@@ -136,7 +136,7 @@ export function setupCronJobs(client, io) {
 	});
 
 	// Daily at midnight: Reset daily rewards and init SOTD
-	cron.schedule("0 0 * * *", async () => {
+	cron.schedule(process.env.CRON_EXPR, async () => {
 		console.log("[Cron] Running daily midnight tasks...");
 		try {
 			resetDailyReward.run();

@@ -34,7 +34,7 @@ export async function gork(messageHistory) {
 
 	try {
 		// --- OpenAI Provider ---
-		if (modelProvider === "OpenAI" && openai) {
+		if (modelProvider.toLowerCase() === "openai" && openai) {
 			const completion = await openai.chat.completions.create({
 				model: "gpt-5", // Using a modern, cost-effective model
 				reasoning_effort: "low",
@@ -44,7 +44,7 @@ export async function gork(messageHistory) {
 		}
 
 		// --- Google Gemini Provider ---
-		else if (modelProvider === "Gemini" && gemini) {
+		else if (modelProvider.toLowerCase() === "gemini" && gemini) {
 			// Gemini requires a slightly different history format.
 			messageHistory.forEach((message) => {
 				console.log(message.role);
@@ -76,7 +76,7 @@ export async function gork(messageHistory) {
 		}
 
 		// --- Mistral Provider ---
-		else if (modelProvider === "Mistral" && mistral) {
+		else if (modelProvider.toLowerCase() === "mistral" && mistral) {
 			const chatResponse = await mistral.chat({
 				model: "mistral-large-latest",
 				messages: messageHistory,
