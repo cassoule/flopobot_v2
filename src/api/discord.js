@@ -36,7 +36,7 @@ export async function DiscordRequest(endpoint, options) {
 		} catch (err) {
 			data = res;
 		}
-		console.error(`Discord API Error on endpoint ${endpoint}:`, res.status, data);
+		console.error(`[${Date.now().toLocaleString()}] Discord API Error on endpoint ${endpoint}:`, res.status, data);
 		throw new Error(JSON.stringify(data));
 	}
 

@@ -1,6 +1,5 @@
 // --- Constants for Deck Creation ---
-import { sleep } from "openai/core";
-import { emitSolitaireUpdate, emitUpdate } from "../server/socket.js";
+import { emitSolitaireUpdate } from "../server/socket.js";
 
 const SUITS = ["h", "d", "s", "c"]; // Hearts, Diamonds, Spades, Clubs
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"];
@@ -370,7 +369,6 @@ export function autoSolveMoves(userId, gameState) {
  */
 export function undoMove(gameState) {
 	if (!gameState.hist || gameState.hist.length === 0) {
-		console.log("No moves to undo.");
 		return; // Nothing to undo
 	}
 

@@ -317,7 +317,7 @@ export async function settleAll(room) {
 						});
 						p.bank = coins + hand.bet + res.delta;
 					} catch (e) {
-						console.log(e);
+						console.log(`[${Date.now().toLocaleString()}]`, e);
 					}
 				}
 			}
@@ -326,7 +326,7 @@ export async function settleAll(room) {
 			hand.delta = res.delta;
 			try {
 				const guild = await client.guilds.fetch(process.env.GUILD_ID);
-				const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+				const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 				const msg = await generalChannel.messages.fetch(p.msgId);
 				const updatedEmbed = new EmbedBuilder()
 					.setDescription(`<@${p.id}> joue au Blackjack.`)
@@ -346,7 +346,7 @@ export async function settleAll(room) {
 					.setTimestamp(new Date());
 				await msg.edit({ embeds: [updatedEmbed], components: [] });
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 			}
 		}
 	}

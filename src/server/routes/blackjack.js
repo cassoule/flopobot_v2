@@ -1,22 +1,21 @@
 // /routes/blackjack.js
 import express from "express";
 import {
-	createBlackjackRoom,
-	startBetting,
-	dealInitial,
-	autoActions,
-	everyoneDone,
-	dealerPlay,
-	settleAll,
 	applyAction,
-	publicPlayerView,
-	handValue,
+	autoActions,
+	createBlackjackRoom,
 	dealerShouldHit,
+	dealInitial,
 	draw,
+	everyoneDone,
+	handValue,
+	publicPlayerView,
+	settleAll,
+	startBetting,
 } from "../../game/blackjack.js";
 
 // Optional: hook into your DB & Discord systems if available
-import { getUser, updateUserCoins, insertLog } from "../../database/index.js";
+import { getUser, insertLog, updateUserCoins } from "../../database/index.js";
 import { client } from "../../bot/client.js";
 import { emitToast, emitUpdate } from "../socket.js";
 import { EmbedBuilder } from "discord.js";
@@ -154,7 +153,7 @@ export function blackjackRoutes(io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${userId}> joue au Blackjack`)
 				.addFields(
@@ -175,7 +174,7 @@ export function blackjackRoutes(io) {
 			const msg = await generalChannel.send({ embeds: [embed] });
 			room.players[userId].msgId = msg.id;
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		emitUpdate("player-joined", snapshot(room));
@@ -188,7 +187,7 @@ export function blackjackRoutes(io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const msg = await generalChannel.messages.fetch(room.players[userId].msgId);
 			const updatedEmbed = new EmbedBuilder()
 				.setDescription(`<@${userId}> a quitté la table de Blackjack.`)
@@ -208,7 +207,7 @@ export function blackjackRoutes(io) {
 				.setTimestamp(new Date());
 			await msg.edit({ embeds: [updatedEmbed], components: [] });
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		const p = room.players[userId];

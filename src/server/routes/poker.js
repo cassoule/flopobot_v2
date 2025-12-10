@@ -1,24 +1,23 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import { uniqueNamesGenerator, adjectives } from "unique-names-generator";
+import { adjectives, uniqueNamesGenerator } from "unique-names-generator";
 import pkg from "pokersolver";
-const { Hand } = pkg;
-
 import { pokerRooms } from "../../game/state.js";
 import {
-	initialShuffledCards,
-	getFirstActivePlayerAfterDealer,
-	getNextActivePlayer,
 	checkEndOfBettingRound,
 	checkRoomWinners,
+	getFirstActivePlayerAfterDealer,
+	getNextActivePlayer,
+	initialShuffledCards,
 } from "../../game/poker.js";
-import { pokerEloHandler } from "../../game/elo.js";
-import { getUser, updateUserCoins, insertLog } from "../../database/index.js";
+import { getUser, insertLog, updateUserCoins } from "../../database/index.js";
 import { sleep } from "openai/core";
 import { client } from "../../bot/client.js";
 import { emitPokerToast, emitPokerUpdate } from "../socket.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { formatAmount } from "../../utils/index.js";
+
+const { Hand } = pkg;
 
 const router = express.Router();
 
@@ -90,7 +89,7 @@ export function pokerRoutes(client, io) {
 		await emitPokerUpdate({ room: pokerRooms[id], type: "room-created" });
 
 		try {
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setTitle("Flopoker 🃏")
 				.setDescription(`<@${creatorId}> a créé une table de poker`)
@@ -119,7 +118,7 @@ export function pokerRoutes(client, io) {
 
 			await generalChannel.send({ embeds: [embed], components: [row] });
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		res.status(201).json({ roomId: id });
@@ -192,7 +191,7 @@ export function pokerRoutes(client, io) {
 					await checkRoundCompletion(pokerRooms[roomId], io);
 				}
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 			}
 
 			await emitPokerUpdate({ type: "player-afk" });
@@ -216,7 +215,7 @@ export function pokerRoutes(client, io) {
 				}
 			}
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		await emitPokerUpdate({ type: "player-left" });
@@ -256,7 +255,7 @@ export function pokerRoutes(client, io) {
 				}
 			}
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		await emitPokerUpdate({ type: "player-kicked" });
