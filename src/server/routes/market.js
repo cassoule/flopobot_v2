@@ -79,9 +79,6 @@ export function marketRoutes(client, io) {
 	router.post("/offers/:id/place-bid", async (req, res) => {
 		const { buyer_id, bid_amount, timestamp } = req.body;
 		try {
-			console.log(getMarketOfferById.get(req.params.id));
-			console.log(buyer_id, bid_amount, timestamp);
-
 			const offer = getMarketOfferById.get(req.params.id);
 			if (!offer) return res.status(404).send({ error: "Offer not found" });
 			if (offer.closing_at < timestamp) return res.status(403).send({ error: "Bidding period has ended" });
@@ -129,7 +126,7 @@ export function marketRoutes(client, io) {
 
 			res.status(200).send({ message: "Bid placed successfully" });
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 			res.status(500).send({ error: e });
 		}
 	});

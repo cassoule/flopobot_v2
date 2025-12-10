@@ -1,5 +1,5 @@
-import { getUser, getUserElo, insertElos, updateElo, insertGame } from "../database/index.js";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
+import { getUser, getUserElo, insertElos, insertGame, updateElo } from "../database/index.js";
+import { ButtonStyle, EmbedBuilder } from "discord.js";
 import { client } from "../bot/client.js";
 
 /**
@@ -15,7 +15,7 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 	const p1DB = getUser.get(p1Id);
 	const p2DB = getUser.get(p2Id);
 	if (!p1DB || !p2DB) {
-		console.error(`Elo Handler: Could not find user data for ${p1Id} or ${p2Id}.`);
+		console.error(`[${Date.now().toLocaleString()}] Elo Handler: Could not find user data for ${p1Id} or ${p2Id}.`);
 		return;
 	}
 
@@ -51,10 +51,14 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 	const finalP1Elo = Math.max(0, p1NewElo);
 	const finalP2Elo = Math.max(0, p2NewElo);
 
-	console.log(`Elo Update (${type}) for ${p1DB.globalName}: ${p1CurrentElo} -> ${finalP1Elo}`);
-	console.log(`Elo Update (${type}) for ${p2DB.globalName}: ${p2CurrentElo} -> ${finalP2Elo}`);
+	console.log(
+		`[${Date.now().toLocaleString()}] Elo Update (${type}) for ${p1DB.globalName}: ${p1CurrentElo} -> ${finalP1Elo}`,
+	);
+	console.log(
+		`[${Date.now().toLocaleString()}] Elo Update (${type}) for ${p2DB.globalName}: ${p2CurrentElo} -> ${finalP2Elo}`,
+	);
 	try {
-		const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+		const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const user1 = await client.users.fetch(p1Id);
 		const user2 = await client.users.fetch(p2Id);
 		const diff1 = finalP1Elo - p1CurrentElo;
@@ -70,7 +74,7 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 			.setColor("#5865f2");
 		await generalChannel.send({ embeds: [embed] });
 	} catch (e) {
-		console.error(`Failed to post elo update message`, e);
+		console.error(`[${Date.now().toLocaleString()}] Failed to post elo update message`, e);
 	}
 
 	// --- 4. Update Database ---
@@ -156,7 +160,7 @@ export async function pokerEloHandler(room) {
 				timestamp: Date.now(),
 			});
 		} else {
-			console.error(`Error calculating new Elo for ${player.globalName}.`);
+			console.error(`[${Date.now().toLocaleString()}] Error calculating new Elo for ${player.globalName}.`);
 		}
 	});
 }

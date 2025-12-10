@@ -96,11 +96,14 @@ export function apiRoutes(client, io) {
 				user_new_amount: 5000,
 			});
 
-			console.log(`New registered user: ${discordUser.username} (${discordUser.id})`);
+			console.log(`[${Date.now().toLocaleString()}] New registered user: ${discordUser.username} (${discordUser.id})`);
 
 			res.status(200).json({ message: `Bienvenue ${discordUser.username} !` });
 		} catch (e) {
-			console.log(`Failed to register user ${discordUser.username} (${discordUser.id})`, e);
+			console.log(
+				`[${Date.now().toLocaleString()}] Failed to register user ${discordUser.username} (${discordUser.id})`,
+				e,
+			);
 			res.status(500).json({ error: "Erreur lors de la création du nouvel utilisateur." });
 		}
 	});
@@ -273,7 +276,6 @@ export function apiRoutes(client, io) {
 			await socketEmit("daily-queried", { userId: id });
 			res.status(200).json({ message: `+${amount} FlopoCoins! Récompense récupérée !` });
 		} catch (error) {
-			console.log();
 			res.status(500).json({ error: "Failed to process daily reward." });
 		}
 	});
@@ -320,10 +322,12 @@ export function apiRoutes(client, io) {
 				user_new_amount: newCoins,
 			});
 
-			console.log(`${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`);
+			console.log(
+				`[${Date.now().toLocaleString()}] ${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`,
+			);
 
 			try {
-				const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a modifié le pseudo de <@${userId}>`)
 					.addFields(
@@ -336,7 +340,7 @@ export function apiRoutes(client, io) {
 
 				await generalChannel.send({ embeds: [embed] });
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 			}
 
 			res.status(200).json({
@@ -380,7 +384,7 @@ export function apiRoutes(client, io) {
 
 			try {
 				const guild = await client.guilds.fetch(process.env.GUILD_ID);
-				const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a envoyé un spam ping à <@${userId}>`)
 					.setColor("#5865f2")
@@ -388,15 +392,15 @@ export function apiRoutes(client, io) {
 
 				await generalChannel.send({ embeds: [embed] });
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 			}
 
 			for (let i = 1; i < 120; i++) {
 				await discordUser.send(`<@${userId}>`);
 				await sleep(250);
 			}
-		} catch (err) {
-			console.log(err);
+		} catch (e) {
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 			res.status(500).json({ message: "Oups ça n'a pas marché" });
 		}
 	});
@@ -439,7 +443,7 @@ export function apiRoutes(client, io) {
 
 				try {
 					const guild = await client.guilds.fetch(process.env.GUILD_ID);
-					const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+					const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 					const embed = new EmbedBuilder()
 						.setDescription(`<@${commandUserId}> a retiré son slowmode`)
 						.setColor("#5865f2")
@@ -447,7 +451,7 @@ export function apiRoutes(client, io) {
 
 					await generalChannel.send({ embeds: [embed] });
 				} catch (e) {
-					console.log(e);
+					console.log(`[${Date.now().toLocaleString()}]`, e);
 				}
 				return res.status(200).json({ message: "Slowmode retiré" });
 			} else {
@@ -485,7 +489,7 @@ export function apiRoutes(client, io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${commandUserId}> a mis <@${userId}> en slowmode pendant 1h`)
 				.setColor("#5865f2")
@@ -493,7 +497,7 @@ export function apiRoutes(client, io) {
 
 			await generalChannel.send({ embeds: [embed] });
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		return res.status(200).json({
@@ -536,7 +540,7 @@ export function apiRoutes(client, io) {
 					},
 				});
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 				return res.status(403).send({ message: `Impossible de time-out ${user.globalName}` });
 			}
 
@@ -554,7 +558,7 @@ export function apiRoutes(client, io) {
 			});
 
 			try {
-				const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a retiré son time-out`)
 					.setColor("#5865f2")
@@ -562,7 +566,7 @@ export function apiRoutes(client, io) {
 
 				await generalChannel.send({ embeds: [embed] });
 			} catch (e) {
-				console.log(e);
+				console.log(`[${Date.now().toLocaleString()}]`, e);
 			}
 			return res.status(200).json({ message: "Time-out retiré" });
 		}
@@ -583,7 +587,7 @@ export function apiRoutes(client, io) {
 				body: { communication_disabled_until: timeoutUntil },
 			});
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 			return res.status(403).send({ message: `Impossible de time-out ${user.globalName}` });
 		}
 
@@ -604,7 +608,7 @@ export function apiRoutes(client, io) {
 		await emitDataUpdated({ table: "users", action: "update" });
 
 		try {
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${commandUserId}> a time-out <@${userId}> pour 12h`)
 				.setColor("#5865f2")
@@ -612,7 +616,7 @@ export function apiRoutes(client, io) {
 
 			await generalChannel.send({ embeds: [embed] });
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 		}
 
 		return res.status(200).json({ message: `${user.globalName} est maintenant time-out pour 12h` });
@@ -645,7 +649,7 @@ export function apiRoutes(client, io) {
 		let msgId;
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setTitle(`Prédiction de ${commandUser.username}`)
 				.setDescription(`**${label}**`)
@@ -684,7 +688,7 @@ export function apiRoutes(client, io) {
 			});
 			msgId = msg.id;
 		} catch (e) {
-			console.log(e);
+			console.log(`[${Date.now().toLocaleString()}]`, e);
 			return res.status(500).send({ message: "Erreur lors de l'envoi du message" });
 		}
 
@@ -825,7 +829,7 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
-					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
+					console.log(`[${Date.now().toLocaleString()}] Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
 			});
 			activePredis[predi].options[1].votes.forEach((v) => {
@@ -844,7 +848,7 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
-					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
+					console.log(`[${Date.now().toLocaleString()}] Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
 			});
 			activePredis[predi].closed = true;
@@ -870,7 +874,9 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount * (1 + ratio),
 					});
 				} catch (e) {
-					console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`);
+					console.log(
+						`[${Date.now().toLocaleString()}] Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`,
+					);
 				}
 			});
 			activePredis[predi].paidTime = new Date();
@@ -880,7 +886,7 @@ export function apiRoutes(client, io) {
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.find((ch) => ch.name === "général" || ch.name === "general");
+			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
 			const message = await generalChannel.messages.fetch(activePredis[predi].msgId);
 			const updatedEmbed = new EmbedBuilder()
 				.setTitle(`Prédiction de ${commandUser.username}`)

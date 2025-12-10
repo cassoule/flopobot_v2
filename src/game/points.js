@@ -88,7 +88,7 @@ export async function slowmodesHandler(message) {
 
 	// Check if the slowmode duration has passed
 	if (now > authorSlowmode.endAt) {
-		console.log(`Slowmode for ${author.username} has expired.`);
+		console.log(`[${Date.now().toLocaleString()}] Slowmode for ${author.username} has expired.`);
 		delete activeSlowmodes[author.id];
 		return { deleted: false, expired: true };
 	}
@@ -97,10 +97,10 @@ export async function slowmodesHandler(message) {
 	if (authorSlowmode.lastMessage && now - authorSlowmode.lastMessage < 60 * 1000) {
 		try {
 			await message.delete();
-			console.log(`Deleted a message from slowmoded user: ${author.username}`);
+			console.log(`[${Date.now().toLocaleString()}] Deleted a message from slowmoded user: ${author.username}`);
 			return { deleted: true, expired: false };
 		} catch (err) {
-			console.error(`Failed to delete slowmode message:`, err);
+			console.error(`[${Date.now().toLocaleString()}] Failed to delete slowmode message:`, err);
 			return { deleted: false, expired: false };
 		}
 	} else {
@@ -144,7 +144,7 @@ export function randomSkinPrice() {
  * This function clears previous stats, awards the winner, and generates a new daily seed.
  */
 export function initTodaysSOTD() {
-	console.log("Initializing new Solitaire of the Day...");
+	console.log(`[${Date.now().toLocaleString()}] Initializing new Solitaire of the Day...`);
 
 	// 1. Award previous day's winner
 	const rankings = getAllSOTDStats.all();
@@ -165,7 +165,7 @@ export function initTodaysSOTD() {
 				user_new_amount: newCoinTotal,
 			});
 			console.log(
-				`${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
+				`[${Date.now().toLocaleString()}] ${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
 			);
 			insertGame.run({
 				id: `${winnerId}-${Date.now()}`,
@@ -206,8 +206,8 @@ export function initTodaysSOTD() {
 			wastePile: JSON.stringify(todaysSOTD.wastePile),
 			seed: newRandomSeed,
 		});
-		console.log("Today's SOTD is ready with a new seed.");
+		console.log(`[${Date.now().toLocaleString()}] Today's SOTD is ready with a new seed.`);
 	} catch (e) {
-		console.error("Error saving new SOTD to database:", e);
+		console.error(`[${Date.now().toLocaleString()}] Error saving new SOTD to database:`, e);
 	}
 }

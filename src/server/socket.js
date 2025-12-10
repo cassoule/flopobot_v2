@@ -1,21 +1,19 @@
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import {
-	activeTicTacToeGames,
-	tictactoeQueue,
 	activeConnect4Games,
+	activeTicTacToeGames,
 	connect4Queue,
 	queueMessagesEndpoints,
-	activePredis,
+	tictactoeQueue,
 } from "../game/state.js";
 import {
+	C4_ROWS,
+	checkConnect4Draw,
+	checkConnect4Win,
 	createConnect4Board,
 	formatConnect4BoardForDiscord,
-	checkConnect4Win,
-	checkConnect4Draw,
-	C4_ROWS,
 } from "../game/various.js";
 import { eloHandler } from "../game/elo.js";
-import { getUser } from "../database/index.js";
 
 // --- Module-level State ---
 let io;
@@ -294,7 +292,7 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		tictactoeQueue.splice(index, 1);
 		try {
-			const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const user = await client.users.fetch(userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
@@ -313,7 +311,7 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		connect4Queue.splice(index, 1);
 		try {
-			const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const user = await client.users.fetch(userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
@@ -366,7 +364,7 @@ function getGameAssets(gameType) {
 
 async function postQueueToDiscord(client, playerId, title, url) {
 	try {
-		const generalChannel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+		const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const user = await client.users.fetch(playerId);
 		const embed = new EmbedBuilder()
 			.setTitle(title)
@@ -390,7 +388,7 @@ async function postQueueToDiscord(client, playerId, title, url) {
 }
 
 async function updateDiscordMessage(client, game, title, resultText = "") {
-	const channel = await client.channels.fetch(process.env.GENERAL_CHANNEL_ID).catch(() => null);
+	const channel = await client.channels.fetch(process.env.BOT_CHANNEL_ID).catch(() => null);
 	if (!channel) return null;
 
 	let description;
@@ -444,6 +442,7 @@ function cleanupStaleGames() {
 export async function socketEmit(event, data) {
 	io.emit(event, data);
 }
+
 export async function emitDataUpdated(data) {
 	io.emit("data-updated", data);
 }
