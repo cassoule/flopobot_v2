@@ -317,7 +317,7 @@ export async function settleAll(room) {
 						});
 						p.bank = coins + hand.bet + res.delta;
 					} catch (e) {
-						console.log(`[${Date.now().toLocaleString()}]`, e);
+						console.log(`[${Date.now()}]`, e);
 					}
 				}
 			}
@@ -346,7 +346,7 @@ export async function settleAll(room) {
 					.setTimestamp(new Date());
 				await msg.edit({ embeds: [updatedEmbed], components: [] });
 			} catch (e) {
-				console.log(`[${Date.now().toLocaleString()}]`, e);
+				console.log(`[${Date.now()}]`, e);
 			}
 		}
 	}
