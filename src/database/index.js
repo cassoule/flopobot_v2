@@ -2,6 +2,123 @@ import Database from "better-sqlite3";
 
 export const flopoDB = new Database("flopobot.db");
 
+/* -------------------------
+   CREATE ALL TABLES FIRST
+----------------------------*/
+flopoDB.exec(`
+    CREATE TABLE IF NOT EXISTS users
+    (
+        id            TEXT PRIMARY KEY,
+        username      TEXT NOT NULL,
+        globalName    TEXT,
+        warned        BOOLEAN DEFAULT 0,
+        warns         INTEGER DEFAULT 0,
+        allTimeWarns  INTEGER DEFAULT 0,
+        totalRequests INTEGER DEFAULT 0,
+        coins         INTEGER DEFAULT 0,
+        dailyQueried  BOOLEAN DEFAULT 0,
+        avatarUrl     TEXT    DEFAULT NULL,
+        isAkhy        BOOLEAN DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS skins
+    (
+        uuid            TEXT PRIMARY KEY,
+        displayName     TEXT,
+        contentTierUuid TEXT,
+        displayIcon     TEXT,
+        user_id         TEXT REFERENCES users,
+        tierRank        TEXT,
+        tierColor       TEXT,
+        tierText        TEXT,
+        basePrice       TEXT,
+        currentLvl      INTEGER DEFAULT NULL,
+        currentChroma   INTEGER DEFAULT NULL,
+        currentPrice    INTEGER DEFAULT NULL,
+        maxPrice        INTEGER DEFAULT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS market_offers
+    (
+        id PRIMARY KEY,
+        skin_uuid      TEXT REFERENCES skins,
+        seller_id      TEXT REFERENCES users,
+        starting_price INTEGER   NOT NULL,
+        buyout_price   INTEGER               DEFAULT NULL,
+        final_price    INTEGER               DEFAULT NULL,
+        status         TEXT      NOT NULL,
+        posted_at      TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
+        opening_at     TIMESTAMP NOT NULL,
+        closing_at     TIMESTAMP NOT NULL,
+        buyer_id       TEXT REFERENCES users DEFAULT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS bids
+    (
+        id PRIMARY KEY,
+        bidder_id    TEXT REFERENCES users,
+        market_offer_id REFERENCES market_offers,
+        offer_amount INTEGER,
+        offered_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS logs
+    (
+        id PRIMARY KEY,
+        user_id         TEXT REFERENCES users,
+        action          TEXT,
+        target_user_id  TEXT REFERENCES users,
+        coins_amount    INTEGER,
+        user_new_amount INTEGER,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS games
+    (
+        id PRIMARY KEY,
+        p1         TEXT REFERENCES users,
+        p2         TEXT REFERENCES users,
+        p1_score   INTEGER,
+        p2_score   INTEGER,
+        p1_elo     INTEGER,
+        p2_elo     INTEGER,
+        p1_new_elo INTEGER,
+        p2_new_elo INTEGER,
+        type       TEXT,
+        timestamp  TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS elos
+    (
+        id PRIMARY KEY REFERENCES users,
+        elo INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS sotd
+    (
+        id              INT PRIMARY KEY,
+        tableauPiles    TEXT,
+        foundationPiles TEXT,
+        stockPile       TEXT,
+        wastePile       TEXT,
+        isDone          BOOLEAN DEFAULT false,
+        seed            TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS sotd_stats
+    (
+        id      TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users,
+        time    INTEGER,
+        moves   INTEGER,
+        score   INTEGER
+    );
+`);
+
+/* -----------------------------------------------------
+   PREPARE ANY CREATE TABLE STATEMENT OBJECTS (kept for parity)
+------------------------------------------------------*/
+
 export const stmtUsers = flopoDB.prepare(`
     CREATE TABLE IF NOT EXISTS users
     (
@@ -19,6 +136,7 @@ export const stmtUsers = flopoDB.prepare(`
     )
 `);
 stmtUsers.run();
+
 export const stmtSkins = flopoDB.prepare(`
     CREATE TABLE IF NOT EXISTS skins
     (
@@ -39,6 +157,106 @@ export const stmtSkins = flopoDB.prepare(`
 `);
 stmtSkins.run();
 
+export const stmtMarketOffers = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS market_offers
+    (
+        id PRIMARY KEY,
+        skin_uuid      TEXT REFERENCES skins,
+        seller_id      TEXT REFERENCES users,
+        starting_price INTEGER   NOT NULL,
+        buyout_price   INTEGER               DEFAULT NULL,
+        final_price    INTEGER               DEFAULT NULL,
+        status         TEXT      NOT NULL,
+        posted_at      TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
+        opening_at     TIMESTAMP NOT NULL,
+        closing_at     TIMESTAMP NOT NULL,
+        buyer_id       TEXT REFERENCES users DEFAULT NULL
+    )
+`);
+stmtMarketOffers.run();
+
+export const stmtBids = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS bids
+    (
+        id PRIMARY KEY,
+        bidder_id    TEXT REFERENCES users,
+        market_offer_id REFERENCES market_offers,
+        offer_amount INTEGER,
+        offered_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+stmtBids.run();
+
+export const stmtLogs = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS logs
+    (
+        id PRIMARY KEY,
+        user_id         TEXT REFERENCES users,
+        action          TEXT,
+        target_user_id  TEXT REFERENCES users,
+        coins_amount    INTEGER,
+        user_new_amount INTEGER,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+`);
+stmtLogs.run();
+
+export const stmtGames = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS games
+    (
+        id PRIMARY KEY,
+        p1         TEXT REFERENCES users,
+        p2         TEXT REFERENCES users,
+        p1_score   INTEGER,
+        p2_score   INTEGER,
+        p1_elo     INTEGER,
+        p2_elo     INTEGER,
+        p1_new_elo INTEGER,
+        p2_new_elo INTEGER,
+        type       TEXT,
+        timestamp  TIMESTAMP
+    )
+`);
+stmtGames.run();
+
+export const stmtElos = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS elos
+    (
+        id PRIMARY KEY REFERENCES users,
+        elo INTEGER
+    )
+`);
+stmtElos.run();
+
+export const stmtSOTD = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS sotd
+    (
+        id              INT PRIMARY KEY,
+        tableauPiles    TEXT,
+        foundationPiles TEXT,
+        stockPile       TEXT,
+        wastePile       TEXT,
+        isDone          BOOLEAN DEFAULT false,
+        seed            TEXT
+    )
+`);
+stmtSOTD.run();
+
+export const stmtSOTDStats = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS sotd_stats
+    (
+        id      TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users,
+        time    INTEGER,
+        moves   INTEGER,
+        score   INTEGER
+    )
+`);
+stmtSOTDStats.run();
+
+/* -------------------------
+   USER statements
+----------------------------*/
 export const insertUser = flopoDB.prepare(
 	`INSERT INTO users (id, username, globalName, warned, warns, allTimeWarns, totalRequests, avatarUrl, isAkhy)
    VALUES (@id, @username, @globalName, @warned, @warns, @allTimeWarns, @totalRequests, @avatarUrl, @isAkhy)`,
@@ -68,6 +286,9 @@ export const getAllAkhys = flopoDB.prepare(
 	"SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id WHERE isAkhy = 1 ORDER BY coins DESC",
 );
 
+/* -------------------------
+   SKINS statements
+----------------------------*/
 export const insertSkin = flopoDB.prepare(
 	`INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText,
                       basePrice, currentLvl, currentChroma, currentPrice, maxPrice)
@@ -106,36 +327,9 @@ export const getUserInventory = flopoDB.prepare(
 );
 export const getTopSkins = flopoDB.prepare("SELECT * FROM skins ORDER BY maxPrice DESC LIMIT 10");
 
-export const stmtMarketOffers = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS market_offers
-    (
-        id PRIMARY KEY,
-        skin_uuid      TEXT REFERENCES skins,
-        seller_id      TEXT REFERENCES users,
-        starting_price INTEGER   NOT NULL,
-        buyout_price   INTEGER               DEFAULT NULL,
-        final_price    INTEGER               DEFAULT NULL,
-        status         TEXT      NOT NULL,
-        posted_at      TIMESTAMP             DEFAULT CURRENT_TIMESTAMP,
-        opening_at     TIMESTAMP NOT NULL,
-        closing_at     TIMESTAMP NOT NULL,
-        buyer_id       TEXT REFERENCES users DEFAULT NULL
-    )
-`);
-stmtMarketOffers.run();
-
-export const stmtBids = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS bids
-    (
-        id PRIMARY KEY,
-        bidder_id    TEXT REFERENCES users,
-        market_offer_id REFERENCES market_offers,
-        offer_amount INTEGER,
-        offered_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-`);
-stmtBids.run();
-
+/* -------------------------
+   MARKET / BIDS / OFFERS
+----------------------------*/
 export const getMarketOffers = flopoDB.prepare(`
     SELECT *
     FROM market_offers
@@ -177,6 +371,9 @@ export const insertMarketOffer = flopoDB.prepare(`
     VALUES (@id, @skin_uuid, @seller_id, @starting_price, @buyout_price, @status, @opening_at, @closing_at)
 `);
 
+/* -------------------------
+   BIDS
+----------------------------*/
 export const getBids = flopoDB.prepare(`
     SELECT bids.*,
            bidder.username   AS bidderName,
@@ -200,52 +397,45 @@ export const getOfferBids = flopoDB.prepare(`
 `);
 
 export const insertBid = flopoDB.prepare(`
-    INSERT INTO bids (bidder_id, market_offer_id, offer_amount)
-    VALUES (@bidder_id, @market_offer_id, @offer_amount)
+    INSERT INTO bids (id, bidder_id, market_offer_id, offer_amount)
+    VALUES (@id, @bidder_id, @market_offer_id, @offer_amount)
 `);
 
-export const insertManyUsers = flopoDB.transaction(async (users) => {
+/* -------------------------
+   BULK TRANSACTIONS (synchronous)
+----------------------------*/
+export const insertManyUsers = flopoDB.transaction((users) => {
 	for (const user of users)
 		try {
-			await insertUser.run(user);
+			insertUser.run(user);
 		} catch (e) {}
 });
-export const updateManyUsers = flopoDB.transaction(async (users) => {
+
+export const updateManyUsers = flopoDB.transaction((users) => {
 	for (const user of users)
 		try {
-			await updateUser.run(user);
+			updateUser.run(user);
 		} catch (e) {
 			console.log(`[${Date.now()}] user update failed`);
 		}
 });
 
-export const insertManySkins = flopoDB.transaction(async (skins) => {
+export const insertManySkins = flopoDB.transaction((skins) => {
 	for (const skin of skins)
 		try {
-			await insertSkin.run(skin);
+			insertSkin.run(skin);
 		} catch (e) {}
 });
-export const updateManySkins = flopoDB.transaction(async (skins) => {
+export const updateManySkins = flopoDB.transaction((skins) => {
 	for (const skin of skins)
 		try {
-			await updateSkin.run(skin);
+			updateSkin.run(skin);
 		} catch (e) {}
 });
 
-export const stmtLogs = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS logs
-    (
-        id PRIMARY KEY,
-        user_id         TEXT REFERENCES users,
-        action          TEXT,
-        target_user_id  TEXT REFERENCES users,
-        coins_amount    INTEGER,
-        user_new_amount INTEGER,
-        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-`);
-stmtLogs.run();
-
+/* -------------------------
+   LOGS
+----------------------------*/
 export const insertLog = flopoDB.prepare(
 	`INSERT INTO logs (id, user_id, action, target_user_id, coins_amount, user_new_amount)
    VALUES (@id, @user_id, @action, @target_user_id, @coins_amount, @user_new_amount)`,
@@ -253,24 +443,9 @@ export const insertLog = flopoDB.prepare(
 export const getLogs = flopoDB.prepare("SELECT * FROM logs");
 export const getUserLogs = flopoDB.prepare("SELECT * FROM logs WHERE user_id = @user_id");
 
-export const stmtGames = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS games
-    (
-        id PRIMARY KEY,
-        p1         TEXT REFERENCES users,
-        p2         TEXT REFERENCES users,
-        p1_score   INTEGER,
-        p2_score   INTEGER,
-        p1_elo     INTEGER,
-        p2_elo     INTEGER,
-        p1_new_elo INTEGER,
-        p2_new_elo INTEGER,
-        type       TEXT,
-        timestamp  TIMESTAMP
-    )
-`);
-stmtGames.run();
-
+/* -------------------------
+   GAMES
+----------------------------*/
 export const insertGame = flopoDB.prepare(
 	`INSERT INTO games (id, p1, p2, p1_score, p2_score, p1_elo, p2_elo, p1_new_elo, p2_new_elo, type, timestamp)
    VALUES (@id, @p1, @p2, @p1_score, @p2_score, @p1_elo, @p2_elo, @p1_new_elo, @p2_new_elo, @type, @timestamp)`,
@@ -280,15 +455,9 @@ export const getUserGames = flopoDB.prepare(
 	"SELECT * FROM games WHERE p1 = @user_id OR p2 = @user_id ORDER BY timestamp",
 );
 
-export const stmtElos = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS elos
-    (
-        id PRIMARY KEY REFERENCES users,
-        elo INTEGER
-    )
-`);
-stmtElos.run();
-
+/* -------------------------
+   ELOS
+----------------------------*/
 export const insertElos = flopoDB.prepare(`INSERT INTO elos (id, elo)
                                            VALUES (@id, @elo)`);
 export const getElos = flopoDB.prepare(`SELECT *
@@ -302,20 +471,9 @@ export const getUsersByElo = flopoDB.prepare(
 	"SELECT * FROM users JOIN elos ON elos.id = users.id ORDER BY elos.elo DESC",
 );
 
-export const stmtSOTD = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS sotd
-    (
-        id              INT PRIMARY KEY,
-        tableauPiles    TEXT,
-        foundationPiles TEXT,
-        stockPile       TEXT,
-        wastePile       TEXT,
-        isDone          BOOLEAN DEFAULT false,
-        seed            TEXT
-    )
-`);
-stmtSOTD.run();
-
+/* -------------------------
+   SOTD
+----------------------------*/
 export const getSOTD = flopoDB.prepare(`SELECT *
                                         FROM sotd
                                         WHERE id = '0'`);
@@ -325,18 +483,6 @@ export const insertSOTD =
 export const deleteSOTD = flopoDB.prepare(`DELETE
                                            FROM sotd
                                            WHERE id = '0'`);
-
-export const stmtSOTDStats = flopoDB.prepare(`
-    CREATE TABLE IF NOT EXISTS sotd_stats
-    (
-        id      TEXT PRIMARY KEY,
-        user_id TEXT REFERENCES users,
-        time    INTEGER,
-        moves   INTEGER,
-        score   INTEGER
-    )
-`);
-stmtSOTDStats.run();
 
 export const getAllSOTDStats = flopoDB.prepare(`SELECT sotd_stats.*, users.globalName
                                                 FROM sotd_stats
@@ -353,6 +499,13 @@ export const deleteUserSOTDStats = flopoDB.prepare(`DELETE
                                                     FROM sotd_stats
                                                     WHERE user_id = ?`);
 
+/* -------------------------
+   Market queries already declared above (kept for completeness)
+----------------------------*/
+
+/* -------------------------
+   pruneOldLogs
+----------------------------*/
 export async function pruneOldLogs() {
 	const users = flopoDB
 		.prepare(
