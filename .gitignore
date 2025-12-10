@@ -3,3 +3,4 @@ node_modules
 flopobot.db
 flopobot.db-shm
 flopobot.db-wal
+.idea
