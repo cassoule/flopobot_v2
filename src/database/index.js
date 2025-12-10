@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 
-export const flopoDB = new Database("db/flopobot.db");
+export const flopoDB = new Database("flopobot.db");
 
 /* -------------------------
    CREATE ALL TABLES FIRST
