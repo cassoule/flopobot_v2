@@ -1,5 +1,5 @@
 import { handleMessageCreate } from "./handlers/messageCreate.js";
-import { getAkhys, setupCronJobs } from "../utils/index.js";
+import { getAkhys } from "../utils/index.js";
 
 /**
  * Initializes and attaches all necessary event listeners to the Discord client.
@@ -17,7 +17,7 @@ export function initializeEvents(client, io) {
 		console.log("[Startup] Bot is ready, performing initial data sync...");
 		await getAkhys(client);
 		console.log("[Startup] Setting up scheduled tasks...");
-		setupCronJobs(client, io);
+		//setupCronJobs(client, io);
 		console.log("--- FlopoBOT is fully operational ---");
 	});
 

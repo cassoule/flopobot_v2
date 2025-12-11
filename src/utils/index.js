@@ -8,12 +8,18 @@ import { initTodaysSOTD } from "../game/points.js";
 import {
 	getAllAkhys,
 	getAllUsers,
+	getMarketOffers,
+	getOfferBids,
+	getUser,
 	insertManySkins,
 	insertUser,
 	resetDailyReward,
+	updateMarketOffer,
+	updateSkin,
 	updateUserAvatar,
+	updateUserCoins,
 } from "../database/index.js";
-import { activeInventories, activeSearchs, skins } from "../game/state.js";
+import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -111,6 +117,12 @@ export async function getAkhys(client) {
  * @param {object} io - The Socket.IO server instance.
  */
 export function setupCronJobs(client, io) {
+	// Every 5 minutes: Update market offers
+	cron.schedule("*/1 * * * *", () => {
+		console.log("[Cron] Checking market offers for updates...");
+		handleMarketOffersUpdate();
+	});
+
 	// Every 10 minutes: Clean up expired interactive sessions
 	cron.schedule("*/10 * * * *", () => {
 		const now = Date.now();
@@ -130,9 +142,28 @@ export function setupCronJobs(client, io) {
 
 		cleanup(activeInventories, "inventory");
 		cleanup(activeSearchs, "search");
+		for (const id in pokerRooms) {
+			if (pokerRooms[id].last_move_at !== null) {
+				if (now >= pokerRooms[id].last_move_at + FIVE_MINUTES * 3) {
+					delete pokerRooms[id];
+					console.log(`[Cron] Cleaned up expired poker room ID: ${id}`);
+				}
+			} else {
+				if (now >= pokerRooms[id].created_at + FIVE_MINUTES * 6) {
+					delete pokerRooms[id];
+					console.log(`[Cron] Cleaned up expired poker room ID: ${id}`);
+				}
+			}
+		}
 
-		// TODO: Cleanup for predis and poker rooms...
-		// ...
+		let cleanedCount = 0;
+		for (const id in activePredis) {
+			if (now >= (activePredis[id].endTime || 0)) {
+				delete activePredis[id];
+				cleanedCount++;
+			}
+		}
+		if (cleanedCount > 0) console.log(`[Cron] Cleaned up ${cleanedCount} expired predictions.`);
 	});
 
 	// Daily at midnight: Reset daily rewards and init SOTD
@@ -222,6 +253,42 @@ export async function postAPOBuy(userId, amount) {
 }
 
 // --- Miscellaneous Helpers ---
+
+function handleMarketOffersUpdate() {
+	const now = Date.now();
+	const offers = getMarketOffers.all();
+	offers.forEach((offer) => {
+		console.log(`[Market Cron] Checking offer ID: ${offer.id}, Status: ${offer.status}`);
+		console.log(`Now: ${now}, Closing At: ${offer.closing_at}, ${now >= offer.closing_at}`);
+		if (now >= offer.closing_at && offer.status !== "closed") {
+			const bids = getOfferBids.all(offer.id);
+			console.log(bids.length);
+			const lastBid = bids[0];
+			console.log(lastBid);
+			const seller = getUser.get(offer.seller_id);
+			console.log(seller);
+			const buyer = getUser.get(offer.buyer_id);
+			console.log(buyer);
+
+			console.log(offer.id, buyer.id, lastBid.offer_amount);
+
+			updateMarketOffer.run({
+				id: offer.id,
+				buyer_id: buyer.id,
+				final_price: lastBid.offer_amount,
+				status: "closed",
+			});
+
+			const newUserCoins = seller.coins + lastBid.offer_amount;
+			updateUserCoins.run({ id: seller.id, coins: newUserCoins });
+
+			// Change skin ownership
+			updateSkin.run({ user_id: buyer.id, uuid: offer.skin_uuid });
+
+			//TODO: Notify users in DMs
+		}
+	});
+}
 
 export async function getOnlineUsersWithRole(guild, roleId) {
 	if (!guild || !roleId) return new Map();
