@@ -114,6 +114,22 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	router.get("/carousel-skins", (req, res) => {
+		try {
+			const filteredSkins = skins.filter(
+				(s) => s.displayIcon !== null && s.displayName.toLowerCase().includes("champions"),
+			);
+			filteredSkins.forEach((s) => {
+				let dbSKin = getSkin.get(s.uuid);
+				s.tierColor = dbSKin?.tierColor;
+			});
+			res.json(filteredSkins);
+		} catch (error) {
+			console.error("Error fetching skins:", error);
+			res.status(500).json({ error: "Failed to fetch skins." });
+		}
+	});
+
 	router.get("/skin/:id", (req, res) => {
 		try {
 			const skinData = skins.find((s) => s.uuid === req.params.id);

@@ -260,6 +260,7 @@ function handleMarketOffersUpdate() {
 	offers.forEach((offer) => {
 		console.log(`[Market Cron] Checking offer ID: ${offer.id}, Status: ${offer.status}`);
 		console.log(`Now: ${now}, Closing At: ${offer.closing_at}, ${now >= offer.closing_at}`);
+		if (true) return; // Disable market offer closing for now
 		if (now >= offer.closing_at && offer.status !== "closed") {
 			const bids = getOfferBids.all(offer.id);
 			console.log(bids.length);
