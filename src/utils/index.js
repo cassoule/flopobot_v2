@@ -10,6 +10,7 @@ import {
 	getAllUsers,
 	getMarketOffers,
 	getOfferBids,
+	getSkin,
 	getUser,
 	insertManySkins,
 	insertUser,
@@ -259,34 +260,36 @@ function handleMarketOffersUpdate() {
 	const offers = getMarketOffers.all();
 	offers.forEach((offer) => {
 		console.log(`[Market Cron] Checking offer ID: ${offer.id}, Status: ${offer.status}`);
-		console.log(`Now: ${now}, Closing At: ${offer.closing_at}, ${now >= offer.closing_at}`);
-		if (true) return; // Disable market offer closing for now
+
 		if (now >= offer.closing_at && offer.status !== "closed") {
 			const bids = getOfferBids.all(offer.id);
-			console.log(bids.length);
 			const lastBid = bids[0];
-			console.log(lastBid);
 			const seller = getUser.get(offer.seller_id);
-			console.log(seller);
-			const buyer = getUser.get(offer.buyer_id);
-			console.log(buyer);
+			const buyer = getUser.get(lastBid.bidder_id);
 
-			console.log(offer.id, buyer.id, lastBid.offer_amount);
-
-			updateMarketOffer.run({
-				id: offer.id,
-				buyer_id: buyer.id,
-				final_price: lastBid.offer_amount,
-				status: "closed",
-			});
-
-			const newUserCoins = seller.coins + lastBid.offer_amount;
-			updateUserCoins.run({ id: seller.id, coins: newUserCoins });
-
-			// Change skin ownership
-			updateSkin.run({ user_id: buyer.id, uuid: offer.skin_uuid });
-
-			//TODO: Notify users in DMs
+			try {
+				// Change skin ownership
+				const skin = getSkin.get(offer.skin_uuid);
+				if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
+				updateSkin.run({
+					user_id: buyer.id,
+					currentLvl: skin.currentLvl,
+					currentChroma: skin.currentChroma,
+					currentPrice: skin.currentPrice,
+					uuid: skin.uuid,
+				});
+				updateMarketOffer.run({
+					id: offer.id,
+					buyer_id: buyer.id,
+					final_price: lastBid.offer_amount,
+					status: "closed",
+				});
+				const newUserCoins = seller.coins + lastBid.offer_amount;
+				updateUserCoins.run({ id: seller.id, coins: newUserCoins });
+				//TODO: Notify users in DMs
+			} catch (e) {
+				console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);
+			}
 		}
 	});
 }
