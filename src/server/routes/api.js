@@ -9,6 +9,7 @@ import {
 	getMarketOffersBySkin,
 	getOfferBids,
 	getSkin,
+	getAllAvailableSkins,
 	getUser,
 	getUserElo,
 	getUserGames,
@@ -116,14 +117,60 @@ export function apiRoutes(client, io) {
 
 	router.get("/carousel-skins", (req, res) => {
 		try {
+			const dbSkins = getAllAvailableSkins.all();
 			const filteredSkins = skins.filter(
-				(s) => s.displayIcon !== null && s.displayName.toLowerCase().includes("champions"),
+				(s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid),
 			);
 			filteredSkins.forEach((s) => {
-				let dbSKin = getSkin.get(s.uuid);
-				s.tierColor = dbSKin?.tierColor;
+				let dbSkin = getSkin.get(s.uuid);
+				s.tierColor = dbSkin?.tierColor;
 			});
-			res.json(filteredSkins);
+			const tierWeights = {
+				"12683d76-48d7-84a3-4e09-6985794f0445": 50, // Select
+				"0cebb8be-46d7-c12a-d306-e9907bfc5a25": 30, // Deluxe
+				"60bca009-4182-7998-dee7-b8a2558dc369": 15, // Premium
+				"e046854e-406c-37f4-6607-19a9ba8426fc": 4, // Exclusive
+				"411e4a55-4e59-7757-41f0-86a53f101bb5": 1, // Ultra
+			}
+			filteredSkins.forEach((s) => {
+				s.weight = tierWeights[s.tierUuid] ?? 1; // fallback if missing
+			});
+
+			function weightedSample(arr, count) {
+				let totalWeight = arr.reduce((sum, x) => sum + x.weight, 0);
+				const list = [...arr];
+				const result = [];
+
+				for (let i = 0; i < count && list.length > 0; i++) {
+					let r = Math.random() * totalWeight;
+					let running = 0;
+					let pickIndex = -1;
+
+					for (let j = 0; j < list.length; j++) {
+						running += list[j].weight;
+						if (r <= running) {
+							pickIndex = j;
+							break;
+						}
+					}
+
+					if (pickIndex < 0) break;
+
+					const picked = list.splice(pickIndex, 1)[0];
+					result.push(picked);
+
+					// Subtract removed weight
+					totalWeight -= picked.weight;
+				}
+
+				return result;
+			}
+
+			const selectedSkins = weightedSample(filteredSkins, 100);
+
+			const randomSelectedSkinIndex = Math.floor(Math.random() * selectedSkins.length);
+			const randomSelectedSkinUuid = selectedSkins[randomSelectedSkinIndex].uuid;
+			res.json({ selectedSkins, randomSelectedSkinUuid, randomSelectedSkinIndex });
 		} catch (error) {
 			console.error("Error fetching skins:", error);
 			res.status(500).json({ error: "Failed to fetch skins." });

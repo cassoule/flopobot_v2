@@ -21,6 +21,7 @@ import {
 	updateUserCoins,
 } from "../database/index.js";
 import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
+import { emitMarketUpdate } from "../server/socket.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -119,7 +120,7 @@ export async function getAkhys(client) {
  */
 export function setupCronJobs(client, io) {
 	// Every 5 minutes: Update market offers
-	cron.schedule("*/1 * * * *", () => {
+	cron.schedule("* * * * *", () => {
 		console.log("[Cron] Checking market offers for updates...");
 		handleMarketOffersUpdate();
 	});
@@ -258,38 +259,55 @@ export async function postAPOBuy(userId, amount) {
 function handleMarketOffersUpdate() {
 	const now = Date.now();
 	const offers = getMarketOffers.all();
-	offers.forEach((offer) => {
-		console.log(`[Market Cron] Checking offer ID: ${offer.id}, Status: ${offer.status}`);
-
+	offers.forEach(async (offer) => {
+		if (now >= offer.opening_at && offer.status === "pending") {
+			updateMarketOffer.run({ id: offer.id, final_price: null, buyer_id: null, status: "open" });
+			//TODO: Maybe notify seller that their offer is now open
+			await emitMarketUpdate();
+		}
 		if (now >= offer.closing_at && offer.status !== "closed") {
 			const bids = getOfferBids.all(offer.id);
-			const lastBid = bids[0];
-			const seller = getUser.get(offer.seller_id);
-			const buyer = getUser.get(lastBid.bidder_id);
 
-			try {
-				// Change skin ownership
-				const skin = getSkin.get(offer.skin_uuid);
-				if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
-				updateSkin.run({
-					user_id: buyer.id,
-					currentLvl: skin.currentLvl,
-					currentChroma: skin.currentChroma,
-					currentPrice: skin.currentPrice,
-					uuid: skin.uuid,
-				});
+			if (bids.length === 0) {
+				// No bids placed, mark as closed without a sale
 				updateMarketOffer.run({
 					id: offer.id,
-					buyer_id: buyer.id,
-					final_price: lastBid.offer_amount,
+					buyer_id: null,
+					final_price: null,
 					status: "closed",
 				});
-				const newUserCoins = seller.coins + lastBid.offer_amount;
-				updateUserCoins.run({ id: seller.id, coins: newUserCoins });
-				//TODO: Notify users in DMs
-			} catch (e) {
-				console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);
+				await emitMarketUpdate();
+			} else {
+				const lastBid = bids[0];
+				const seller = getUser.get(offer.seller_id);
+				const buyer = getUser.get(lastBid.bidder_id);
+
+				try {
+					// Change skin ownership
+					const skin = getSkin.get(offer.skin_uuid);
+					if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
+					updateSkin.run({
+						user_id: buyer.id,
+						currentLvl: skin.currentLvl,
+						currentChroma: skin.currentChroma,
+						currentPrice: skin.currentPrice,
+						uuid: skin.uuid,
+					});
+					updateMarketOffer.run({
+						id: offer.id,
+						buyer_id: buyer.id,
+						final_price: lastBid.offer_amount,
+						status: "closed",
+					});
+					const newUserCoins = seller.coins + lastBid.offer_amount;
+					updateUserCoins.run({ id: seller.id, coins: newUserCoins });
+					//TODO: Notify users in DMs
+					await emitMarketUpdate();
+				} catch (e) {
+					console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);
+				}
 			}
+			
 		}
 	});
 }

@@ -13,6 +13,7 @@ import {
 	getUser,
 	insertBid,
 	insertLog,
+	insertMarketOffer,
 	updateUserCoins,
 } from "../../database/index.js";
 import { emitMarketUpdate } from "../socket.js";
@@ -68,12 +69,35 @@ export function marketRoutes(client, io) {
 	});
 
 	router.post("/place-offer", async (req, res) => {
+		const { seller_id, skin_uuid, starting_price, delay, duration, timestamp } = req.body;
+		const now = Date.now();
 		try {
+			const skin = getSkin.get(skin_uuid);
+			if (!skin) return res.status(404).send({ error: "Skin not found" });
+			const seller = getUser.get(seller_id);
+			if (!seller) return res.status(404).send({ error: "Seller not found" });
+			if (skin.user_id !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+
+			const opening_at = now + delay;
+			const closing_at = opening_at + duration;
+
+			insertMarketOffer.run({
+				id: Date.now() + '-' + seller.id + '-' + skin.uuid,
+				skin_uuid: skin.uuid,
+				seller_id: seller.id,
+				starting_price: starting_price,
+				buyout_price: null,
+				status: delay > 0 ? "pending" : "open",
+				opening_at: opening_at,
+				closing_at: closing_at,
+			});
 			// Placeholder for placing an offer logic
 			// Extract data from req.body and process accordingly
-			res.status(200).send({ message: "Offer placed successfully" });
+			await emitMarketUpdate();
+			res.status(200).send({ message: "Offre créée avec succès" });
 		} catch (e) {
-			res.status(500).send({ error: e });
+			console.log(e)
+			return res.status(500).send({ error: e });
 		}
 	});
 

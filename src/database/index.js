@@ -603,9 +603,9 @@ export const getAllAkhys = flopoDB.prepare(
 ----------------------------*/
 export const insertSkin = flopoDB.prepare(
 	`INSERT INTO skins (uuid, displayName, contentTierUuid, displayIcon, user_id, tierRank, tierColor, tierText,
-                      basePrice, currentLvl, currentChroma, currentPrice, maxPrice)
+                      basePrice, maxPrice)
    VALUES (@uuid, @displayName, @contentTierUuid, @displayIcon, @user_id, @tierRank, @tierColor, @tierText,
-           @basePrice, @currentLvl, @currentChroma, @currentPrice, @maxPrice)`,
+           @basePrice, @maxPrice)`,
 );
 export const updateSkin = flopoDB.prepare(
 	`UPDATE skins
