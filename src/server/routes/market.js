@@ -8,13 +8,17 @@ import { ButtonStyle } from "discord.js";
 import {
 	getMarketOfferById,
 	getMarketOffers,
+	getMarketOffersBySkin,
 	getOfferBids,
 	getSkin,
 	getUser,
 	insertBid,
 	insertLog,
+	insertMarketOffer,
 	updateUserCoins,
 } from "../../database/index.js";
+import { emitMarketUpdate } from "../socket.js";
+import { handleNewMarketOffer, handleNewMarketOfferBid } from "../../utils/marketNotifs.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -67,12 +71,43 @@ export function marketRoutes(client, io) {
 	});
 
 	router.post("/place-offer", async (req, res) => {
+		const { seller_id, skin_uuid, starting_price, delay, duration, timestamp } = req.body;
+		const now = Date.now();
 		try {
-			// Placeholder for placing an offer logic
-			// Extract data from req.body and process accordingly
-			res.status(200).send({ message: "Offer placed successfully" });
+			const skin = getSkin.get(skin_uuid);
+			if (!skin) return res.status(404).send({ error: "Skin not found" });
+			const seller = getUser.get(seller_id);
+			if (!seller) return res.status(404).send({ error: "Seller not found" });
+			if (skin.user_id !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+
+			const existingOffers = getMarketOffersBySkin.all(skin.uuid);
+			if (
+				existingOffers.length > 0 &&
+				existingOffers.some((offer) => offer.status === "open" || offer.status === "pending")
+			) {
+				return res.status(403).send({ error: "This skin already has an open or pending offer." });
+			}
+
+			const opening_at = now + delay;
+			const closing_at = opening_at + duration;
+
+			const offerId = Date.now() + "-" + seller.id + "-" + skin.uuid;
+			insertMarketOffer.run({
+				id: offerId,
+				skin_uuid: skin.uuid,
+				seller_id: seller.id,
+				starting_price: starting_price,
+				buyout_price: null,
+				status: delay > 0 ? "pending" : "open",
+				opening_at: opening_at,
+				closing_at: closing_at,
+			});
+			await emitMarketUpdate();
+			await handleNewMarketOffer(offerId, client);
+			res.status(200).send({ message: "Offre créée avec succès" });
 		} catch (e) {
-			res.status(500).send({ error: e });
+			console.log(e);
+			return res.status(500).send({ error: e });
 		}
 	});
 
@@ -92,11 +127,11 @@ export function marketRoutes(client, io) {
 				if (lastBid?.bidder_id === buyer_id)
 					return res.status(403).send({ error: "You are already the highest bidder" });
 				if (bid_amount < lastBid?.offer_amount + 10) {
-					return res.status(403).send({ message: "Bid amount is below minimum" });
+					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			} else {
 				if (bid_amount < offer.starting_price + 10) {
-					return res.status(403).send({ message: "Bid amount is below minimum" });
+					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			}
 
@@ -105,16 +140,15 @@ export function marketRoutes(client, io) {
 			if (bidder.coins < bid_amount)
 				return res.status(403).send({ error: "You do not have enough coins to place this bid" });
 
-			// TODO:
-			// buyer must refunded on outbid
-
+			const bidId = Date.now() + "-" + buyer_id + "-" + offer.id;
 			insertBid.run({
+				id: bidId,
 				bidder_id: buyer_id,
 				market_offer_id: offer.id,
 				offer_amount: bid_amount,
 			});
 			const newCoinsAmount = bidder.coins - bid_amount;
-			updateUserCoins.run({ buyer_id, coins: newCoinsAmount });
+			updateUserCoins.run({ id: buyer_id, coins: newCoinsAmount });
 			insertLog.run({
 				id: `${buyer_id}-bid-${offer.id}-${Date.now()}`,
 				user_id: buyer_id,
@@ -124,7 +158,24 @@ export function marketRoutes(client, io) {
 				user_new_amount: newCoinsAmount,
 			});
 
-			res.status(200).send({ message: "Bid placed successfully" });
+			// Refund the previous highest bidder
+			if (lastBid) {
+				const previousBidder = getUser.get(lastBid.bidder_id);
+				const refundedCoinsAmount = previousBidder.coins + lastBid.offer_amount;
+				updateUserCoins.run({ id: previousBidder.id, coins: refundedCoinsAmount });
+				insertLog.run({
+					id: `${previousBidder.id}-bid-refund-${offer.id}-${Date.now()}`,
+					user_id: previousBidder.id,
+					action: "BID_REFUNDED",
+					target_user_id: null,
+					coins_amount: lastBid.offer_amount,
+					user_new_amount: refundedCoinsAmount,
+				});
+			}
+
+			await handleNewMarketOfferBid(offer.id, bidId, client);
+			await emitMarketUpdate();
+			res.status(200).send({ error: "Bid placed successfully" });
 		} catch (e) {
 			console.log(`[${Date.now()}]`, e);
 			res.status(500).send({ error: e });

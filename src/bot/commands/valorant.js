@@ -1,7 +1,5 @@
-import { InteractionResponseType, InteractionResponseFlags } from "discord-interactions";
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
-
-import { postAPOBuy } from "../../utils/index.js";
+import { InteractionResponseFlags, InteractionResponseType } from "discord-interactions";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { DiscordRequest } from "../../api/discord.js";
 import { getAllAvailableSkins, getUser, insertLog, updateSkin, updateUserCoins } from "../../database/index.js";
 import { skins } from "../../game/state.js";
@@ -14,6 +12,14 @@ import { skins } from "../../game/state.js";
  * @param {object} client - The Discord.js client instance.
  */
 export async function handleValorantCommand(req, res, client) {
+	return res.send({
+		type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+		data: {
+			content: `L'ouverture de caisses Valorant en commande discord est désactivée. Tu peux aller en ouvrir sur FlopoSite.`,
+			flags: InteractionResponseFlags.EPHEMERAL,
+		},
+	});
+
 	const { member, token } = req.body;
 	const userId = member.user.id;
 	const valoPrice = parseInt(process.env.VALO_PRICE, 10) || 500;
@@ -125,8 +131,7 @@ export async function handleValorantCommand(req, res, client) {
 				await DiscordRequest(webhookEndpoint, {
 					method: "PATCH",
 					body: {
-						content:
-							"Oups, il y a eu un petit problème lors de l'ouverture de la caisse. L'administrateur a été notifié.",
+						content: "Oups, il y a eu un petit problème lors de l'ouverture de la caisse.",
 						embeds: [],
 					},
 				});

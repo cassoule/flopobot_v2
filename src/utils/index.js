@@ -6,14 +6,26 @@ import { getSkinTiers, getValorantSkins } from "../api/valorant.js";
 import { DiscordRequest } from "../api/discord.js";
 import { initTodaysSOTD } from "../game/points.js";
 import {
+	deleteBid,
+	deleteMarketOffer,
 	getAllAkhys,
 	getAllUsers,
+	getMarketOffers,
+	getOfferBids,
+	getSkin,
+	getUser,
 	insertManySkins,
 	insertUser,
 	resetDailyReward,
+	updateMarketOffer,
+	updateSkin,
 	updateUserAvatar,
+	updateUserCoins,
 } from "../database/index.js";
-import { activeInventories, activeSearchs, skins } from "../game/state.js";
+import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
+import { emitMarketUpdate } from "../server/socket.js";
+import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
+import { client } from "../bot/client.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -111,6 +123,11 @@ export async function getAkhys(client) {
  * @param {object} io - The Socket.IO server instance.
  */
 export function setupCronJobs(client, io) {
+	// Every 5 minutes: Update market offers
+	cron.schedule("* * * * *", () => {
+		handleMarketOffersUpdate();
+	});
+
 	// Every 10 minutes: Clean up expired interactive sessions
 	cron.schedule("*/10 * * * *", () => {
 		const now = Date.now();
@@ -130,9 +147,28 @@ export function setupCronJobs(client, io) {
 
 		cleanup(activeInventories, "inventory");
 		cleanup(activeSearchs, "search");
+		for (const id in pokerRooms) {
+			if (pokerRooms[id].last_move_at !== null) {
+				if (now >= pokerRooms[id].last_move_at + FIVE_MINUTES * 3) {
+					delete pokerRooms[id];
+					console.log(`[Cron] Cleaned up expired poker room ID: ${id}`);
+				}
+			} else {
+				if (now >= pokerRooms[id].created_at + FIVE_MINUTES * 6) {
+					delete pokerRooms[id];
+					console.log(`[Cron] Cleaned up expired poker room ID: ${id}`);
+				}
+			}
+		}
 
-		// TODO: Cleanup for predis and poker rooms...
-		// ...
+		let cleanedCount = 0;
+		for (const id in activePredis) {
+			if (now >= (activePredis[id].endTime || 0)) {
+				delete activePredis[id];
+				cleanedCount++;
+			}
+		}
+		if (cleanedCount > 0) console.log(`[Cron] Cleaned up ${cleanedCount} expired predictions.`);
 	});
 
 	// Daily at midnight: Reset daily rewards and init SOTD
@@ -146,6 +182,23 @@ export function setupCronJobs(client, io) {
 			//}
 		} catch (e) {
 			console.error("[Cron] Error during daily reset:", e);
+		}
+		try {
+			const offers = getMarketOffers.all();
+			const now = Date.now();
+			const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
+			for (const offer of offers) {
+				if (now >= offer.closing_at + TWO_DAYS) {
+					const offerBids = getOfferBids.all(offer.id);
+					for (const bid of offerBids) {
+						deleteBid.run(bid.id);
+					}
+					deleteMarketOffer.run(offer.id);
+					console.log(`[Cron] Deleted expired market offer ID: ${offer.id}`);
+				}
+			}
+		} catch (e) {
+			console.error("[Cron] Error during Market Offers clean up:", e);
 		}
 	});
 
@@ -222,6 +275,61 @@ export async function postAPOBuy(userId, amount) {
 }
 
 // --- Miscellaneous Helpers ---
+
+function handleMarketOffersUpdate() {
+	const now = Date.now();
+	const offers = getMarketOffers.all();
+	offers.forEach(async (offer) => {
+		if (now >= offer.opening_at && offer.status === "pending") {
+			updateMarketOffer.run({ id: offer.id, final_price: null, buyer_id: null, status: "open" });
+			await handleMarketOfferOpening(offer.id, client);
+			await emitMarketUpdate();
+		}
+		if (now >= offer.closing_at && offer.status !== "closed") {
+			const bids = getOfferBids.all(offer.id);
+
+			if (bids.length === 0) {
+				// No bids placed, mark as closed without a sale
+				updateMarketOffer.run({
+					id: offer.id,
+					buyer_id: null,
+					final_price: null,
+					status: "closed",
+				});
+				await emitMarketUpdate();
+			} else {
+				const lastBid = bids[0];
+				const seller = getUser.get(offer.seller_id);
+				const buyer = getUser.get(lastBid.bidder_id);
+
+				try {
+					// Change skin ownership
+					const skin = getSkin.get(offer.skin_uuid);
+					if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
+					updateSkin.run({
+						user_id: buyer.id,
+						currentLvl: skin.currentLvl,
+						currentChroma: skin.currentChroma,
+						currentPrice: skin.currentPrice,
+						uuid: skin.uuid,
+					});
+					updateMarketOffer.run({
+						id: offer.id,
+						buyer_id: buyer.id,
+						final_price: lastBid.offer_amount,
+						status: "closed",
+					});
+					const newUserCoins = seller.coins + lastBid.offer_amount;
+					updateUserCoins.run({ id: seller.id, coins: newUserCoins });
+					await emitMarketUpdate();
+				} catch (e) {
+					console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);
+				}
+			}
+			await handleMarketOfferClosing(offer.id, client);
+		}
+	});
+}
 
 export async function getOnlineUsersWithRole(guild, roleId) {
 	if (!guild || !roleId) return new Map();

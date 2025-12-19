@@ -459,3 +459,5 @@ export const emitUpdate = (type, room) => io.emit("blackjack:update", { type, ro
 export const emitToast = (payload) => io.emit("blackjack:toast", payload);
 
 export const emitSolitaireUpdate = (userId, moves) => io.emit("solitaire:update", { userId, moves });
+
+export const emitMarketUpdate = () => io.emit("market:update");

@@ -4,6 +4,7 @@ import { sleep } from "openai/core";
 // --- Database Imports ---
 import {
 	getAllAkhys,
+	getAllAvailableSkins,
 	getAllUsers,
 	getLogs,
 	getMarketOffersBySkin,
@@ -19,6 +20,7 @@ import {
 	insertUser,
 	pruneOldLogs,
 	queryDailyReward,
+	updateSkin,
 	updateUserCoins,
 } from "../../database/index.js";
 
@@ -32,6 +34,7 @@ import { DiscordRequest } from "../../api/discord.js";
 // --- Discord.js Builder Imports ---
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { emitDataUpdated, socketEmit } from "../socket.js";
+import { handleCaseOpening } from "../../utils/marketNotifs.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -114,6 +117,151 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	router.post("/open-case", async (req, res) => {
+		const { userId, caseType } = req.body;
+
+		let caseTypeVal, tierWeights;
+		switch (caseType) {
+			case "standard":
+				caseTypeVal = 1;
+				tierWeights = {
+					"12683d76-48d7-84a3-4e09-6985794f0445": 50, // Select
+					"0cebb8be-46d7-c12a-d306-e9907bfc5a25": 30, // Deluxe
+					"60bca009-4182-7998-dee7-b8a2558dc369": 15, // Premium
+					"e046854e-406c-37f4-6607-19a9ba8426fc": 4, // Exclusive
+					"411e4a55-4e59-7757-41f0-86a53f101bb5": 1, // Ultra
+				};
+				break;
+			case "premium":
+				caseTypeVal = 2;
+				tierWeights = {
+					"12683d76-48d7-84a3-4e09-6985794f0445": 35, // Select
+					"0cebb8be-46d7-c12a-d306-e9907bfc5a25": 30, // Deluxe
+					"60bca009-4182-7998-dee7-b8a2558dc369": 30, // Premium
+					"e046854e-406c-37f4-6607-19a9ba8426fc": 4, // Exclusive
+					"411e4a55-4e59-7757-41f0-86a53f101bb5": 1, // Ultra
+				};
+				break;
+			case "ultra":
+				caseTypeVal = 4;
+				tierWeights = {
+					"12683d76-48d7-84a3-4e09-6985794f0445": 33, // Select
+					"0cebb8be-46d7-c12a-d306-e9907bfc5a25": 28, // Deluxe
+					"60bca009-4182-7998-dee7-b8a2558dc369": 28, // Premium
+					"e046854e-406c-37f4-6607-19a9ba8426fc": 8, // Exclusive
+					"411e4a55-4e59-7757-41f0-86a53f101bb5": 3, // Ultra
+				};
+				break;
+			default:
+				return res.status(400).json({ error: "Invalid case type." });
+		}
+		const commandUser = getUser.get(userId);
+		if (!commandUser) return res.status(404).json({ error: "User not found." });
+		const valoPrice = (parseInt(process.env.VALO_PRICE, 10) || 500) * caseTypeVal;
+		if (commandUser.coins < valoPrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
+
+		try {
+			const dbSkins = getAllAvailableSkins.all();
+			const filteredSkins = skins.filter((s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid));
+			filteredSkins.forEach((s) => {
+				let dbSkin = getSkin.get(s.uuid);
+				s.tierColor = dbSkin?.tierColor;
+			});
+			filteredSkins.forEach((s) => {
+				s.weight = tierWeights[s.tierUuid] ?? 1; // fallback if missing
+			});
+
+			function weightedSample(arr, count) {
+				let totalWeight = arr.reduce((sum, x) => sum + x.weight, 0);
+				const list = [...arr];
+				const result = [];
+
+				for (let i = 0; i < count && list.length > 0; i++) {
+					let r = Math.random() * totalWeight;
+					let running = 0;
+					let pickIndex = -1;
+
+					for (let j = 0; j < list.length; j++) {
+						running += list[j].weight;
+						if (r <= running) {
+							pickIndex = j;
+							break;
+						}
+					}
+
+					if (pickIndex < 0) break;
+
+					const picked = list.splice(pickIndex, 1)[0];
+					result.push(picked);
+
+					// Subtract removed weight
+					totalWeight -= picked.weight;
+				}
+
+				return result;
+			}
+
+			const selectedSkins = weightedSample(filteredSkins, 100);
+
+			const randomSelectedSkinIndex = Math.floor(Math.random() * (selectedSkins.length - 1));
+			const randomSelectedSkinUuid = selectedSkins[randomSelectedSkinIndex].uuid;
+
+			const dbSkin = getSkin.get(randomSelectedSkinUuid);
+			const randomSkinData = skins.find((skin) => skin.uuid === dbSkin.uuid);
+			if (!randomSkinData) {
+				throw new Error(`Could not find skin data for UUID: ${dbSkin.uuid}`);
+			}
+
+			// --- Randomize Level and Chroma ---
+			const randomLevel = Math.floor(Math.random() * randomSkinData.levels.length) + 1;
+			let randomChroma = 1;
+			if (randomLevel === randomSkinData.levels.length && randomSkinData.chromas.length > 1) {
+				// Ensure chroma is at least 1 and not greater than the number of chromas
+				randomChroma = Math.floor(Math.random() * randomSkinData.chromas.length) + 1;
+			}
+
+			// --- Calculate Price ---
+			const calculatePrice = () => {
+				let result = parseFloat(dbSkin.basePrice);
+				result *= 1 + randomLevel / Math.max(randomSkinData.levels.length, 2);
+				result *= 1 + randomChroma / 4;
+				return parseFloat(result.toFixed(0));
+			};
+			const finalPrice = calculatePrice();
+
+			// --- Update Database ---
+			insertLog.run({
+				id: `${userId}-${Date.now()}`,
+				user_id: userId,
+				action: "VALO_CASE_OPEN",
+				target_user_id: null,
+				coins_amount: -valoPrice,
+				user_new_amount: commandUser.coins - valoPrice,
+			});
+			updateUserCoins.run({
+				id: userId,
+				coins: commandUser.coins - valoPrice,
+			});
+			updateSkin.run({
+				uuid: randomSkinData.uuid,
+				user_id: userId,
+				currentLvl: randomLevel,
+				currentChroma: randomChroma,
+				currentPrice: finalPrice,
+			});
+
+			console.log(
+				`[${Date.now()}] ${userId} opened a ${caseType} Valorant case and received skin ${randomSelectedSkinUuid}`,
+			);
+			const updatedSkin = getSkin.get(randomSkinData.uuid);
+			await handleCaseOpening(caseType, userId, randomSelectedSkinUuid, client);
+			res.json({ selectedSkins, randomSelectedSkinUuid, randomSelectedSkinIndex, updatedSkin });
+		} catch (error) {
+			console.error("Error fetching skins:", error);
+			res.status(500).json({ error: "Failed to fetch skins." });
+		}
+	});
+
 	router.get("/skin/:id", (req, res) => {
 		try {
 			const skinData = skins.find((s) => s.uuid === req.params.id);
@@ -168,6 +316,14 @@ export function apiRoutes(client, io) {
 	});
 
 	// --- User-Specific Routes ---
+	router.get("/user/:id", async (req, res) => {
+		try {
+			const user = getUser.get(req.params.id);
+			res.json({ user });
+		} catch (error) {
+			res.status(404).json({ error: "User not found." });
+		}
+	});
 
 	router.get("/user/:id/avatar", async (req, res) => {
 		try {
@@ -183,6 +339,15 @@ export function apiRoutes(client, io) {
 		try {
 			const user = await client.users.fetch(req.params.id);
 			res.json({ user });
+		} catch (error) {
+			res.status(404).json({ error: "User not found." });
+		}
+	});
+
+	router.get("/user/:id/coins", async (req, res) => {
+		try {
+			const user = getUser.get(req.params.id);
+			res.json({ coins: user.coins });
 		} catch (error) {
 			res.status(404).json({ error: "User not found." });
 		}
