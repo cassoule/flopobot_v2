@@ -4,12 +4,12 @@ import { sleep } from "openai/core";
 // --- Database Imports ---
 import {
 	getAllAkhys,
+	getAllAvailableSkins,
 	getAllUsers,
 	getLogs,
 	getMarketOffersBySkin,
 	getOfferBids,
 	getSkin,
-	getAllAvailableSkins,
 	getUser,
 	getUserElo,
 	getUserGames,
@@ -20,8 +20,8 @@ import {
 	insertUser,
 	pruneOldLogs,
 	queryDailyReward,
-	updateUserCoins,
 	updateSkin,
+	updateUserCoins,
 } from "../../database/index.js";
 
 // --- Game State Imports ---
@@ -34,6 +34,7 @@ import { DiscordRequest } from "../../api/discord.js";
 // --- Discord.js Builder Imports ---
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { emitDataUpdated, socketEmit } from "../socket.js";
+import { handleCaseOpening } from "../../utils/marketNotifs.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -116,12 +117,12 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/open-case", (req, res) => {
+	router.post("/open-case", async (req, res) => {
 		const { userId, caseType } = req.body;
 
 		let caseTypeVal, tierWeights;
 		switch (caseType) {
-			case "standard": 
+			case "standard":
 				caseTypeVal = 1;
 				tierWeights = {
 					"12683d76-48d7-84a3-4e09-6985794f0445": 50, // Select
@@ -129,9 +130,9 @@ export function apiRoutes(client, io) {
 					"60bca009-4182-7998-dee7-b8a2558dc369": 15, // Premium
 					"e046854e-406c-37f4-6607-19a9ba8426fc": 4, // Exclusive
 					"411e4a55-4e59-7757-41f0-86a53f101bb5": 1, // Ultra
-				}
+				};
 				break;
-			case "premium": 
+			case "premium":
 				caseTypeVal = 2;
 				tierWeights = {
 					"12683d76-48d7-84a3-4e09-6985794f0445": 35, // Select
@@ -139,9 +140,9 @@ export function apiRoutes(client, io) {
 					"60bca009-4182-7998-dee7-b8a2558dc369": 30, // Premium
 					"e046854e-406c-37f4-6607-19a9ba8426fc": 4, // Exclusive
 					"411e4a55-4e59-7757-41f0-86a53f101bb5": 1, // Ultra
-				}
+				};
 				break;
-			case "ultra": 
+			case "ultra":
 				caseTypeVal = 4;
 				tierWeights = {
 					"12683d76-48d7-84a3-4e09-6985794f0445": 33, // Select
@@ -149,22 +150,19 @@ export function apiRoutes(client, io) {
 					"60bca009-4182-7998-dee7-b8a2558dc369": 28, // Premium
 					"e046854e-406c-37f4-6607-19a9ba8426fc": 8, // Exclusive
 					"411e4a55-4e59-7757-41f0-86a53f101bb5": 3, // Ultra
-				}
+				};
 				break;
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
-		};
-
+		}
 		const commandUser = getUser.get(userId);
 		if (!commandUser) return res.status(404).json({ error: "User not found." });
 		const valoPrice = (parseInt(process.env.VALO_PRICE, 10) || 500) * caseTypeVal;
 		if (commandUser.coins < valoPrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
-		
+
 		try {
 			const dbSkins = getAllAvailableSkins.all();
-			const filteredSkins = skins.filter(
-				(s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid),
-			);
+			const filteredSkins = skins.filter((s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid));
 			filteredSkins.forEach((s) => {
 				let dbSkin = getSkin.get(s.uuid);
 				s.tierColor = dbSkin?.tierColor;
@@ -252,8 +250,11 @@ export function apiRoutes(client, io) {
 				currentPrice: finalPrice,
 			});
 
-			console.log(`[${Date.now()}] ${userId} opened a Valorant case and received skin ${randomSelectedSkinUuid}`);
+			console.log(
+				`[${Date.now()}] ${userId} opened a ${caseType} Valorant case and received skin ${randomSelectedSkinUuid}`,
+			);
 			const updatedSkin = getSkin.get(randomSkinData.uuid);
+			await handleCaseOpening(caseType, userId, randomSelectedSkinUuid, client);
 			res.json({ selectedSkins, randomSelectedSkinUuid, randomSelectedSkinIndex, updatedSkin });
 		} catch (error) {
 			console.error("Error fetching skins:", error);
@@ -338,6 +339,15 @@ export function apiRoutes(client, io) {
 		try {
 			const user = await client.users.fetch(req.params.id);
 			res.json({ user });
+		} catch (error) {
+			res.status(404).json({ error: "User not found." });
+		}
+	});
+
+	router.get("/user/:id/coins", async (req, res) => {
+		try {
+			const user = getUser.get(req.params.id);
+			res.json({ coins: user.coins });
 		} catch (error) {
 			res.status(404).json({ error: "User not found." });
 		}

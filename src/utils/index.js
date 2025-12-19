@@ -6,6 +6,8 @@ import { getSkinTiers, getValorantSkins } from "../api/valorant.js";
 import { DiscordRequest } from "../api/discord.js";
 import { initTodaysSOTD } from "../game/points.js";
 import {
+	deleteBid,
+	deleteMarketOffer,
 	getAllAkhys,
 	getAllUsers,
 	getMarketOffers,
@@ -22,6 +24,8 @@ import {
 } from "../database/index.js";
 import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
 import { emitMarketUpdate } from "../server/socket.js";
+import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
+import { client } from "../bot/client.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -121,7 +125,6 @@ export async function getAkhys(client) {
 export function setupCronJobs(client, io) {
 	// Every 5 minutes: Update market offers
 	cron.schedule("* * * * *", () => {
-		console.log("[Cron] Checking market offers for updates...");
 		handleMarketOffersUpdate();
 	});
 
@@ -179,6 +182,23 @@ export function setupCronJobs(client, io) {
 			//}
 		} catch (e) {
 			console.error("[Cron] Error during daily reset:", e);
+		}
+		try {
+			const offers = getMarketOffers.all();
+			const now = Date.now();
+			const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
+			for (const offer of offers) {
+				if (now >= offer.closing_at + TWO_DAYS) {
+					const offerBids = getOfferBids.all(offer.id);
+					for (const bid of offerBids) {
+						deleteBid.run(bid.id);
+					}
+					deleteMarketOffer.run(offer.id);
+					console.log(`[Cron] Deleted expired market offer ID: ${offer.id}`);
+				}
+			}
+		} catch (e) {
+			console.error("[Cron] Error during Market Offers clean up:", e);
 		}
 	});
 
@@ -262,7 +282,7 @@ function handleMarketOffersUpdate() {
 	offers.forEach(async (offer) => {
 		if (now >= offer.opening_at && offer.status === "pending") {
 			updateMarketOffer.run({ id: offer.id, final_price: null, buyer_id: null, status: "open" });
-			//TODO: Maybe notify seller that their offer is now open
+			await handleMarketOfferOpening(offer.id, client);
 			await emitMarketUpdate();
 		}
 		if (now >= offer.closing_at && offer.status !== "closed") {
@@ -301,13 +321,12 @@ function handleMarketOffersUpdate() {
 					});
 					const newUserCoins = seller.coins + lastBid.offer_amount;
 					updateUserCoins.run({ id: seller.id, coins: newUserCoins });
-					//TODO: Notify users in DMs
 					await emitMarketUpdate();
 				} catch (e) {
 					console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);
 				}
 			}
-			
+			await handleMarketOfferClosing(offer.id, client);
 		}
 	});
 }

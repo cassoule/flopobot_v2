@@ -691,6 +691,12 @@ export const updateMarketOffer = flopoDB.prepare(`
     WHERE id = @id
 `);
 
+export const deleteMarketOffer = flopoDB.prepare(`
+    DELETE
+    FROM market_offers
+    WHERE id = ?
+`);
+
 /* -------------------------
    BIDS
 ----------------------------*/
@@ -719,6 +725,12 @@ export const getOfferBids = flopoDB.prepare(`
 export const insertBid = flopoDB.prepare(`
     INSERT INTO bids (id, bidder_id, market_offer_id, offer_amount)
     VALUES (@id, @bidder_id, @market_offer_id, @offer_amount)
+`);
+
+export const deleteBid = flopoDB.prepare(`
+    DELETE
+    FROM bids
+    WHERE id = ?
 `);
 
 /* -------------------------

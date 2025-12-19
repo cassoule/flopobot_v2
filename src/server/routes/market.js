@@ -8,6 +8,7 @@ import { ButtonStyle } from "discord.js";
 import {
 	getMarketOfferById,
 	getMarketOffers,
+	getMarketOffersBySkin,
 	getOfferBids,
 	getSkin,
 	getUser,
@@ -17,6 +18,7 @@ import {
 	updateUserCoins,
 } from "../../database/index.js";
 import { emitMarketUpdate } from "../socket.js";
+import { handleNewMarketOffer, handleNewMarketOfferBid } from "../../utils/marketNotifs.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -78,11 +80,20 @@ export function marketRoutes(client, io) {
 			if (!seller) return res.status(404).send({ error: "Seller not found" });
 			if (skin.user_id !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
 
+			const existingOffers = getMarketOffersBySkin.all(skin.uuid);
+			if (
+				existingOffers.length > 0 &&
+				existingOffers.some((offer) => offer.status === "open" || offer.status === "pending")
+			) {
+				return res.status(403).send({ error: "This skin already has an open or pending offer." });
+			}
+
 			const opening_at = now + delay;
 			const closing_at = opening_at + duration;
 
+			const offerId = Date.now() + "-" + seller.id + "-" + skin.uuid;
 			insertMarketOffer.run({
-				id: Date.now() + '-' + seller.id + '-' + skin.uuid,
+				id: offerId,
 				skin_uuid: skin.uuid,
 				seller_id: seller.id,
 				starting_price: starting_price,
@@ -91,12 +102,11 @@ export function marketRoutes(client, io) {
 				opening_at: opening_at,
 				closing_at: closing_at,
 			});
-			// Placeholder for placing an offer logic
-			// Extract data from req.body and process accordingly
 			await emitMarketUpdate();
+			await handleNewMarketOffer(offerId, client);
 			res.status(200).send({ message: "Offre créée avec succès" });
 		} catch (e) {
-			console.log(e)
+			console.log(e);
 			return res.status(500).send({ error: e });
 		}
 	});
@@ -130,8 +140,9 @@ export function marketRoutes(client, io) {
 			if (bidder.coins < bid_amount)
 				return res.status(403).send({ error: "You do not have enough coins to place this bid" });
 
+			const bidId = Date.now() + "-" + buyer_id + "-" + offer.id;
 			insertBid.run({
-				id: Date.now(),
+				id: bidId,
 				bidder_id: buyer_id,
 				market_offer_id: offer.id,
 				offer_amount: bid_amount,
@@ -162,6 +173,7 @@ export function marketRoutes(client, io) {
 				});
 			}
 
+			await handleNewMarketOfferBid(offer.id, bidId, client);
 			await emitMarketUpdate();
 			res.status(200).send({ error: "Bid placed successfully" });
 		} catch (e) {
