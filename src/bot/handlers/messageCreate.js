@@ -18,10 +18,14 @@ import {
 	getAllUsers,
 	getUser,
 	hardUpdateSkin,
+	insertLog,
 	updateManyUsers,
+	updateSkin,
 	updateUserAvatar,
+	updateUserCoins,
 } from "../../database/index.js";
 import { client } from "../client.js";
+import { drawCaseContent, drawCaseSkin } from "../../utils/caseOpening.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -276,6 +280,90 @@ async function handleAdminCommands(message) {
 				});
 			});
 			console.log("Reworked", dbSkins.length, "skins.");
+			break;
+		case `${prefix}:cases-test`:
+			try {
+				const caseType = args[0] ?? "standard";
+				const caseCount = args[1] ?? 1;
+
+				let totalResValue = 0;
+				let highestSkinPrice = 0;
+				let priceTiers = {
+					0: 0,
+					100: 0,
+					200: 0,
+					300: 0,
+					400: 0,
+					500: 0,
+					600: 0,
+					700: 0,
+					800: 0,
+					900: 0,
+					1000: 0,
+				};
+
+				for (let i = 0; i < caseCount; i++) {
+					const skins = await drawCaseContent(caseType);
+					const result = drawCaseSkin(skins);
+					totalResValue += result.finalPrice;
+					if (result.finalPrice > highestSkinPrice) highestSkinPrice = result.finalPrice;
+					if (result.finalPrice > 0 && result.finalPrice < 100) priceTiers["0"] += 1;
+					if (result.finalPrice >= 100 && result.finalPrice < 200) priceTiers["100"] += 1;
+					if (result.finalPrice >= 200 && result.finalPrice < 300) priceTiers["200"] += 1;
+					if (result.finalPrice >= 300 && result.finalPrice < 400) priceTiers["300"] += 1;
+					if (result.finalPrice >= 400 && result.finalPrice < 500) priceTiers["400"] += 1;
+					if (result.finalPrice >= 500 && result.finalPrice < 600) priceTiers["500"] += 1;
+					if (result.finalPrice >= 600 && result.finalPrice < 700) priceTiers["600"] += 1;
+					if (result.finalPrice >= 700 && result.finalPrice < 800) priceTiers["700"] += 1;
+					if (result.finalPrice >= 800 && result.finalPrice < 900) priceTiers["800"] += 1;
+					if (result.finalPrice >= 900 && result.finalPrice < 1000) priceTiers["900"] += 1;
+					if (result.finalPrice >= 1000) priceTiers["1000"] += 1;
+					console.log(
+						`Case ${i + 1}: Won a skin worth ${result.finalPrice} Flopos, ${caseType}, ${result.updatedSkin.tierRank}`,
+					);
+				}
+
+				console.log(totalResValue / caseCount);
+				message.reply(
+					`${totalResValue / caseCount} average skin price over ${caseCount} ${caseType} cases.\nHighest skin price: ${highestSkinPrice}\nPrice tier distribution: ${JSON.stringify(priceTiers)}`,
+				);
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error during case test: ${e.message}`);
+			}
+		case `${prefix}:refund-skins`:
+			try {
+				const DBskins = getAllSkins.all();
+				for (const skin of DBskins) {
+					const owner = getUser.get(skin.user_id);
+					if (owner) {
+						updateUserCoins.run({
+							id: owner.id,
+							coins: owner.coins + skin.currentPrice,
+						});
+						insertLog.run({
+							id: `${skin.uuid}-skin-refund-${Date.now()}`,
+							user_id: owner.id,
+							target_user_id: null,
+							action: "SKIN_REFUND",
+							coins_amount: skin.currentPrice,
+							user_new_amount: owner.coins + skin.currentPrice,
+						});
+					}
+					updateSkin.run({
+						uuid: skin.uuid,
+						user_id: null,
+						currentPrice: null,
+						currentLvl: null,
+						currentChroma: null,
+					});
+				}
+				message.reply("All skins refunded.");
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error during refund skins ${e.message}`);
+			}
+
 			break;
 	}
 }
