@@ -123,13 +123,13 @@ export function apiRoutes(client, io) {
 		let caseTypeVal;
 		switch (caseType) {
 			case "standard":
-				caseTypeVal = 1000;
+				caseTypeVal = 500;
 				break;
 			case "premium":
-				caseTypeVal = 2000;
+				caseTypeVal = 750;
 				break;
 			case "ultra":
-				caseTypeVal = 4000;
+				caseTypeVal = 1500;
 				break;
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
