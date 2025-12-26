@@ -17,6 +17,13 @@ import { getUserInventory } from "../../database/index.js";
  * @param {string} interactionId - The unique ID of the interaction.
  */
 export async function handleInventoryCommand(req, res, client, interactionId) {
+	return res.send({
+		type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+		data: {
+			content: `La commande /inventory est désactivée. Tu peux consulter ton inventaire sur FlopoSite.`,
+			flags: InteractionResponseFlags.EPHEMERAL,
+		},
+	});
 	const { member, guild_id, token, data } = req.body;
 	const commandUserId = member.user.id;
 	// User can specify another member, otherwise it defaults to themself

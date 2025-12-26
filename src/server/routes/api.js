@@ -34,7 +34,7 @@ import { DiscordRequest } from "../../api/discord.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { emitDataUpdated, socketEmit } from "../socket.js";
 import { handleCaseOpening } from "../../utils/marketNotifs.js";
-import { drawCaseContent, drawCaseSkin } from "../../utils/caseOpening.js";
+import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -123,13 +123,13 @@ export function apiRoutes(client, io) {
 		let caseTypeVal;
 		switch (caseType) {
 			case "standard":
-				caseTypeVal = 500;
+				caseTypeVal = 1000;
 				break;
 			case "premium":
-				caseTypeVal = 750;
+				caseTypeVal = 2000;
 				break;
 			case "ultra":
-				caseTypeVal = 1000;
+				caseTypeVal = 4000;
 				break;
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
@@ -166,7 +166,7 @@ export function apiRoutes(client, io) {
 			});
 
 			console.log(
-				`[${Date.now()}] ${userId} opened a ${caseType} Valorant case and received skin ${result.randomSelectedSkinUuid}`,
+				`${commandUser.username} opened a ${caseType} Valorant case and received skin ${result.randomSelectedSkinUuid}`,
 			);
 			const updatedSkin = getSkin.get(result.randomSkinData.uuid);
 			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
@@ -211,6 +211,112 @@ export function apiRoutes(client, io) {
 		} catch (error) {
 			console.error("Error fetching skins:", error);
 			res.status(500).json({ error: "Failed to fetch skins." });
+		}
+	});
+
+	router.get("/skin-upgrade/:uuid/fetch", (req, res) => {
+		try {
+			const skin = getSkin.get(req.params.uuid);
+			const skinData = skins.find((s) => s.uuid === skin.uuid);
+			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
+
+			const segments = [
+				{ id: 'SUCCEEDED',   color: '5865f2', percent: successProb, label: 'Réussie' },
+				{ id: 'DESTRUCTED', color: 'f26558', percent: destructionProb, label: 'Détruit' },
+				{ id: 'NONE',   color: '18181818', percent: 1 - successProb - destructionProb, label: 'Échec' },
+			]
+			
+			res.json({ segments, upgradePrice });
+		} catch (error) {
+			console.log(error)
+			res.status(500).json({ error: "Failed to fetch skin upgrade." });
+		}
+	});
+
+	router.post("/skin-upgrade/:uuid", async (req, res) => {
+		const { userId } = req.body;
+		try {
+			const skin = getSkin.get(req.params.uuid);
+			const skinData = skins.find((s) => s.uuid === skin.uuid);
+			if (
+				!skinData ||
+				(skin.currentLvl >= skinData.levels.length && skin.currentChroma >= skinData.chromas.length)
+			) {
+				return res.status(403).json({ error: "Skin is already maxed out or invalid skin." });
+			}
+			if (skin.user_id !== userId) {
+				return res.status(403).json({ error: "User does not own this skin." });
+			}
+			const upgradePrice = Math.floor(parseFloat(skin.maxPrice) / 10);
+
+			const commandUser = getUser.get(userId);
+			if (!commandUser) {
+				return res.status(404).json({ error: "User not found." });
+			}
+			if (commandUser.coins < upgradePrice) {
+				return res.status(403).json({ error: `Pas assez de FlopoCoins (${upgradePrice} requis).` });
+			}
+		
+			insertLog.run({
+				id: `${userId}-${Date.now()}`,
+				user_id: userId,
+				action: "VALO_SKIN_UPGRADE",
+				target_user_id: null,
+				coins_amount: -upgradePrice,
+				user_new_amount: commandUser.coins - upgradePrice,
+			});
+			updateUserCoins.run({
+				id: userId,
+				coins: commandUser.coins - upgradePrice,
+			});
+
+			let succeeded = false;
+			let destructed = false;
+			const { successProb, destructionProb } = getSkinUpgradeProbs(skin, skinData);
+			const roll = Math.random();
+			if (roll < destructionProb) {
+				destructed = true;
+			} else if (roll < successProb + destructionProb) {
+				succeeded = true;
+			}
+
+			if (succeeded) {
+				const isLevelUpgrade = skin.currentLvl < skinData.levels.length;
+				if (isLevelUpgrade) {
+					skin.currentLvl++;
+				} else {
+					skin.currentChroma++;
+				}
+				const calculatePrice = () => {
+					let result = parseFloat(skin.basePrice);
+					result *= 1 + skin.currentLvl / Math.max(skinData.levels.length, 2);
+					result *= 1 + skin.currentChroma / 4;
+					return parseFloat(result.toFixed(0));
+				};
+				skin.currentPrice = calculatePrice();
+		
+				updateSkin.run({
+					uuid: skin.uuid,
+					user_id: skin.user_id,
+					currentLvl: skin.currentLvl,
+					currentChroma: skin.currentChroma,
+					currentPrice: skin.currentPrice,
+				});
+			} else if (destructed) {
+				updateSkin.run({
+					uuid: skin.uuid,
+					user_id: null,
+					currentLvl: null,
+					currentChroma: null,
+					currentPrice: null,
+				});
+			}
+			
+			console.log(`${commandUser.username} attempted to upgrade skin ${skin.uuid} - ${succeeded ? "SUCCEEDED" : destructed ? "DESTRUCTED" : "FAILED"}`);
+			res.json({ wonId: succeeded ? "SUCCEEDED" : destructed ? "DESTRUCTED" : "NONE" });
+		} catch (error) {
+			console.error("Error fetching skin upgrade:", error);
+			res.status(500).json({ error: "Failed to fetch skin upgrade." });
 		}
 	});
 

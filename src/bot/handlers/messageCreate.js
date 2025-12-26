@@ -25,7 +25,7 @@ import {
 	updateUserCoins,
 } from "../../database/index.js";
 import { client } from "../client.js";
-import { drawCaseContent, drawCaseSkin } from "../../utils/caseOpening.js";
+import { drawCaseContent, drawCaseSkin, getDummySkinUpgradeProbs } from "../../utils/caseOpening.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -196,6 +196,28 @@ async function handleAdminCommands(message) {
 	const [command, ...args] = message.content.split(" ");
 
 	switch (command) {
+		case "?sp":
+			let msgText = ""
+			for (let skinTierRank = 1; skinTierRank <= 4; skinTierRank++) {
+				msgText += `\n--- Tier Rank: ${skinTierRank} ---\n`;
+				let skinMaxLevels = 4;
+				let skinMaxChromas = 4;
+				for (let skinLevel = 1; skinLevel < skinMaxLevels; skinLevel++) {
+					msgText += (`Levels: ${skinLevel}/${skinMaxLevels}, MaxChromas: ${1}/${skinMaxChromas} - `);
+					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `);
+					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `);
+					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`);
+				}
+				for (let skinChroma = 1; skinChroma < skinMaxChromas; skinChroma++) {
+					msgText += (`Levels: ${skinMaxLevels}/${skinMaxLevels}, MaxChromas: ${skinChroma}/${skinMaxChromas} - `);
+					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `);
+					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `);
+					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`);
+				}
+				message.reply(msgText);
+				msgText = "";
+			}
+			break;
 		case "?v":
 			console.log("Active Polls:", activePolls);
 			break;
@@ -331,6 +353,7 @@ async function handleAdminCommands(message) {
 				console.log(e);
 				message.reply(`Error during case test: ${e.message}`);
 			}
+			break;
 		case `${prefix}:refund-skins`:
 			try {
 				const DBskins = getAllSkins.all();
