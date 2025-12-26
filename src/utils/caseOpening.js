@@ -127,3 +127,19 @@ export function drawCaseSkin(caseContent) {
 		randomSelectedSkinIndex,
 	};
 }
+
+export function getSkinUpgradeProbs(skin, skinData) {
+	const successProb =
+		(1 - (((skin.currentChroma + skin.currentLvl + skinData.chromas.length + skinData.levels.length) / 18) * (parseInt(skin.tierRank) / 4)))/2;
+	const destructionProb = ((skin.currentChroma + skinData.levels.length) / (skinData.chromas.length + skinData.levels.length)) * (parseInt(skin.tierRank) / 5) * 0.075;
+	const upgradePrice = Math.max(Math.floor(parseFloat(skin.currentPrice) * (1 - successProb)), 1);
+	return { successProb, destructionProb, upgradePrice };
+}
+
+export function getDummySkinUpgradeProbs(skinLevel, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, skinMaxPrice) {
+	const successProb =
+		1 - (((skinChroma + skinLevel + (skinMaxChromas + skinMaxLevels)) / 18) * (parseInt(skinTierRank) / 4));
+	const destructionProb = ((skinChroma + skinMaxLevels) / (skinMaxChromas + skinMaxLevels)) * (parseInt(skinTierRank) / 5) * 0.1;
+	const upgradePrice = Math.max(Math.floor((parseFloat(skinMaxPrice) * (1 - successProb))), 1);
+	return { successProb, destructionProb, upgradePrice };
+}
