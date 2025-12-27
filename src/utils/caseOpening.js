@@ -109,9 +109,11 @@ export async function drawCaseContent(caseType = "standard") {
 }
 
 export function drawCaseSkin(caseContent) {
+	let randomSelectedSkinIndex;
+	let randomSelectedSkinUuid;
 	try {
-		const randomSelectedSkinIndex = Math.floor(Math.random() * (caseContent.length - 1));
-		const randomSelectedSkinUuid = caseContent[randomSelectedSkinIndex].uuid;
+		randomSelectedSkinIndex = Math.floor(Math.random() * (caseContent.length - 1));
+		randomSelectedSkinUuid = caseContent[randomSelectedSkinIndex].uuid;
 	} catch (e) {
 		console.log(e);
 		throw new Error("Failed to draw a skin from the case content.");
