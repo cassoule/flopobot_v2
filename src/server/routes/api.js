@@ -131,6 +131,9 @@ export function apiRoutes(client, io) {
 			case "ultra":
 				caseTypeVal = 1500;
 				break;
+			case "esport":
+				caseTypeVal = 50;
+				break;
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
 		}
@@ -214,6 +217,53 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	router.post("/skin/:uuid/instant-sell", (req, res) => {
+		const { userId } = req.body;
+		try {
+			const skin = getSkin.get(req.params.uuid);
+			const skinData = skins.find((s) => s.uuid === skin.uuid);
+			if (
+				!skinData
+			) {
+				return res.status(403).json({ error: "Invalid skin." });
+			}
+			if (skin.user_id !== userId) {
+				return res.status(403).json({ error: "User does not own this skin." });
+			}
+
+			const commandUser = getUser.get(userId);
+			if (!commandUser) {
+				return res.status(404).json({ error: "User not found." });
+			}
+			const sellPrice = Math.floor(skin.currentPrice * 0.75);
+
+			insertLog.run({
+				id: `${userId}-${Date.now()}`,
+				user_id: userId,
+				action: "VALO_SKIN_INSTANT_SELL",
+				target_user_id: null,
+				coins_amount: sellPrice,
+				user_new_amount: commandUser.coins + sellPrice,
+			});
+			updateUserCoins.run({
+				id: userId,
+				coins: commandUser.coins + sellPrice,
+			});
+			updateSkin.run({
+				uuid: skin.uuid,
+				user_id: null,
+				currentLvl: null,
+				currentChroma: null,
+				currentPrice: null,
+			});
+			console.log(`${commandUser.username} instantly sold skin ${skin.uuid} for ${sellPrice} FlopoCoins`);
+			res.status(200).json({ sellPrice });
+		} catch (error) {
+			console.error("Error fetching skin upgrade:", error);
+			res.status(500).json({ error: "Failed to fetch skin upgrade." });
+		}
+	});
+
 	router.get("/skin-upgrade/:uuid/fetch", (req, res) => {
 		try {
 			const skin = getSkin.get(req.params.uuid);
@@ -247,7 +297,7 @@ export function apiRoutes(client, io) {
 			if (skin.user_id !== userId) {
 				return res.status(403).json({ error: "User does not own this skin." });
 			}
-			const upgradePrice = Math.floor(parseFloat(skin.maxPrice) / 10);
+			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
 
 			const commandUser = getUser.get(userId);
 			if (!commandUser) {
@@ -272,7 +322,7 @@ export function apiRoutes(client, io) {
 
 			let succeeded = false;
 			let destructed = false;
-			const { successProb, destructionProb } = getSkinUpgradeProbs(skin, skinData);
+			
 			const roll = Math.random();
 			if (roll < destructionProb) {
 				destructed = true;

@@ -2,6 +2,24 @@ import { getAllAvailableSkins, getSkin } from "../database/index.js";
 import { skins } from "../game/state.js";
 
 export async function drawCaseContent(caseType = "standard") {
+	if (caseType === "esport") {
+		// Esport case: return all esport skins
+		try {	
+			const dbSkins = getAllAvailableSkins.all();
+			const esportSkins = skins
+				.filter((s) => dbSkins.find((dbSkin) => dbSkin.displayName.includes("Classic (VCT") && dbSkin.uuid === s.uuid))
+				.map((s) => {
+					const dbSkin = getSkin.get(s.uuid);
+					return {
+						...s, // Shallow copy to avoid mutating the imported 'skins' object
+						tierColor: dbSkin?.tierColor,
+					};
+				});
+			return esportSkins;
+		} catch (e) {
+			console.log(e);
+		}
+	}
 	let tierWeights;
 	switch (caseType) {
 		case "standard":
@@ -91,8 +109,13 @@ export async function drawCaseContent(caseType = "standard") {
 }
 
 export function drawCaseSkin(caseContent) {
-	const randomSelectedSkinIndex = Math.floor(Math.random() * (caseContent.length - 1));
-	const randomSelectedSkinUuid = caseContent[randomSelectedSkinIndex].uuid;
+	try {
+		const randomSelectedSkinIndex = Math.floor(Math.random() * (caseContent.length - 1));
+		const randomSelectedSkinUuid = caseContent[randomSelectedSkinIndex].uuid;
+	} catch (e) {
+		console.log(e);
+		throw new Error("Failed to draw a skin from the case content.");
+	}
 
 	const dbSkin = getSkin.get(randomSelectedSkinUuid);
 	const randomSkinData = skins.find((skin) => skin.uuid === dbSkin.uuid);
@@ -130,9 +153,18 @@ export function drawCaseSkin(caseContent) {
 
 export function getSkinUpgradeProbs(skin, skinData) {
 	const successProb =
-		(1 - (((skin.currentChroma + skin.currentLvl + skinData.chromas.length + skinData.levels.length) / 18) * (parseInt(skin.tierRank) / 4)))/2;
+		(1 - (((skin.currentChroma + skin.currentLvl + skinData.chromas.length + skinData.levels.length) / 18) * (parseInt(skin.tierRank) / 4)))/1.5;
 	const destructionProb = ((skin.currentChroma + skinData.levels.length) / (skinData.chromas.length + skinData.levels.length)) * (parseInt(skin.tierRank) / 5) * 0.075;
-	const upgradePrice = Math.max(Math.floor(parseFloat(skin.currentPrice) * (1 - successProb)), 1);
+	const nextLvl = skin.currentLvl < skinData.levels.length ? skin.currentLvl + 1 : skin.currentLvl;
+	const nextChroma = skin.currentLvl === skinData.levels.length && skin.currentChroma < skinData.chromas.length ? skin.currentChroma + 1 : skin.currentChroma;
+	const calculateNextPrice = () => {
+		let result = parseFloat(skin.basePrice);
+		result *= 1 + nextLvl / Math.max(skinData.levels.length, 2);
+		result *= 1 + nextChroma / 4;
+		return parseFloat(result.toFixed(0));
+	};
+	const diff = calculateNextPrice() - parseFloat(skin.currentPrice);
+	const upgradePrice = Math.max(Math.floor(diff * successProb), 1);
 	return { successProb, destructionProb, upgradePrice };
 }
 
