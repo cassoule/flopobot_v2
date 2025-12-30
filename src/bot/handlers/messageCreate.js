@@ -96,7 +96,7 @@ async function handleAiMention(message, client, io) {
 	const timestamps = (requestTimestamps.get(authorId) || []).filter((ts) => now - ts < SPAM_INTERVAL);
 
 	if (timestamps.length >= MAX_REQUESTS_PER_INTERVAL) {
-		console.log(`[${Date.now()}] Rate limit exceeded for ${authorDB.username}`);
+		console.log(`Rate limit exceeded for ${authorDB.username}`);
 		if (!authorDB.warned) {
 			await message.reply(`T'abuses fréro, attends un peu ⏳`).catch(console.error);
 		}

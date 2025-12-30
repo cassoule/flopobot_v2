@@ -83,12 +83,12 @@ export function blackjackRoutes(io) {
 				h.surrendered = true;
 				h.stood = true;
 				h.hasActed = true;
-				room.leavingAfterRound[p.id] = true; // kick at end of round
+				//room.leavingAfterRound[p.id] = true; // kick at end of round
 				emitToast({ type: "player-timeout", userId: p.id });
 				changed = true;
 			} else if (h.hasActed && !h.stood) {
 				h.stood = true;
-				room.leavingAfterRound[p.id] = true; // kick at end of round
+				//room.leavingAfterRound[p.id] = true; // kick at end of round
 				emitToast({ type: "player-auto-stand", userId: p.id });
 				changed = true;
 			}
@@ -183,7 +183,7 @@ export function blackjackRoutes(io) {
 
 	router.post("/leave", async (req, res) => {
 		const { userId } = req.body;
-		if (!userId || !room.players[userId]) return res.status(404).json({ message: "not in room" });
+		if (!userId || !room.players[userId]) return res.status(403).json({ message: "not in room" });
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -211,7 +211,7 @@ export function blackjackRoutes(io) {
 		}
 
 		const p = room.players[userId];
-		if (p.inRound) {
+		if (p?.inRound) {
 			// leave after round to avoid abandoning an active bet
 			room.leavingAfterRound[userId] = true;
 			return res.status(200).json({ message: "will-leave-after-round" });
