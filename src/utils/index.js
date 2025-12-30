@@ -446,3 +446,51 @@ function formatTierText(rank, displayName) {
 	if (displayName.toLowerCase().includes("champions")) res += " | Champions";
 	return res;
 }
+
+export function isMeleeSkin(skinName) {
+	const name = skinName.toLowerCase();
+	return !(name.includes("classic") || name.includes("shorty") || name.includes("frenzy") || name.includes("ghost") || name.includes("sheriff") || name.includes("stinger") || name.includes("spectre") ||
+		name.includes("bucky") || name.includes("judge") || name.includes("bulldog") || name.includes("guardian") ||
+		name.includes("vandal") || name.includes("phantom") || name.includes("marshal") || name.includes("outlaw") ||
+		name.includes("operator") || name.includes("ares") || name.includes("odin"));
+}
+
+export function isVCTSkin(skinName) {
+	const name = skinName.toLowerCase();
+	return name.includes("vct");
+}
+
+const VCT_TEAMS = {
+  "vct-am": [
+    /x 100t\)$/g, /x c9\)$/g, /x eg\)$/g, /x fur\)$/g, /x krü\)$/g, /x lev\)$/g, /x loud\)$/g, 
+    /x mibr\)$/g, /x sen\)$/g, /x nrg\)$/g, /x g2\)$/g, /x nv\)$/g, /x 2g\)$/g
+  ],
+  "vct-emea": [
+    /x bbl\)$/g, /x fnc\)$/g, /x fut\)$/g, /x m8\)$/g, /x gx\)$/g, /x kc\)$/g, /x navi\)$/g, 
+    /x th\)$/g, /x tl\)$/g, /x vit\)$/g, /x ulf\)$/g, /x pcf\)$/g, /x koi\)$/g, /x apk\)$/g
+  ],
+  "vct-pcf": [
+    /x dfm\)$/g, /x drx\)$/g, /x fs\)$/g, /x gen\)$/g, /x ge\)$/g, /x prx\)$/g, /x rrq\)$/g, 
+    /x t1\)$/g, /x ts\)$/g, /x zeta\)$/g, /x vl\)$/g, /x ns\)$/g, /x tln\)$/g, /x boom\)$/g, /x bld\)$/g
+  ],
+  "vct-cn": [
+    /x ag\)$/g, /x blg\)$/g, /x edg\)$/g, /x fpx\)$/g, /x jdg\)$/g, /x nova\)$/g, /x tec\)$/g, 
+    /x te\)$/g, /x tyl\)$/g, /x wol\)$/g, /x xlg\)$/g, /x xlg\)$/g, /x drg\)$/g, /x drg\)$/g
+  ]
+};
+
+export function getVCTRegion(skinName) {
+	if (!isVCTSkin(skinName)) return null;
+	const name = skinName.toLowerCase().trim();
+	for (const [region, regexes] of Object.entries(VCT_TEAMS)) {
+			if (regexes.some(regex => regex.test(name))) {
+				return region;
+			}
+	}
+	return null;
+}
+
+export function isChampionsSkin(skinName) {
+	const name = skinName.toLowerCase();
+	return name.includes("champions");
+}

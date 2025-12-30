@@ -748,7 +748,7 @@ export const updateManyUsers = flopoDB.transaction((users) => {
 		try {
 			updateUser.run(user);
 		} catch (e) {
-			console.log(`[${Date.now()}] user update failed`);
+			console.log(`User update failed`);
 		}
 });
 

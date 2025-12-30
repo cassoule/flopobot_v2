@@ -10,8 +10,9 @@ import {
 	pruneOldLogs,
 	updateUserCoins
 } from "../database/index.js";
-import { activeSlowmodes, messagesTimestamps, skins } from "./state.js";
+import { activeSlowmodes, activeSolitaireGames, messagesTimestamps, skins } from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
+import { emitSolitaireUpdate } from "../server/socket.js";
 
 /**
  * Handles awarding points (coins) to users for their message activity.
@@ -88,7 +89,7 @@ export async function slowmodesHandler(message) {
 
 	// Check if the slowmode duration has passed
 	if (now > authorSlowmode.endAt) {
-		console.log(`[${Date.now()}] Slowmode for ${author.username} has expired.`);
+		console.log(`Slowmode for ${author.username} has expired.`);
 		delete activeSlowmodes[author.id];
 		return { deleted: false, expired: true };
 	}
@@ -97,10 +98,10 @@ export async function slowmodesHandler(message) {
 	if (authorSlowmode.lastMessage && now - authorSlowmode.lastMessage < 60 * 1000) {
 		try {
 			await message.delete();
-			console.log(`[${Date.now()}] Deleted a message from slowmoded user: ${author.username}`);
+			console.log(`Deleted a message from slowmoded user: ${author.username}`);
 			return { deleted: true, expired: false };
 		} catch (err) {
-			console.error(`[${Date.now()}] Failed to delete slowmode message:`, err);
+			console.error(`Failed to delete slowmode message:`, err);
 			return { deleted: false, expired: false };
 		}
 	} else {
@@ -144,16 +145,20 @@ export function randomSkinPrice() {
  * This function clears previous stats, awards the winner, and generates a new daily seed.
  */
 export function initTodaysSOTD() {
-	console.log(`[${Date.now()}] Initializing new Solitaire of the Day...`);
+	console.log(`Initializing new Solitaire of the Day...`);
 
 	// 1. Award previous day's winner
 	const rankings = getAllSOTDStats.all();
 	if (rankings.length > 0) {
 		const winnerId = rankings[0].user_id;
+		const secondPlaceId = rankings[1] ? rankings[1].user_id : null;
+		const thirdPlaceId = rankings[2] ? rankings[2].user_id : null;
 		const winnerUser = getUser.get(winnerId);
+		const secondPlaceUser = secondPlaceId ? getUser.get(secondPlaceId) : null;
+		const thirdPlaceUser = thirdPlaceId ? getUser.get(thirdPlaceId) : null;
 
 		if (winnerUser) {
-			const reward = 1000;
+			const reward = 2500;
 			const newCoinTotal = winnerUser.coins + reward;
 			updateUserCoins.run({ id: winnerId, coins: newCoinTotal });
 			insertLog.run({
@@ -165,21 +170,40 @@ export function initTodaysSOTD() {
 				user_new_amount: newCoinTotal,
 			});
 			console.log(
-				`[${Date.now()}] ${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
+				`${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
 			);
-			insertGame.run({
-				id: `${winnerId}-${Date.now()}`,
-				p1: winnerId,
-				p2: null,
-				p1_score: rankings[0].score,
-				p2_score: null,
-				p1_elo: winnerUser.elo,
-				p2_elo: null,
-				p1_new_elo: winnerUser.elo,
-				p2_new_elo: null,
-				type: "SOTD",
-				timestamp: Date.now(),
+		}
+		if (secondPlaceUser) {
+			const reward = 1500;
+			const newCoinTotal = secondPlaceUser.coins + reward;
+			updateUserCoins.run({ id: secondPlaceId, coins: newCoinTotal });
+			insertLog.run({
+				id: `${secondPlaceId}-sotd-second-${Date.now()}`,
+				target_user_id: null,
+				user_id: secondPlaceId,
+				action: "SOTD_SECOND_PLACE",
+				coins_amount: reward,
+				user_new_amount: newCoinTotal,
 			});
+			console.log(
+				`${secondPlaceUser.globalName || secondPlaceUser.username} got second place in the previous SOTD and received ${reward} coins.`,
+			);
+		}
+		if (thirdPlaceUser) {
+			const reward = 750;
+			const newCoinTotal = thirdPlaceUser.coins + reward;
+			updateUserCoins.run({ id: thirdPlaceId, coins: newCoinTotal });
+			insertLog.run({
+				id: `${thirdPlaceId}-sotd-third-${Date.now()}`,
+				target_user_id: null,
+				user_id: thirdPlaceId,
+				action: "SOTD_THIRD_PLACE",
+				coins_amount: reward,
+				user_new_amount: newCoinTotal,
+			});
+			console.log(
+				`${thirdPlaceUser.globalName || thirdPlaceUser.username} got third place in the previous SOTD and received ${reward} coins.`,
+			);
 		}
 	}
 
@@ -206,8 +230,15 @@ export function initTodaysSOTD() {
 			wastePile: JSON.stringify(todaysSOTD.wastePile),
 			seed: newRandomSeed,
 		});
-		console.log(`[${Date.now()}] Today's SOTD is ready with a new seed.`);
+		for (const [userId, gameData] of Object.entries(activeSolitaireGames)) {
+			if (gameData.isSOTD) {
+				delete activeSolitaireGames[userId];
+				emitSolitaireUpdate(userId);
+			}
+		}
+
+		console.log(`Today's SOTD is ready with a new seed.`);
 	} catch (e) {
-		console.error(`[${Date.now()}] Error saving new SOTD to database:`, e);
+		console.error(`Error saving new SOTD to database:`, e);
 	}
 }

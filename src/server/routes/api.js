@@ -27,7 +27,7 @@ import {
 import { activePolls, activePredis, activeSlowmodes, skins } from "../../game/state.js";
 
 // --- Utility and API Imports ---
-import { formatTime } from "../../utils/index.js";
+import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion } from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 
 // --- Discord.js Builder Imports ---
@@ -99,11 +99,11 @@ export function apiRoutes(client, io) {
 				user_new_amount: 5000,
 			});
 
-			console.log(`[${Date.now()}] New registered user: ${discordUser.username} (${discordUser.id})`);
+			console.log(`New registered user: ${discordUser.username} (${discordUser.id})`);
 
 			res.status(200).json({ message: `Bienvenue ${discordUser.username} !` });
 		} catch (e) {
-			console.log(`[${Date.now()}] Failed to register user ${discordUser.username} (${discordUser.id})`, e);
+			console.log(`Failed to register user ${discordUser.username} (${discordUser.id})`, e);
 			res.status(500).json({ error: "Erreur lors de la création du nouvel utilisateur." });
 		}
 	});
@@ -173,8 +173,18 @@ export function apiRoutes(client, io) {
 			);
 			const updatedSkin = getSkin.get(result.randomSkinData.uuid);
 			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
+			
+			const contentSkins = selectedSkins.map((item) => { 
+				return {
+					...item,
+					isMelee: isMeleeSkin(item.displayName),
+					isVCT: isVCTSkin(item.displayName),
+					isChampions: isChampionsSkin(item.displayName),
+					vctRegion: getVCTRegion(item.displayName),
+				}
+			});
 			res.json({
-				selectedSkins,
+				selectedSkins: contentSkins,
 				randomSelectedSkinUuid: result.randomSelectedSkinUuid,
 				randomSelectedSkinIndex: result.randomSelectedSkinIndex,
 				updatedSkin,
@@ -475,6 +485,10 @@ export function apiRoutes(client, io) {
 					});
 				});
 				skin.offers = marketOffers || {};
+				skin.isMelee = isMeleeSkin(skin.displayName);
+				skin.isVCT = isVCTSkin(skin.displayName);
+				skin.isChampions = isChampionsSkin(skin.displayName);
+				skin.vctRegion = getVCTRegion(skin.displayName);
 			});
 			res.json({ inventory });
 		} catch (error) {
@@ -560,7 +574,7 @@ export function apiRoutes(client, io) {
 				user_new_amount: newCoins,
 			});
 
-			console.log(`[${Date.now()}] ${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`);
+			console.log(`${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`);
 
 			try {
 				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
@@ -1065,7 +1079,7 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
-					console.log(`[${Date.now()}] Impossible de rembourser ${v.id} (${v.amount} coins)`);
+					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
 			});
 			activePredis[predi].options[1].votes.forEach((v) => {
@@ -1084,7 +1098,7 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
-					console.log(`[${Date.now()}] Impossible de rembourser ${v.id} (${v.amount} coins)`);
+					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
 			});
 			activePredis[predi].closed = true;
@@ -1110,7 +1124,7 @@ export function apiRoutes(client, io) {
 						user_new_amount: tempUser.coins + v.amount * (1 + ratio),
 					});
 				} catch (e) {
-					console.log(`[${Date.now()}] Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`);
+					console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`);
 				}
 			});
 			activePredis[predi].paidTime = new Date();
