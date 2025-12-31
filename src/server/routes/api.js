@@ -132,7 +132,7 @@ export function apiRoutes(client, io) {
 				caseTypeVal = 1500;
 				break;
 			case "esport":
-				caseTypeVal = 50;
+				caseTypeVal = 100;
 				break;
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
@@ -195,6 +195,25 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	router.get("/case-content/:type", async (req, res) => {
+		const { type } = req.params;
+		try {
+			const selectedSkins = await drawCaseContent(type, -1);
+			selectedSkins.forEach((item) => {
+				item.isMelee = isMeleeSkin(item.displayName);
+				item.isVCT = isVCTSkin(item.displayName);
+				item.isChampions = isChampionsSkin(item.displayName);
+				item.vctRegion = getVCTRegion(item.displayName);
+				item.basePrice = getSkin.get(item.uuid).basePrice;
+				item.maxPrice = getSkin.get(item.uuid).maxPrice;
+			});
+			res.json({ skins: selectedSkins.sort((a, b) => b.maxPrice - a.maxPrice) });
+		} catch (error) {
+			console.error("Error fetching case content:", error);
+			res.status(500).json({ error: "Failed to fetch case content." });
+		}
+	});
+
 	router.get("/skin/:id", (req, res) => {
 		try {
 			const skinData = skins.find((s) => s.uuid === req.params.id);
@@ -245,7 +264,7 @@ export function apiRoutes(client, io) {
 			if (!commandUser) {
 				return res.status(404).json({ error: "User not found." });
 			}
-			const sellPrice = Math.floor(skin.currentPrice * 0.75);
+			const sellPrice = skin.currentPrice;
 
 			insertLog.run({
 				id: `${userId}-${Date.now()}`,
