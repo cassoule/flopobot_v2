@@ -1,7 +1,8 @@
 import { getAllAvailableSkins, getSkin } from "../database/index.js";
 import { skins } from "../game/state.js";
+import { isChampionsSkin } from "./index.js";
 
-export async function drawCaseContent(caseType = "standard") {
+export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 	if (caseType === "esport") {
 		// Esport case: return all esport skins
 		try {	
@@ -57,6 +58,20 @@ export async function drawCaseContent(caseType = "standard") {
 		const dbSkins = getAllAvailableSkins.all();
 		const weightedPool = skins
 			.filter((s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid))
+			.filter((s) => {
+				if (caseType === "ultra") {
+					return !(s.displayName.toLowerCase().includes("vct") && s.displayName.toLowerCase().includes("classic"))
+				} else {
+					return !s.displayName.toLowerCase().includes("vct");
+				}
+			})
+			.filter((s) => {
+				if (caseType === "ultra") {
+					return true
+				} else {
+					return isChampionsSkin(s.displayName) === false;
+				}
+			})
 			.map((s) => {
 				const dbSkin = getSkin.get(s.uuid);
 				return {
@@ -73,7 +88,7 @@ export async function drawCaseContent(caseType = "standard") {
 			const result = [];
 
 			// 2. Adjust count if the pool is smaller than requested
-			const actualCount = Math.min(count, list.length);
+			const actualCount = Math.min(count, list.length) ;
 
 			for (let i = 0; i < actualCount; i++) {
 				let r = Math.random() * totalWeight;
@@ -102,7 +117,7 @@ export async function drawCaseContent(caseType = "standard") {
 			return result;
 		}
 
-		return weightedSample(weightedPool, 100);
+		return poolSize === -1 ? weightedPool : weightedSample(weightedPool, poolSize);
 	} catch (e) {
 		console.log(e);
 	}

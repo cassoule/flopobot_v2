@@ -420,7 +420,7 @@ export function calculateBasePrice(skin, tierRank) {
 	else if (name.includes("odin")) price = 3200;
 
 	price *= 1 + (tierRank || 0);
-	if (name.includes("vct")) price *= 1.25;
+	if (name.includes("vct")) price *= 2.75;
 	if (name.includes("champions")) price *= 2;
 
 	return price / 124;
