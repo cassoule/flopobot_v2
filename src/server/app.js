@@ -11,6 +11,7 @@ import { solitaireRoutes } from "./routes/solitaire.js";
 import { getSocketIo } from "./socket.js";
 import { blackjackRoutes } from "./routes/blackjack.js";
 import { marketRoutes } from "./routes/market.js";
+import { werewolfRoutes } from "../werewolf/index.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -59,7 +60,7 @@ app.use("/api/blackjack", blackjackRoutes(client, io));
 // Market-specific routes
 app.use("/api/market-place", marketRoutes(client, io));
 
-// erinyes-specific routes
-// app.use("/api/erinyes", erinyesRoutes(client, io));
+// werewolf-specific routes
+app.use("/api/werewolf", werewolfRoutes(client, io));
 
 export { app };

@@ -7,6 +7,8 @@ import { client } from "./src/bot/client.js";
 import { initializeEvents } from "./src/bot/events.js";
 import { initializeSocket } from "./src/server/socket.js";
 import { setupCronJobs } from "./src/utils/index.js";
+import { flopoDB } from "./src/database/index.js";
+import { initializeWerewolf, werewolfRoutes } from "./src/werewolf/index.js";
 
 // --- SERVER INITIALIZATION ---
 const PORT = process.env.PORT || 25578;
@@ -23,6 +25,11 @@ export const io = new Server(server, {
 	pingTimeout: 5000,
 });
 initializeSocket(io, client);
+
+// --- WEREWOLF MODULE INITIALIZATION ---
+console.log("[Server] Initializing Werewolf Module...");
+const { persistence: werewolfPersistence } = initializeWerewolf(io, flopoDB);
+console.log("[Server] Werewolf Module Initialized.");
 
 // --- BOT INITIALIZATION ---
 initializeEvents(client, io);
