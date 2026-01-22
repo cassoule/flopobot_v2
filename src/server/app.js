@@ -11,6 +11,7 @@ import { solitaireRoutes } from "./routes/solitaire.js";
 import { getSocketIo } from "./socket.js";
 import { blackjackRoutes } from "./routes/blackjack.js";
 import { marketRoutes } from "./routes/market.js";
+import { monkeRoutes } from "./routes/monke.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -61,5 +62,8 @@ app.use("/api/market-place", marketRoutes(client, io));
 
 // erinyes-specific routes
 // app.use("/api/erinyes", erinyesRoutes(client, io));
+
+// monke-specific routes
+app.use("/api/monke-game", monkeRoutes(client, io));
 
 export { app };
