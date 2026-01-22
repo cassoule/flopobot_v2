@@ -260,6 +260,12 @@ export function apiRoutes(client, io) {
 				return res.status(403).json({ error: "User does not own this skin." });
 			}
 
+			const marketOffers = getMarketOffersBySkin.all(skin.uuid);
+			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
+			if (activeOffers.length > 0) {
+				return res.status(403).json({ error: "Impossible de vendre ce skin, une offre FlopoMarket est déjà en cours." });
+			}
+
 			const commandUser = getUser.get(userId);
 			if (!commandUser) {
 				return res.status(404).json({ error: "User not found." });
