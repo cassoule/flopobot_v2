@@ -20,6 +20,8 @@ export let pokerRooms = {};
 // Stores active erinyes rooms, keyed by a unique room ID (uuidv4).
 export let erinyesRooms = {};
 
+export let monkePaths = {};
+
 // --- User and Session State ---
 
 // Stores active user inventories for paginated embeds, keyed by the interaction ID.

@@ -475,7 +475,7 @@ const VCT_TEAMS = {
   ],
   "vct-cn": [
     /x ag\)$/g, /x blg\)$/g, /x edg\)$/g, /x fpx\)$/g, /x jdg\)$/g, /x nova\)$/g, /x tec\)$/g, 
-    /x te\)$/g, /x tyl\)$/g, /x wol\)$/g, /x xlg\)$/g, /x xlg\)$/g, /x drg\)$/g, /x drg\)$/g
+    /x te\)$/g, /x tyl\)$/g, /x wol\)$/g, /x xlg\)$/g, /x xlg\)$/g, /x drg\)$/g
   ]
 };
 

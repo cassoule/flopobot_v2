@@ -584,9 +584,11 @@ export const updateUser = flopoDB.prepare(
 export const updateUserAvatar = flopoDB.prepare("UPDATE users SET avatarUrl = @avatarUrl WHERE id = @id");
 export const queryDailyReward = flopoDB.prepare(`UPDATE users
                                                  SET dailyQueried = 1
-                                                 WHERE id = ?`);
+                                                 WHERE id = ?`
+);
 export const resetDailyReward = flopoDB.prepare(`UPDATE users
-                                                 SET dailyQueried = 0`);
+                                                 SET dailyQueried = 0`
+);
 export const updateUserCoins = flopoDB.prepare("UPDATE users SET coins = @coins WHERE id = @id");
 export const getUser = flopoDB.prepare(
 	"SELECT users.*,elos.elo FROM users LEFT JOIN elos ON elos.id = users.id WHERE users.id = ?",
@@ -647,7 +649,6 @@ export const getMarketOffers = flopoDB.prepare(`
     FROM market_offers
     ORDER BY market_offers.posted_at DESC
 `);
-
 export const getMarketOfferById = flopoDB.prepare(`
     SELECT market_offers.*,
            skins.displayName AS skinName,
@@ -662,7 +663,6 @@ export const getMarketOfferById = flopoDB.prepare(`
              LEFT JOIN users AS buyer ON buyer.id = market_offers.buyer_id
     WHERE market_offers.id = ?
 `);
-
 export const getMarketOffersBySkin = flopoDB.prepare(`
     SELECT market_offers.*,
            skins.displayName AS skinName,
@@ -677,12 +677,10 @@ export const getMarketOffersBySkin = flopoDB.prepare(`
              LEFT JOIN users AS buyer ON buyer.id = market_offers.buyer_id
     WHERE market_offers.skin_uuid = ?
 `);
-
 export const insertMarketOffer = flopoDB.prepare(`
     INSERT INTO market_offers (id, skin_uuid, seller_id, starting_price, buyout_price, status, opening_at, closing_at)
     VALUES (@id, @skin_uuid, @seller_id, @starting_price, @buyout_price, @status, @opening_at, @closing_at)
 `);
-
 export const updateMarketOffer = flopoDB.prepare(`
     UPDATE market_offers
     SET final_price = @final_price,
@@ -690,7 +688,6 @@ export const updateMarketOffer = flopoDB.prepare(`
         buyer_id    = @buyer_id
     WHERE id = @id
 `);
-
 export const deleteMarketOffer = flopoDB.prepare(`
     DELETE
     FROM market_offers
@@ -708,25 +705,21 @@ export const getBids = flopoDB.prepare(`
              JOIN users AS bidder ON bidder.id = bids.bidder_id
     ORDER BY bids.offer_amount DESC, bids.offered_at ASC
 `);
-
 export const getBidById = flopoDB.prepare(`
     SELECT bids.*
     FROM bids
     WHERE bids.id = ?
 `);
-
 export const getOfferBids = flopoDB.prepare(`
     SELECT bids.*
     FROM bids
     WHERE bids.market_offer_id = ?
     ORDER BY bids.offer_amount DESC, bids.offered_at ASC
 `);
-
 export const insertBid = flopoDB.prepare(`
     INSERT INTO bids (id, bidder_id, market_offer_id, offer_amount)
     VALUES (@id, @bidder_id, @market_offer_id, @offer_amount)
 `);
-
 export const deleteBid = flopoDB.prepare(`
     DELETE
     FROM bids
@@ -742,7 +735,6 @@ export const insertManyUsers = flopoDB.transaction((users) => {
 			insertUser.run(user);
 		} catch (e) {}
 });
-
 export const updateManyUsers = flopoDB.transaction((users) => {
 	for (const user of users)
 		try {
@@ -751,7 +743,6 @@ export const updateManyUsers = flopoDB.transaction((users) => {
 			console.log(`User update failed`);
 		}
 });
-
 export const insertManySkins = flopoDB.transaction((skins) => {
 	for (const skin of skins)
 		try {
@@ -791,14 +782,16 @@ export const getUserGames = flopoDB.prepare(
    ELOS
 ----------------------------*/
 export const insertElos = flopoDB.prepare(`INSERT INTO elos (id, elo)
-                                           VALUES (@id, @elo)`);
+                                           VALUES (@id, @elo)`
+);
 export const getElos = flopoDB.prepare(`SELECT *
-                                        FROM elos`);
+                                        FROM elos`
+);
 export const getUserElo = flopoDB.prepare(`SELECT *
                                            FROM elos
-                                           WHERE id = @id`);
+                                           WHERE id = @id`
+);
 export const updateElo = flopoDB.prepare("UPDATE elos SET elo = @elo WHERE id = @id");
-
 export const getUsersByElo = flopoDB.prepare(
 	"SELECT * FROM users JOIN elos ON elos.id = users.id ORDER BY elos.elo DESC",
 );
@@ -808,14 +801,15 @@ export const getUsersByElo = flopoDB.prepare(
 ----------------------------*/
 export const getSOTD = flopoDB.prepare(`SELECT *
                                         FROM sotd
-                                        WHERE id = '0'`);
+                                        WHERE id = '0'`
+);
 export const insertSOTD =
 	flopoDB.prepare(`INSERT INTO sotd (id, tableauPiles, foundationPiles, stockPile, wastePile, seed)
                    VALUES (0, @tableauPiles, @foundationPiles, @stockPile, @wastePile, @seed)`);
 export const deleteSOTD = flopoDB.prepare(`DELETE
                                            FROM sotd
-                                           WHERE id = '0'`);
-
+                                           WHERE id = '0'`
+);
 export const getAllSOTDStats = flopoDB.prepare(`SELECT sotd_stats.*, users.globalName
                                                 FROM sotd_stats
                                                          JOIN users ON users.id = sotd_stats.user_id
@@ -830,10 +824,6 @@ export const clearSOTDStats = flopoDB.prepare(`DELETE
 export const deleteUserSOTDStats = flopoDB.prepare(`DELETE
                                                     FROM sotd_stats
                                                     WHERE user_id = ?`);
-
-/* -------------------------
-   Market queries already declared above (kept for completeness)
-----------------------------*/
 
 /* -------------------------
    pruneOldLogs
