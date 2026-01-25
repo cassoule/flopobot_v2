@@ -245,10 +245,8 @@ async function handleAdminCommands(message) {
 			try {
 				const stmt = flopoDB.prepare(sqlCommand);
 				const result = sqlCommand.trim().toUpperCase().startsWith("SELECT") ? stmt.all() : stmt.run();
-				console.log(result);
 				message.reply("```json\n" + JSON.stringify(result, null, 2).substring(0, 1900) + "\n```");
 			} catch (e) {
-				console.error(e);
 				message.reply(`SQL Error: ${e.message}`);
 			}
 			break;
