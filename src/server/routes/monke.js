@@ -36,6 +36,7 @@ export function monkeRoutes(client, io) {
 		const user = getUser.get(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!initialBet) return res.status(400).json({ error: "Initial bet is required" });
+		if (initialBet > user.coins) return res.status(400).json({ error: "Insufficient coins for the initial bet" });
 
 		try {
 			const newCoins = user.coins - initialBet;

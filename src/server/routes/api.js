@@ -332,6 +332,11 @@ export function apiRoutes(client, io) {
 			if (skin.user_id !== userId) {
 				return res.status(403).json({ error: "User does not own this skin." });
 			}
+			const marketOffers = getMarketOffersBySkin.all(skin.uuid);
+			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
+			if (activeOffers.length > 0) {
+				return res.status(403).json({ error: "Impossible d'améliorer ce skin, une offre FlopoMarket est en cours." });
+			}
 			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
 
 			const commandUser = getUser.get(userId);
