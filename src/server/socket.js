@@ -292,7 +292,8 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		tictactoeQueue.splice(index, 1);
 		try {
-			const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const guild = await client.guilds.fetch(process.env.GUILD_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const user = await client.users.fetch(userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
@@ -311,7 +312,8 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		connect4Queue.splice(index, 1);
 		try {
-			const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const guild = await client.guilds.fetch(process.env.GUILD_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 			const user = await client.users.fetch(userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()

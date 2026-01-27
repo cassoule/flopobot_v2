@@ -77,20 +77,24 @@ export function blackjackRoutes(io) {
 
 		let changed = false;
 		for (const p of Object.values(room.players)) {
-			if (!p.inRound) continue;
-			const h = p.hands[p.activeHand];
-			if (!h.hasActed && !h.busted && !h.stood && !h.surrendered) {
-				h.surrendered = true;
-				h.stood = true;
-				h.hasActed = true;
-				//room.leavingAfterRound[p.id] = true; // kick at end of round
-				emitToast({ type: "player-timeout", userId: p.id });
-				changed = true;
-			} else if (h.hasActed && !h.stood) {
-				h.stood = true;
-				//room.leavingAfterRound[p.id] = true; // kick at end of round
-				emitToast({ type: "player-auto-stand", userId: p.id });
-				changed = true;
+			try {
+				if (!p.inRound) continue;
+				const h = p.hands[p.activeHand];
+				if (h && !h.hasActed && !h.busted && !h.stood && !h.surrendered) {
+					h.surrendered = true;
+					h.stood = true;
+					h.hasActed = true;
+					//room.leavingAfterRound[p.id] = true; // kick at end of round
+					emitToast({ type: "player-timeout", userId: p.id });
+					changed = true;
+				} else if (h && h.hasActed && !h.stood) {
+					h.stood = true;
+					//room.leavingAfterRound[p.id] = true; // kick at end of round
+					emitToast({ type: "player-auto-stand", userId: p.id });
+					changed = true;
+				}
+			} catch (e) {
+				console.log(e);
 			}
 		}
 		if (changed) emitUpdate("auto-surrender", snapshot(room));
