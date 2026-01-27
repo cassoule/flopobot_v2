@@ -491,6 +491,7 @@ export function apiRoutes(client, io) {
 		try {
 			const games = getUserGames.all({ user_id: req.params.id });
 			const eloHistory = games
+				.filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD')
 				.filter((game) => game.p2 !== null)
 				.map((game) => (game.p1 === req.params.id ? game.p1_new_elo : game.p2_new_elo));
 			eloHistory.splice(0, 0, 1000);
@@ -528,7 +529,7 @@ export function apiRoutes(client, io) {
 
 	router.get("/user/:id/games-history", async (req, res) => {
 		try {
-			const games = getUserGames.all({ user_id: req.params.id });
+			const games = getUserGames.all({ user_id: req.params.id }).filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD').reverse().slice(0, 50);
 			res.json({ games });
 		} catch (err) {
 			res.status(500).json({ error: "Failed to fetch games history." });
