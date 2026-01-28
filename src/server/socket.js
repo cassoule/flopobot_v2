@@ -36,6 +36,8 @@ export function initializeSocket(server, client) {
 		registerSnakeEvents(socket, client);
 
 		socket.on("tictactoe:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+		socket.on("connect4:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+		socket.on("snake:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
 
 		// catch tab kills / network drops
 		socket.on("disconnecting", async () => {
@@ -210,7 +212,7 @@ async function onSnakeGameStateUpdate(client, eventData) {
 	player.snake = snake;
 	player.food = food;
 	player.score = score;
-	player.gameOver = gameOver;
+	player.gameOver = gameOver === true ? true : false;
 	player.win = win;
 
 	lobby.lastmove = Date.now();
@@ -245,7 +247,7 @@ async function onSnakeGameStateUpdate(client, eventData) {
 	}
 }
 
-async function onGameOver(client, gameType, playerId, winnerId, reason = "", scores = null) {
+export async function onGameOver(client, gameType, playerId, winnerId, reason = "", scores = null) {
 	const { activeGames, title } = getGameAssets(gameType);
 	const gameKey = Object.keys(activeGames).find((key) => key.includes(playerId));
 	const game = gameKey ? activeGames[gameKey] : undefined;
@@ -514,7 +516,7 @@ async function updateDiscordMessage(client, game, title, resultText = "") {
 	} else if (title === "Puissance 4") {
 		description = `**🔴 ${game.p1.name}** vs **${game.p2.name} 🟡**\n\n${formatConnect4BoardForDiscord(game.board)}`;
 	} else if (title === "Snake 1v1") {
-		description = `**🐍 ${game.p1.name}** (${game.p1.score}) vs **${game.p2.name} 🐍** (${game.p2.score})`;
+		description = `**🐍 ${game.p1.name}** (${game.p1.score}) vs (${game.p2.score}) **${game.p2.name}** `;
 	}
 	if (resultText) description += `\n### ${resultText}`;
 
