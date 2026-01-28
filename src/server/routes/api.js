@@ -24,7 +24,7 @@ import {
 } from "../../database/index.js";
 
 // --- Game State Imports ---
-import { activePolls, activePredis, activeSlowmodes, skins } from "../../game/state.js";
+import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
 
 // --- Utility and API Imports ---
 import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion } from "../../utils/index.js";
@@ -32,7 +32,7 @@ import { DiscordRequest } from "../../api/discord.js";
 
 // --- Discord.js Builder Imports ---
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
-import { emitDataUpdated, socketEmit } from "../socket.js";
+import { emitDataUpdated, socketEmit, onGameOver } from "../socket.js";
 import { handleCaseOpening } from "../../utils/marketNotifs.js";
 import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
 
@@ -1202,6 +1202,79 @@ export function apiRoutes(client, io) {
 		await emitDataUpdated({ table: "users", action: "fin predi" });
 
 		return res.status(200).json({ message: "Prédi close" });
+	});
+
+	router.post("/snake/reward", async (req, res) => {
+		const { discordId, score, isWin } = req.body;
+		console.log(`[SNAKE][SOLO]${discordId}: score=${score}, isWin=${isWin}`);
+		try {
+			const user = getUser.get(discordId);
+			if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+			const reward =  isWin ? score * 2 : score;
+			const newCoins = user.coins + reward;
+			updateUserCoins.run({ id: discordId, coins: newCoins });
+			insertLog.run({
+				id: `${discordId}-snake-reward-${Date.now()}`,
+				user_id: discordId,
+				action: "SNAKE_GAME_REWARD",
+				coins_amount: reward,
+				user_new_amount: newCoins,
+				target_user_id: null,
+			});
+			await emitDataUpdated({ table: "users", action: "update" });
+			return res.status(200).json({ message: `Récompense de ${reward} FlopoCoins attribuée !` });
+		} catch (e) {
+			console.error("Error rewarding snake game:", e);
+			return res.status(500).json({ message: "Erreur lors de l'attribution de la récompense" });
+		}
+	});
+
+	router.post("/queue/leave", async (req, res) => {
+		const { discordId, game, reason } = req.body;
+		if (game === "snake" && (reason === "beforeunload" || reason === "route-leave")) {
+			
+			const lobby = Object.values(activeSnakeGames).find(
+				(l) => (l.p1.id === discordId || l.p2.id === discordId) && !l.gameOver,
+			);
+			if (!lobby) return;
+		
+			const player = lobby.p1.id === discordId ? lobby.p1 : lobby.p2;
+			const otherPlayer = lobby.p1.id === discordId ? lobby.p2 : lobby.p1;
+			if (player.gameOver === true) return res.status(200).json({ message: "Déjà quitté" });
+			player.gameOver = true;
+			otherPlayer.win = true;
+		
+			lobby.lastmove = Date.now();
+		
+			// Broadcast the updated state to both players
+			await socketEmit("snakegamestate", {
+				lobby: {
+					p1: lobby.p1,
+					p2: lobby.p2,
+				},
+			});
+		
+			// Check if game should end
+			if (lobby.p1.gameOver && lobby.p2.gameOver) {
+				// Both players finished - determine winner
+				let winnerId = null;
+				if (lobby.p1.win && !lobby.p2.win) {
+					winnerId = lobby.p1.id;
+				} else if (lobby.p2.win && !lobby.p1.win) {
+					winnerId = lobby.p2.id;
+				} else if (lobby.p1.score > lobby.p2.score) {
+					winnerId = lobby.p1.id;
+				} else if (lobby.p2.score > lobby.p1.score) {
+					winnerId = lobby.p2.id;
+				}
+				// If scores are equal, winnerId remains null (draw)
+				await onGameOver(client, "snake", discordId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
+			} else if (lobby.p1.win || lobby.p2.win) {
+				// One player won by filling the grid
+				const winnerId = lobby.p1.win ? lobby.p1.id : lobby.p2.id;
+				await onGameOver(client, "snake", discordId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
+			}
+		}
 	});
 
 	// --- Admin Routes ---

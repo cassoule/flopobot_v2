@@ -2,9 +2,11 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import {
 	activeConnect4Games,
 	activeTicTacToeGames,
+	activeSnakeGames,
 	connect4Queue,
 	queueMessagesEndpoints,
 	tictactoeQueue,
+	snakeQueue,
 } from "../game/state.js";
 import {
 	C4_ROWS,
@@ -31,8 +33,11 @@ export function initializeSocket(server, client) {
 
 		registerTicTacToeEvents(socket, client);
 		registerConnect4Events(socket, client);
+		registerSnakeEvents(socket, client);
 
 		socket.on("tictactoe:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+		socket.on("connect4:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+		socket.on("snake:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
 
 		// catch tab kills / network drops
 		socket.on("disconnecting", async () => {
@@ -66,6 +71,13 @@ function registerConnect4Events(socket, client) {
 	socket.on("connect4queue", (e) => onQueueJoin(client, "connect4", e.playerId));
 	socket.on("connect4playing", (e) => onConnect4Move(client, e));
 	socket.on("connect4NoTime", (e) => onGameOver(client, "connect4", e.playerId, e.winner, "(temps écoulé)"));
+}
+
+function registerSnakeEvents(socket, client) {
+	socket.on("snakeconnection", (e) => refreshQueuesForUser(e.id, client));
+	socket.on("snakequeue", (e) => onQueueJoin(client, "snake", e.playerId));
+	socket.on("snakegamestate", (e) => onSnakeGameStateUpdate(client, e));
+	socket.on("snakegameOver", (e) => onGameOver(client, "snake", e.playerId, e.winner));
 }
 
 // --- Core Handlers (Preserving Original Logic) ---
@@ -189,7 +201,53 @@ async function onConnect4Move(client, eventData) {
 	await onGameOver(client, "connect4", playerId, winnerId);
 }
 
-async function onGameOver(client, gameType, playerId, winnerId, reason = "") {
+async function onSnakeGameStateUpdate(client, eventData) {
+	const { playerId, snake, food, score, gameOver, win } = eventData;
+	const lobby = Object.values(activeSnakeGames).find(
+		(l) => (l.p1.id === playerId || l.p2.id === playerId) && !l.gameOver,
+	);
+	if (!lobby) return;
+
+	const player = lobby.p1.id === playerId ? lobby.p1 : lobby.p2;
+	player.snake = snake;
+	player.food = food;
+	player.score = score;
+	player.gameOver = gameOver === true ? true : false;
+	player.win = win;
+
+	lobby.lastmove = Date.now();
+
+	// Broadcast the updated state to both players
+	io.emit("snakegamestate", {
+		lobby: {
+			p1: lobby.p1,
+			p2: lobby.p2,
+		},
+	});
+
+	// Check if game should end
+	if (lobby.p1.gameOver && lobby.p2.gameOver) {
+		// Both players finished - determine winner
+		let winnerId = null;
+		if (lobby.p1.win && !lobby.p2.win) {
+			winnerId = lobby.p1.id;
+		} else if (lobby.p2.win && !lobby.p1.win) {
+			winnerId = lobby.p2.id;
+		} else if (lobby.p1.score > lobby.p2.score) {
+			winnerId = lobby.p1.id;
+		} else if (lobby.p2.score > lobby.p1.score) {
+			winnerId = lobby.p2.id;
+		}
+		// If scores are equal, winnerId remains null (draw)
+		await onGameOver(client, "snake", playerId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
+	} else if (lobby.p1.win || lobby.p2.win) {
+		// One player won by filling the grid
+		const winnerId = lobby.p1.win ? lobby.p1.id : lobby.p2.id;
+		await onGameOver(client, "snake", playerId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
+	}
+}
+
+export async function onGameOver(client, gameType, playerId, winnerId, reason = "", scores = null) {
 	const { activeGames, title } = getGameAssets(gameType);
 	const gameKey = Object.keys(activeGames).find((key) => key.includes(playerId));
 	const game = gameKey ? activeGames[gameKey] : undefined;
@@ -198,7 +256,7 @@ async function onGameOver(client, gameType, playerId, winnerId, reason = "") {
 	game.gameOver = true;
 	let resultText;
 	if (winnerId === null) {
-		await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, title.toUpperCase());
+		await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, title.toUpperCase(), scores);
 		resultText = "Égalité";
 	} else {
 		await eloHandler(
@@ -207,6 +265,7 @@ async function onGameOver(client, gameType, playerId, winnerId, reason = "") {
 			game.p1.id === winnerId ? 1 : 0,
 			game.p2.id === winnerId ? 1 : 0,
 			title.toUpperCase(),
+			scores
 		);
 		const winnerName = game.p1.id === winnerId ? game.p1.name : game.p2.name;
 		resultText = `Victoire de ${winnerName}`;
@@ -216,6 +275,7 @@ async function onGameOver(client, gameType, playerId, winnerId, reason = "") {
 
 	if (gameType === "tictactoe") io.emit("tictactoegameOver", { game, winner: winnerId });
 	if (gameType === "connect4") io.emit("connect4gameOver", { game, winner: winnerId });
+	if (gameType === "snake") io.emit("snakegameOver", { game, winner: winnerId });
 
 	if (gameKey) {
 		setTimeout(() => delete activeGames[gameKey], 1000);
@@ -251,8 +311,7 @@ async function createGame(client, gameType) {
 			gameOver: false,
 			lastmove: Date.now(),
 		};
-	} else {
-		// connect4
+	} else if (gameType === "connect4") {
 		lobby = {
 			p1: {
 				id: p1Id,
@@ -271,6 +330,31 @@ async function createGame(client, gameType) {
 			gameOver: false,
 			lastmove: Date.now(),
 			winningPieces: [],
+		};
+	} else if (gameType === "snake") {
+		lobby = {
+			p1: {
+				id: p1Id,
+				name: p1.globalName,
+				avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }),
+				snake: [],
+				food: null,
+				score: 0,
+				gameOver: false,
+				win: false,
+			},
+			p2: {
+				id: p2Id,
+				name: p2.globalName,
+				avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }),
+				snake: [],
+				food: null,
+				score: 0,
+				gameOver: false,
+				win: false,
+			},
+			gameOver: false,
+			lastmove: Date.now(),
 		};
 	}
 
@@ -328,8 +412,29 @@ async function refreshQueuesForUser(userId, client) {
 		}
 	}
 
+	index = snakeQueue.indexOf(userId);
+	if (index > -1) {
+		snakeQueue.splice(index, 1);
+		try {
+			const guild = await client.guilds.fetch(process.env.GUILD_ID);
+			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const user = await client.users.fetch(userId);
+			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
+			const updatedEmbed = new EmbedBuilder()
+				.setTitle("Snake 1v1")
+				.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+				.setColor(0xed4245)
+				.setTimestamp(new Date());
+			await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+			delete queueMessagesEndpoints[userId];
+		} catch (e) {
+			console.error("Error updating queue message : ", e);
+		}
+	}
+
 	await emitQueueUpdate(client, "tictactoe");
 	await emitQueueUpdate(client, "connect4");
+	await emitQueueUpdate(client, "snake");
 }
 
 async function emitQueueUpdate(client, gameType) {
@@ -360,6 +465,13 @@ function getGameAssets(gameType) {
 			activeGames: activeConnect4Games,
 			title: "Puissance 4",
 			url: "/connect-4",
+		};
+	if (gameType === "snake")
+		return {
+			queue: snakeQueue,
+			activeGames: activeSnakeGames,
+			title: "Snake 1v1",
+			url: "/snake",
 		};
 	return { queue: [], activeGames: {} };
 }
@@ -401,8 +513,10 @@ async function updateDiscordMessage(client, game, title, resultText = "") {
 			if (i % 3 === 0) gridText += "\n";
 		}
 		description = `### **❌ ${game.p1.name}** vs **${game.p2.name} ⭕**\n${gridText}`;
-	} else {
+	} else if (title === "Puissance 4") {
 		description = `**🔴 ${game.p1.name}** vs **${game.p2.name} 🟡**\n\n${formatConnect4BoardForDiscord(game.board)}`;
+	} else if (title === "Snake 1v1") {
+		description = `**🐍 ${game.p1.name}** (${game.p1.score}) vs (${game.p2.score}) **${game.p2.name}** `;
 	}
 	if (resultText) description += `\n### ${resultText}`;
 
@@ -438,6 +552,7 @@ function cleanupStaleGames() {
 	};
 	cleanup(activeTicTacToeGames, "TicTacToe");
 	cleanup(activeConnect4Games, "Connect4");
+	cleanup(activeSnakeGames, "Snake");
 }
 
 /* EMITS */

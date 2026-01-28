@@ -211,7 +211,8 @@ export async function handleMarketOfferClosing(offerId, client) {
 	// Send notification in guild channel
 
 	try {
-		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+		const guild = await client.guilds.fetch(process.env.BOT_GUILD_ID);
+		const guildChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Fin des enchères")
 			.setDescription(

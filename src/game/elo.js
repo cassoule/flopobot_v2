@@ -10,7 +10,7 @@ import { client } from "../bot/client.js";
  * @param {number} p2Score - The score for player 2.
  * @param {string} type - The type of game being played (e.g., 'TICTACTOE', 'CONNECT4').
  */
-export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
+export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = null) {
 	// --- 1. Fetch Player Data ---
 	const p1DB = getUser.get(p1Id);
 	const p2DB = getUser.get(p2Id);
@@ -43,9 +43,26 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 	const expectedP1 = 1 / (1 + Math.pow(10, (p2CurrentElo - p1CurrentElo) / 400));
 	const expectedP2 = 1 / (1 + Math.pow(10, (p1CurrentElo - p2CurrentElo) / 400));
 
+	// Calculate raw Elo changes
+	const p1Change = K_FACTOR * (p1Score - expectedP1);
+	const p2Change = K_FACTOR * (p2Score - expectedP2);
+
+	// Make losing friendlier: loser loses 80% of what winner gains
+	let finalP1Change = p1Change;
+	let finalP2Change = p2Change;
+
+	if (p1Score > p2Score) {
+		// P1 won, P2 lost
+		finalP2Change = p2Change * 0.8;
+	} else if (p2Score > p1Score) {
+		// P2 won, P1 lost
+		finalP1Change = p1Change * 0.8;
+	}
+	// If it's a draw (p1Score === p2Score), keep the original changes
+
 	// Calculate new Elo ratings
-	const p1NewElo = Math.round(p1CurrentElo + K_FACTOR * (p1Score - expectedP1));
-	const p2NewElo = Math.round(p2CurrentElo + K_FACTOR * (p2Score - expectedP2));
+	const p1NewElo = Math.round(p1CurrentElo + finalP1Change);
+	const p2NewElo = Math.round(p2CurrentElo + finalP2Change);
 
 	// Ensure Elo doesn't drop below a certain threshold (e.g., 100)
 	const finalP1Elo = Math.max(0, p1NewElo);
@@ -77,19 +94,37 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type) {
 	updateElo.run({ id: p1Id, elo: finalP1Elo });
 	updateElo.run({ id: p2Id, elo: finalP2Elo });
 
-	insertGame.run({
-		id: `${p1Id}-${p2Id}-${Date.now()}`,
-		p1: p1Id,
-		p2: p2Id,
-		p1_score: p1Score,
-		p2_score: p2Score,
-		p1_elo: p1CurrentElo,
-		p2_elo: p2CurrentElo,
-		p1_new_elo: finalP1Elo,
-		p2_new_elo: finalP2Elo,
-		type: type,
-		timestamp: Date.now(),
-	});
+	if (scores) {
+		insertGame.run({
+				id: `${p1Id}-${p2Id}-${Date.now()}`,
+				p1: p1Id,
+				p2: p2Id,
+				p1_score: scores.p1,
+				p2_score: scores.p2,
+				p1_elo: p1CurrentElo,
+				p2_elo: p2CurrentElo,
+				p1_new_elo: finalP1Elo,
+				p2_new_elo: finalP2Elo,
+				type: type,
+				timestamp: Date.now(),
+			});
+	} else {
+		insertGame.run({
+				id: `${p1Id}-${p2Id}-${Date.now()}`,
+				p1: p1Id,
+				p2: p2Id,
+				p1_score: p1Score,
+				p2_score: p2Score,
+				p1_elo: p1CurrentElo,
+				p2_elo: p2CurrentElo,
+				p1_new_elo: finalP1Elo,
+				p2_new_elo: finalP2Elo,
+				type: type,
+				timestamp: Date.now(),
+			});
+	}
+
+	
 }
 
 /**
