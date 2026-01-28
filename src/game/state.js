@@ -11,6 +11,9 @@ export let activeConnect4Games = {};
 // Stores active Tic-Tac-Toe games, keyed by a unique game ID.
 export let activeTicTacToeGames = {};
 
+// Stores active Snake games, keyed by a unique game ID.
+export let activeSnakeGames = {};
+
 // Stores active Solitaire games, keyed by user ID.
 export let activeSolitaireGames = {};
 
@@ -53,6 +56,9 @@ export let tictactoeQueue = [];
 
 // Stores user IDs waiting to play Connect 4.
 export let connect4Queue = [];
+
+// Stores user IDs waiting to play Snake 1v1.
+export let snakeQueue = [];
 
 export let queueMessagesEndpoints = [];
 
