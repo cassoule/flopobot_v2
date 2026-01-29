@@ -271,11 +271,11 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 		resultText = `Victoire de ${winnerName}`;
 	}
 
-	await updateDiscordMessage(client, game, title, `${resultText} ${reason}`);
-
 	if (gameType === "tictactoe") io.emit("tictactoegameOver", { game, winner: winnerId });
 	if (gameType === "connect4") io.emit("connect4gameOver", { game, winner: winnerId });
 	if (gameType === "snake") io.emit("snakegameOver", { game, winner: winnerId });
+
+	await updateDiscordMessage(client, game, title, `${resultText} ${reason}`);
 
 	if (gameKey) {
 		setTimeout(() => delete activeGames[gameKey], 1000);
