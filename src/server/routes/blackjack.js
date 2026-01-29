@@ -17,8 +17,8 @@ import {
 // Optional: hook into your DB & Discord systems if available
 import { getUser, insertLog, updateUserCoins } from "../../database/index.js";
 import { client } from "../../bot/client.js";
-import { emitToast, emitUpdate } from "../socket.js";
-import { EmbedBuilder } from "discord.js";
+import { emitToast, emitUpdate, emitPlayerUpdate } from "../socket.js";
+import { EmbedBuilder, time } from "discord.js";
 
 export function blackjackRoutes(io) {
 	const router = express.Router();
@@ -182,6 +182,7 @@ export function blackjackRoutes(io) {
 		}
 
 		emitUpdate("player-joined", snapshot(room));
+		emitPlayerUpdate({ id: userId, msg: `${user?.globalName || user?.username} a rejoint la table de Blackjack.`, timestamp: Date.now() });
 		return res.status(200).json({ message: "joined" });
 	});
 
@@ -222,6 +223,8 @@ export function blackjackRoutes(io) {
 		} else {
 			delete room.players[userId];
 			emitUpdate("player-left", snapshot(room));
+			const user = await client.users.fetch(userId);
+			emitPlayerUpdate({ id: userId, msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`, timestamp: Date.now() });
 			return res.status(200).json({ message: "left" });
 		}
 	});
@@ -356,6 +359,8 @@ export function blackjackRoutes(io) {
 			// Remove leavers
 			for (const userId of Object.keys(room.leavingAfterRound)) {
 				delete room.players[userId];
+				const user = await client.users.fetch(userId);
+				emitPlayerUpdate({ id: userId, msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`, timestamp: Date.now() });
 			}
 			// Prepare next round
 			startBetting(room, now);

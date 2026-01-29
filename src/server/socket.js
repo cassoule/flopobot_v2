@@ -35,6 +35,10 @@ export function initializeSocket(server, client) {
 		registerConnect4Events(socket, client);
 		registerSnakeEvents(socket, client);
 
+		socket.on("blackjack:chat", (data) => {
+			io.emit("blackjack:chat", data);
+		});
+
 		socket.on("tictactoe:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
 		socket.on("connect4:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
 		socket.on("snake:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
@@ -600,6 +604,7 @@ export async function emitPokerToast(data) {
 }
 
 export const emitUpdate = (type, room) => io.emit("blackjack:update", { type, room });
+export const emitPlayerUpdate = (data) => io.emit("blackjack:chat", data);
 export const emitToast = (payload) => io.emit("blackjack:toast", payload);
 
 export const emitSolitaireUpdate = (userId, moves) => io.emit("solitaire:update", { userId, moves });
