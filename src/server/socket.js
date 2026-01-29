@@ -86,18 +86,25 @@ async function onQueueJoin(client, gameType, playerId) {
 	if (!playerId) return;
 	const { queue, activeGames, title, url } = getGameAssets(gameType);
 
-	if (
-		queue.includes(playerId) ||
-		Object.values(activeGames).some((g) => g.p1.id === playerId || g.p2.id === playerId)
-	) {
+	// Check if player is already in queue or in an active game
+	if (queue.includes(playerId)) {
+		console.log(`[${title}] Player ${playerId} already in queue, ignoring duplicate join.`);
+		return;
+	}
+	
+	if (Object.values(activeGames).some((g) => g.p1.id === playerId || g.p2.id === playerId)) {
+		console.log(`[${title}] Player ${playerId} already in active game, ignoring queue join.`);
 		return;
 	}
 
 	queue.push(playerId);
-	console.log(`[${title}] Player ${playerId} joined the queue.`);
+	console.log(`[${title}] Player ${playerId} joined the queue. Queue size: ${queue.length}`);
 
 	if (queue.length === 1) await postQueueToDiscord(client, playerId, title, url);
-	if (queue.length >= 2) await createGame(client, gameType);
+	if (queue.length >= 2) {
+		// Process matchmaking immediately to avoid race conditions
+		await createGame(client, gameType);
+	}
 
 	await emitQueueUpdate(client, gameType);
 }
@@ -217,8 +224,9 @@ async function onSnakeGameStateUpdate(client, eventData) {
 
 	lobby.lastmove = Date.now();
 
-	// Broadcast the updated state to both players
+	// Broadcast the updated state to both players in this specific game
 	io.emit("snakegamestate", {
+		gameKey: lobby.gameKey,
 		lobby: {
 			p1: lobby.p1,
 			p2: lobby.p2,
@@ -273,7 +281,7 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 
 	if (gameType === "tictactoe") io.emit("tictactoegameOver", { game, winner: winnerId });
 	if (gameType === "connect4") io.emit("connect4gameOver", { game, winner: winnerId });
-	if (gameType === "snake") io.emit("snakegameOver", { game, winner: winnerId });
+	if (gameType === "snake") io.emit("snakegameOver", { gameKey: game.gameKey, game, winner: winnerId });
 
 	await updateDiscordMessage(client, game, title, `${resultText} ${reason}`);
 
@@ -332,7 +340,9 @@ async function createGame(client, gameType) {
 			winningPieces: [],
 		};
 	} else if (gameType === "snake") {
+		const gameKey = `${p1Id}-${p2Id}-${Date.now()}`;
 		lobby = {
+			gameKey: gameKey,
 			p1: {
 				id: p1Id,
 				name: p1.globalName,
@@ -356,15 +366,32 @@ async function createGame(client, gameType) {
 			gameOver: false,
 			lastmove: Date.now(),
 		};
+		activeGames[gameKey] = lobby;
 	}
 
 	const msgId = await updateDiscordMessage(client, lobby, title);
 	lobby.msgId = msgId;
 
-	const gameKey = `${p1Id}-${p2Id}`;
-	activeGames[gameKey] = lobby;
+	if (gameType !== "snake") {
+		const gameKey = `${p1Id}-${p2Id}`;
+		activeGames[gameKey] = lobby;
+	}
 
 	io.emit(`${gameType}playing`, { allPlayers: Object.values(activeGames) });
+	
+	// For Snake, also emit a specific match notification to the two players
+	if (gameType === "snake") {
+		io.emit("snakematch", {
+			gameKey: lobby.gameKey,
+			p1Id: p1Id,
+			p2Id: p2Id,
+			lobby: {
+				p1: lobby.p1,
+				p2: lobby.p2,
+			},
+		});
+	}
+	
 	await emitQueueUpdate(client, gameType);
 }
 
