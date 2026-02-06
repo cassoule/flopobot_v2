@@ -269,6 +269,49 @@ flopoDB.exec(`
         score
         INTEGER
     );
+
+    CREATE TABLE IF NOT EXISTS transactions
+    (
+        id
+        TEXT
+        PRIMARY
+        KEY,
+        session_id
+        TEXT
+        UNIQUE
+        NOT
+        NULL,
+        user_id
+        TEXT
+        REFERENCES
+        users
+        NOT
+        NULL,
+        coins_amount
+        INTEGER
+        NOT
+        NULL,
+        amount_cents
+        INTEGER
+        NOT
+        NULL,
+        currency
+        TEXT
+        DEFAULT
+        'eur',
+        customer_email
+        TEXT,
+        customer_name
+        TEXT,
+        payment_status
+        TEXT
+        NOT
+        NULL,
+        created_at
+        DATETIME
+        DEFAULT
+        CURRENT_TIMESTAMP
+    );
 `);
 
 /* -----------------------------------------------------
@@ -566,6 +609,52 @@ export const stmtSOTDStats = flopoDB.prepare(`
 `);
 stmtSOTDStats.run();
 
+export const stmtTransactions = flopoDB.prepare(`
+    CREATE TABLE IF NOT EXISTS transactions
+    (
+        id
+        TEXT
+        PRIMARY
+        KEY,
+        session_id
+        TEXT
+        UNIQUE
+        NOT
+        NULL,
+        user_id
+        TEXT
+        REFERENCES
+        users
+        NOT
+        NULL,
+        coins_amount
+        INTEGER
+        NOT
+        NULL,
+        amount_cents
+        INTEGER
+        NOT
+        NULL,
+        currency
+        TEXT
+        DEFAULT
+        'eur',
+        customer_email
+        TEXT,
+        customer_name
+        TEXT,
+        payment_status
+        TEXT
+        NOT
+        NULL,
+        created_at
+        DATETIME
+        DEFAULT
+        CURRENT_TIMESTAMP
+    )
+`);
+stmtTransactions.run();
+
 /* -------------------------
    USER statements
 ----------------------------*/
@@ -861,3 +950,23 @@ export async function pruneOldLogs() {
 
 	transaction();
 }
+
+/* -------------------------
+   TRANSACTION statements
+----------------------------*/
+export const insertTransaction = flopoDB.prepare(
+	`INSERT INTO transactions (id, session_id, user_id, coins_amount, amount_cents, currency, customer_email, customer_name, payment_status)
+   VALUES (@id, @session_id, @user_id, @coins_amount, @amount_cents, @currency, @customer_email, @customer_name, @payment_status)`,
+);
+
+export const getTransactionBySessionId = flopoDB.prepare(
+	`SELECT * FROM transactions WHERE session_id = ?`,
+);
+
+export const getAllTransactions = flopoDB.prepare(
+	`SELECT * FROM transactions ORDER BY created_at DESC`,
+);
+
+export const getUserTransactions = flopoDB.prepare(
+	`SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC`,
+);

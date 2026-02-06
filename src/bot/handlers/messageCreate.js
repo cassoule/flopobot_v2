@@ -1,4 +1,5 @@
 import { sleep } from "openai/core";
+import { AttachmentBuilder } from "discord.js";
 import {
 	buildAiMessages,
 	buildParticipantsMap,
@@ -52,10 +53,10 @@ export async function handleMessageCreate(message, client, io) {
 	// --- Main Guild Features (Points & Slowmode) ---
 	if (message.guildId === process.env.GUILD_ID) {
 		// Award points for activity
-		const pointsAwarded = channelPointsHandler(message);
-		if (pointsAwarded) {
-			io.emit("data-updated", { table: "users", action: "update" });
-		}
+		// const pointsAwarded = channelPointsHandler(message);
+		// if (pointsAwarded) {
+		// 	io.emit("data-updated", { table: "users", action: "update" });
+		// }
 
 		// Enforce active slowmodes
 		const wasSlowmoded = await slowmodesHandler(message, activeSlowmodes);
@@ -245,7 +246,10 @@ async function handleAdminCommands(message) {
 			try {
 				const stmt = flopoDB.prepare(sqlCommand);
 				const result = sqlCommand.trim().toUpperCase().startsWith("SELECT") ? stmt.all() : stmt.run();
-				message.reply("```json\n" + JSON.stringify(result, null, 2).substring(0, 1900) + "\n```");
+				const jsonString = JSON.stringify(result, null, 2);
+				const buffer = Buffer.from(jsonString, "utf-8");
+				const attachment = new AttachmentBuilder(buffer, { name: "sql-result.json" });
+				message.reply({ content: "SQL query executed successfully:", files: [attachment] });
 			} catch (e) {
 				message.reply(`SQL Error: ${e.message}`);
 			}

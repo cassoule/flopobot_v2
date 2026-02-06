@@ -37,6 +37,9 @@ app.post("/interactions", verifyKeyMiddleware(process.env.PUBLIC_KEY), async (re
 	await handleInteraction(req, res, client);
 });
 
+// Stripe webhook endpoint needs raw body for signature verification
+app.use("/api/buy-coins", express.raw({ type: "application/json" }));
+
 // JSON Body Parser Middleware
 app.use(express.json());
 

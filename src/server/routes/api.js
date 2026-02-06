@@ -1,5 +1,6 @@
 import express from "express";
 import { sleep } from "openai/core";
+import Stripe from "stripe";
 
 // --- Database Imports ---
 import {
@@ -21,6 +22,10 @@ import {
 	queryDailyReward,
 	updateSkin,
 	updateUserCoins,
+	insertTransaction,
+	getTransactionBySessionId,
+	getAllTransactions,
+	getUserTransactions,
 } from "../../database/index.js";
 
 // --- Game State Imports ---
@@ -1277,24 +1282,174 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	// --- Admin Routes ---
+	// Fixed coin offers - server-side source of truth
+	const COIN_OFFERS = [
+		{ id: "offer_5000", coins: 5000, amount_cents: 99, label: "5 000 FlopoCoins" },
+		{ id: "offer_20000", coins: 20000, amount_cents: 299, label: "20 000 FlopoCoins" },
+		{ id: "offer_40000", coins: 40000, amount_cents: 499, label: "40 000 FlopoCoins" },
+		{ id: "offer_100000", coins: 100000, amount_cents: 999, label: "100 000 FlopoCoins" },
+	];
 
-	router.post("/buy-coins", (req, res) => {
-		const { commandUserId, coins } = req.body;
-		const user = getUser.get(commandUserId);
-		if (!user) return res.status(404).json({ error: "User not found" });
+	router.get("/coin-offers", (req, res) => {
+		res.json({ offers: COIN_OFFERS });
+	});
 
-		const newCoins = user.coins + coins;
-		updateUserCoins.run({ id: commandUserId, coins: newCoins });
-		insertLog.run({
-			id: `${commandUserId}-buycoins-${Date.now()}`,
-			user_id: commandUserId,
-			action: "BUY_COINS_ADMIN",
-			coins_amount: coins,
-			user_new_amount: newCoins,
-		});
+	router.post("/create-checkout-session", async (req, res) => {
+		const { userId, offerId } = req.body;
 
-		res.status(200).json({ message: `Added ${coins} coins.` });
+		if (!userId || !offerId) {
+			return res.status(400).json({ error: "Missing required fields: userId, offerId" });
+		}
+
+		const offer = COIN_OFFERS.find((o) => o.id === offerId);
+		if (!offer) {
+			return res.status(400).json({ error: "Invalid offer" });
+		}
+
+		const user = getUser.get(userId);
+		if (!user) {
+			return res.status(404).json({ error: "User not found" });
+		}
+
+		try {
+			const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+			const FLAPI_URL = process.env.DEV_SITE === "true" ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL;
+
+			const session = await stripe.checkout.sessions.create({
+				payment_method_types: ['card'],
+				line_items: [
+					{
+						price_data: {
+							currency: 'eur',
+							product_data: {
+								name: offer.label,
+								description: `Achat de ${offer.label} pour FlopoBot`,
+							},
+							unit_amount: offer.amount_cents,
+						},
+						quantity: 1,
+					},
+				],
+				mode: 'payment',
+				success_url: `${FLAPI_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+				cancel_url: `${FLAPI_URL}/dashboard`,
+				metadata: {
+					userId: userId,
+					coins: offer.coins.toString(),
+				},
+			});
+
+			console.log(`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`);
+
+			res.json({ sessionId: session.id });
+		} catch (error) {
+			console.error("Error creating checkout session:", error);
+			res.status(500).json({ error: "Failed to create checkout session" });
+		}
+	});
+
+	router.post("/buy-coins", async (req, res) => {
+		const sig = req.headers['stripe-signature'];
+		const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+		if (!endpointSecret) {
+			console.error("STRIPE_WEBHOOK_SECRET not configured");
+			return res.status(500).json({ error: "Webhook not configured" });
+		}
+
+		let event;
+		
+		try {
+			// Verify webhook signature - requires raw body
+			// Note: You need to configure Express to preserve raw body for this route
+			const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+			event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+		} catch (err) {
+			console.error(`Webhook signature verification failed: ${err.message}`);
+			return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+		}
+
+		// Handle the event
+		if (event.type === 'checkout.session.completed') {
+			const session = event.data.object;
+			
+			// Extract metadata from the checkout session
+			const commandUserId = session.metadata?.userId;
+			const expectedCoins = parseInt(session.metadata?.coins);
+			const amountPaid = session.amount_total; // in cents
+			const currency = session.currency;
+			const customerEmail = session.customer_details?.email;
+			const customerName = session.customer_details?.name;
+			
+			// Validate metadata exists
+			if (!commandUserId || !expectedCoins) {
+				console.error("Missing userId or coins in session metadata");
+				return res.status(400).json({ error: "Invalid session metadata" });
+			}
+
+			// Verify payment was successful
+			if (session.payment_status !== 'paid') {
+				console.error(`Payment not completed for session ${session.id}`);
+				return res.status(400).json({ error: "Payment not completed" });
+			}
+
+			// Check for duplicate processing (idempotency)
+			const existingTransaction = getTransactionBySessionId.get(session.id);
+			if (existingTransaction) {
+				console.log(`Payment already processed: ${session.id}`);
+				return res.status(200).json({ message: "Already processed" });
+			}
+
+			// Get user
+			const user = getUser.get(commandUserId);
+			if (!user) {
+				console.error(`User not found: ${commandUserId}`);
+				return res.status(404).json({ error: "User not found" });
+			}
+
+			// Update coins
+			const newCoins = user.coins + expectedCoins;
+			updateUserCoins.run({ id: commandUserId, coins: newCoins });
+			
+			// Insert transaction record
+			const transactionId = `${commandUserId}-transaction-${Date.now()}`;
+			insertTransaction.run({
+				id: transactionId,
+				session_id: session.id,
+				user_id: commandUserId,
+				coins_amount: expectedCoins,
+				amount_cents: amountPaid,
+				currency: currency,
+				customer_email: customerEmail,
+				customer_name: customerName,
+				payment_status: session.payment_status,
+			});
+			
+			// Insert log entry
+			insertLog.run({
+				id: `${commandUserId}-buycoins-${Date.now()}`,
+				user_id: commandUserId,
+				action: "BUY_COINS",
+				target_user_id: null,
+				coins_amount: expectedCoins,
+				user_new_amount: newCoins,
+			});
+
+			console.log(`Payment processed: ${commandUserId} purchased ${expectedCoins} coins for ${amountPaid/100} ${currency}`);
+
+			// Notify user via Discord if possible
+			try {
+				const discordUser = await client.users.fetch(commandUserId);
+				await discordUser.send(`✅ Votre achat de ${expectedCoins} FlopoCoins a été confirmé ! Merci pour votre soutien !`);
+			} catch (e) {
+				console.log(`Could not DM user ${commandUserId}:`, e.message);
+			}
+
+			return res.status(200).json({ message: `Added ${expectedCoins} coins.` });
+		}
+
+		// Return 200 for unhandled event types (Stripe requires this)
+		res.status(200).json({ received: true });
 	});
 
 	return router;
