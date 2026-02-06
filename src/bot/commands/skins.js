@@ -1,5 +1,5 @@
 import { InteractionResponseType } from "discord-interactions";
-import { getTopSkins } from "../../database/index.js";
+import * as skinService from "../../services/skin.service.js";
 
 /**
  * Handles the /skins slash command.
@@ -13,7 +13,7 @@ export async function handleSkinsCommand(req, res, client) {
 
 	try {
 		// --- 1. Fetch Data ---
-		const topSkins = getTopSkins.all();
+		const topSkins = await skinService.getTopSkins();
 		const guild = await client.guilds.fetch(guild_id);
 		const fields = [];
 
@@ -23,14 +23,14 @@ export async function handleSkinsCommand(req, res, client) {
 			let ownerText = "Libre"; // Default text if the skin has no owner
 
 			// If the skin has an owner, fetch their details
-			if (skin.user_id) {
+			if (skin.userId) {
 				try {
-					const owner = await guild.members.fetch(skin.user_id);
+					const owner = await guild.members.fetch(skin.userId);
 					// Use globalName if available, otherwise fallback to username
 					ownerText = `**@${owner.user.globalName || owner.user.username}** ✅`;
 				} catch (e) {
 					// This can happen if the user has left the server
-					console.warn(`Could not fetch owner for user ID: ${skin.user_id}`);
+					console.warn(`Could not fetch owner for user ID: ${skin.userId}`);
 					ownerText = "Appartient à un utilisateur inconnu";
 				}
 			}

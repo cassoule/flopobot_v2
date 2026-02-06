@@ -9,7 +9,9 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "disc
 import { DiscordRequest } from "../../api/discord.js";
 import { postAPOBuy } from "../../utils/index.js";
 import { activeInventories, skins } from "../../game/state.js";
-import { getSkin, getUser, insertLog, updateSkin, updateUserCoins } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as skinService from "../../services/skin.service.js";
+import * as logService from "../../services/log.service.js";
 
 /**
  * Handles the click of the 'Upgrade' button on a skin in the inventory.
@@ -65,7 +67,7 @@ export async function handleUpgradeSkin(req, res) {
 	// --- 2. Handle Payment ---
 	const upgradePrice = parseFloat(process.env.VALO_UPGRADE_PRICE) || parseFloat(skinToUpgrade.maxPrice) / 10;
 
-	const commandUser = getUser.get(userId);
+	const commandUser = await userService.getUser(userId);
 
 	if (!commandUser) {
 		return res.send({
@@ -86,18 +88,15 @@ export async function handleUpgradeSkin(req, res) {
 		});
 	}
 
-	insertLog.run({
+	await logService.insertLog({
 		id: `${userId}-${Date.now()}`,
-		user_id: userId,
+		userId: userId,
 		action: "VALO_SKIN_UPGRADE",
-		target_user_id: null,
-		coins_amount: -upgradePrice.toFixed(0),
-		user_new_amount: commandUser.coins - upgradePrice.toFixed(0),
+		targetUserId: null,
+		coinsAmount: -upgradePrice.toFixed(0),
+		userNewAmount: commandUser.coins - upgradePrice.toFixed(0),
 	});
-	updateUserCoins.run({
-		id: userId,
-		coins: commandUser.coins - upgradePrice.toFixed(0),
-	});
+	await userService.updateUserCoins(userId, commandUser.coins - upgradePrice.toFixed(0));
 
 	// --- 3. Show Loading Animation ---
 	// Acknowledge the click immediately and then edit the message to show a loading state.
@@ -151,9 +150,9 @@ export async function handleUpgradeSkin(req, res) {
 		};
 		skinToUpgrade.currentPrice = calculatePrice();
 
-		await updateSkin.run({
+		await skinService.updateSkin({
 			uuid: skinToUpgrade.uuid,
-			user_id: skinToUpgrade.user_id,
+			userId: skinToUpgrade.userId,
 			currentLvl: skinToUpgrade.currentLvl,
 			currentChroma: skinToUpgrade.currentChroma,
 			currentPrice: skinToUpgrade.currentPrice,
@@ -165,7 +164,7 @@ export async function handleUpgradeSkin(req, res) {
 	// --- 6. Send Final Result ---
 	setTimeout(async () => {
 		// Fetch the latest state of the skin from the database
-		const finalSkinState = getSkin.get(skinToUpgrade.uuid);
+		const finalSkinState = await skinService.getSkin(skinToUpgrade.uuid);
 		const finalEmbed = buildFinalEmbed(succeeded, finalSkinState, skinData);
 		const finalComponents = buildFinalComponents(succeeded, skinData, finalSkinState, interactionId);
 

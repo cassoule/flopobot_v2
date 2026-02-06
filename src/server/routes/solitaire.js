@@ -19,16 +19,9 @@ import {
 
 // --- Game State & Database Imports ---
 import { activeSolitaireGames } from "../../game/state.js";
-import {
-	getSOTD,
-	getUser,
-	insertSOTDStats,
-	deleteUserSOTDStats,
-	getUserSOTDStats,
-	updateUserCoins,
-	insertLog,
-	getAllSOTDStats,
-} from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as logService from "../../services/log.service.js";
+import * as solitaireService from "../../services/solitaire.service.js";
 import { socketEmit } from "../socket.js";
 
 // Create a new router instance
@@ -85,7 +78,7 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
-	router.post("/start/sotd", (req, res) => {
+	router.post("/start/sotd", async (req, res) => {
 		const { userId } = req.body;
 		/*if (!userId || !getUser.get(userId)) {
             return res.status(404).json({ error: 'User not found.' });
@@ -98,7 +91,7 @@ export function solitaireRoutes(client, io) {
 			});
 		}
 
-		const sotd = getSOTD.get();
+		const sotd = await solitaireService.getSOTD();
 		if (!sotd) {
 			return res.status(500).json({ error: "Solitaire of the Day is not configured." });
 		}
@@ -126,9 +119,9 @@ export function solitaireRoutes(client, io) {
 
 	// --- Game State & Action Endpoints ---
 
-	router.get("/sotd/rankings", (req, res) => {
+	router.get("/sotd/rankings", async (req, res) => {
 		try {
-			const rankings = getAllSOTDStats.all();
+			const rankings = await solitaireService.getAllSOTDStats();
 			res.json({ rankings });
 		} catch (e) {
 			res.status(500).json({ error: "Failed to fetch SOTD rankings." });
@@ -237,20 +230,20 @@ function updateGameStats(gameState, actionType, moveData = {}) {
 
 /** Handles the logic when a game is won. */
 async function handleWin(userId, gameState, io) {
-	const currentUser = getUser.get(userId);
+	const currentUser = await userService.getUser(userId);
 	if (!currentUser) return;
 
 	if (gameState.hardMode) {
 		const bonus = 100;
 		const newCoins = currentUser.coins + bonus;
-		updateUserCoins.run({ id: userId, coins: newCoins });
-		insertLog.run({
+		await userService.updateUserCoins(userId, newCoins);
+		await logService.insertLog({
 			id: `${userId}-hardmode-solitaire-${Date.now()}`,
-			user_id: userId,
+			userId: userId,
 			action: "HARDMODE_SOLITAIRE_WIN",
-			target_user_id: null,
-			coins_amount: bonus,
-			user_new_amount: newCoins,
+			targetUserId: null,
+			coinsAmount: bonus,
+			userNewAmount: newCoins,
 		});
 		await socketEmit("data-updated", { table: "users" });
 	}
@@ -260,20 +253,20 @@ async function handleWin(userId, gameState, io) {
 	gameState.endTime = Date.now();
 	const timeTaken = gameState.endTime - gameState.startTime;
 
-	const existingStats = getUserSOTDStats.get(userId);
+	const existingStats = await solitaireService.getUserSOTDStats(userId);
 
 	if (!existingStats) {
 		// First time completing the SOTD, grant bonus coins
 		const bonus = 1000;
 		const newCoins = currentUser.coins + bonus;
-		updateUserCoins.run({ id: userId, coins: newCoins });
-		insertLog.run({
+		await userService.updateUserCoins(userId, newCoins);
+		await logService.insertLog({
 			id: `${userId}-sotd-complete-${Date.now()}`,
-			user_id: userId,
+			userId: userId,
 			action: "SOTD_WIN",
-			target_user_id: null,
-			coins_amount: bonus,
-			user_new_amount: newCoins,
+			targetUserId: null,
+			coinsAmount: bonus,
+			userNewAmount: newCoins,
 		});
 		await socketEmit("data-updated", { table: "users" });
 	}
@@ -288,10 +281,10 @@ async function handleWin(userId, gameState, io) {
 			timeTaken < existingStats.time);
 
 	if (isNewBest) {
-		deleteUserSOTDStats.run(userId);
-		insertSOTDStats.run({
+		await solitaireService.deleteUserSOTDStats(userId);
+		await solitaireService.insertSOTDStats({
 			id: userId,
-			user_id: userId,
+			userId: userId,
 			time: timeTaken,
 			moves: gameState.moves,
 			score: gameState.score,

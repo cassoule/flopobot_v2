@@ -15,7 +15,8 @@ import {
 } from "../../game/blackjack.js";
 
 // Optional: hook into your DB & Discord systems if available
-import { getUser, insertLog, updateUserCoins } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as logService from "../../services/log.service.js";
 import { client } from "../../bot/client.js";
 import { emitToast, emitUpdate, emitPlayerUpdate } from "../socket.js";
 import { EmbedBuilder, time } from "discord.js";
@@ -128,7 +129,7 @@ export function blackjackRoutes(io) {
 		if (room.players[userId]) return res.status(200).json({ message: "Already here" });
 
 		const user = await client.users.fetch(userId);
-		const bank = getUser.get(userId)?.coins ?? 0;
+		const bank = (await userService.getUser(userId))?.coins ?? 0;
 
 		room.players[userId] = {
 			id: userId,
@@ -229,7 +230,7 @@ export function blackjackRoutes(io) {
 		}
 	});
 
-	router.post("/bet", (req, res) => {
+	router.post("/bet", async (req, res) => {
 		const { userId, amount } = req.body;
 		const p = room.players[userId];
 		if (!p) return res.status(404).json({ message: "not in room" });
@@ -239,17 +240,17 @@ export function blackjackRoutes(io) {
 		if (bet < room.minBet || bet > room.maxBet) return res.status(400).json({ message: "invalid-bet" });
 
 		if (!room.settings.fakeMoney) {
-			const userDB = getUser.get(userId);
+			const userDB = await userService.getUser(userId);
 			const coins = userDB?.coins ?? 0;
 			if (coins < bet) return res.status(403).json({ message: "insufficient-funds" });
-			updateUserCoins.run({ id: userId, coins: coins - bet });
-			insertLog.run({
+			await userService.updateUserCoins(userId, coins - bet);
+			await logService.insertLog({
 				id: `${userId}-blackjack-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "BLACKJACK_BET",
-				coins_amount: -bet,
-				user_new_amount: coins - bet,
+				coinsAmount: -bet,
+				userNewAmount: coins - bet,
 			});
 			p.bank = coins - bet;
 		}
@@ -261,7 +262,7 @@ export function blackjackRoutes(io) {
 		return res.status(200).json({ message: "bet-accepted" });
 	});
 
-	router.post("/action/:action", (req, res) => {
+	router.post("/action/:action", async (req, res) => {
 		const { userId } = req.body;
 		const action = req.params.action;
 		const p = room.players[userId];
@@ -270,36 +271,36 @@ export function blackjackRoutes(io) {
 
 		// Handle extra coin lock for double
 		if (action === "double" && !room.settings.fakeMoney) {
-			const userDB = getUser.get(userId);
+			const userDB = await userService.getUser(userId);
 			const coins = userDB?.coins ?? 0;
 			const hand = p.hands[p.activeHand];
 			if (coins < hand.bet) return res.status(403).json({ message: "insufficient-funds-for-double" });
-			updateUserCoins.run({ id: userId, coins: coins - hand.bet });
-			insertLog.run({
+			await userService.updateUserCoins(userId, coins - hand.bet);
+			await logService.insertLog({
 				id: `${userId}-blackjack-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "BLACKJACK_DOUBLE",
-				coins_amount: -hand.bet,
-				user_new_amount: coins - hand.bet,
+				coinsAmount: -hand.bet,
+				userNewAmount: coins - hand.bet,
 			});
 			p.bank = coins - hand.bet;
 			// effective bet size is handled in settlement via hand.doubled flag
 		}
 
 		if (action === "split" && !room.settings.fakeMoney) {
-			const userDB = getUser.get(userId);
+			const userDB = await userService.getUser(userId);
 			const coins = userDB?.coins ?? 0;
 			const hand = p.hands[p.activeHand];
 			if (coins < hand.bet) return res.status(403).json({ message: "insufficient-funds-for-split" });
-			updateUserCoins.run({ id: userId, coins: coins - hand.bet });
-			insertLog.run({
+			await userService.updateUserCoins(userId, coins - hand.bet);
+			await logService.insertLog({
 				id: `${userId}-blackjack-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "BLACKJACK_SPLIT",
-				coins_amount: -hand.bet,
-				user_new_amount: coins - hand.bet,
+				coinsAmount: -hand.bet,
+				userNewAmount: coins - hand.bet,
 			});
 			p.bank = coins - hand.bet;
 			// effective bet size is handled in settlement via hand.doubled flag

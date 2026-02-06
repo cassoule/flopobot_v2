@@ -2,7 +2,7 @@ import { InteractionResponseType, InteractionResponseFlags } from "discord-inter
 import { DiscordRequest } from "../../api/discord.js";
 import { activePolls } from "../../game/state.js";
 import { getSocketIo } from "../../server/socket.js";
-import { getUser } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
 
 /**
  * Handles clicks on the 'Yes' or 'No' buttons of a timeout poll.
@@ -75,7 +75,10 @@ export async function handlePollVote(req, res) {
 
 	io.emit("poll-update"); // Notify frontend clients of the change
 
-	const votersList = poll.voters.map((vId) => `- ${getUser.get(vId)?.globalName || "Utilisateur Inconnu"}`).join("\n");
+	const votersList = (await Promise.all(poll.voters.map(async (vId) => {
+		const user = await userService.getUser(vId);
+		return `- ${user?.globalName || "Utilisateur Inconnu"}`;
+	}))).join("\n");
 
 	// --- 4. Check for Majority ---
 	if (isVotingFor && poll.for >= poll.requiredMajority) {

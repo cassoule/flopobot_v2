@@ -5,23 +5,9 @@ import cron from "node-cron";
 import { getSkinTiers, getValorantSkins } from "../api/valorant.js";
 import { DiscordRequest } from "../api/discord.js";
 import { initTodaysSOTD } from "../game/points.js";
-import {
-	deleteBid,
-	deleteMarketOffer,
-	getAllAkhys,
-	getAllUsers,
-	getMarketOffers,
-	getOfferBids,
-	getSkin,
-	getUser,
-	insertManySkins,
-	insertUser,
-	resetDailyReward,
-	updateMarketOffer,
-	updateSkin,
-	updateUserAvatar,
-	updateUserCoins,
-} from "../database/index.js";
+import * as userService from "../services/user.service.js";
+import * as skinService from "../services/skin.service.js";
+import * as marketService from "../services/market.service.js";
 import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
 import { emitMarketUpdate } from "../server/socket.js";
 import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
@@ -49,7 +35,7 @@ export async function InstallGlobalCommands(appId, commands) {
 export async function getAkhys(client) {
 	try {
 		// 1. Fetch Discord Members
-		const initial_akhys = getAllUsers.all().length;
+		const initial_akhys = (await userService.getAllUsers()).length;
 		const guild = await client.guilds.fetch(process.env.GUILD_ID);
 		const members = await guild.members.fetch();
 		const akhys = members.filter((m) => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
@@ -67,14 +53,14 @@ export async function getAkhys(client) {
 		}));
 
 		if (usersToInsert.length > 0) {
-			usersToInsert.forEach((user) => {
+			for (const user of usersToInsert) {
 				try {
-					insertUser.run(user);
+					await userService.insertUser(user);
 				} catch (err) {}
-			});
+			}
 		}
 
-		const new_akhys = getAllUsers.all().length;
+		const new_akhys = (await userService.getAllUsers()).length;
 		const diff = new_akhys - initial_akhys;
 		console.log(
 			`[Sync] Found and synced ${usersToInsert.length} ${diff !== 0 ? "(" + (diff > 0 ? "+" + diff : diff) + ") " : ""}users with the 'Akhy' role. (ID:${process.env.AKHY_ROLE_ID})`,
@@ -97,17 +83,17 @@ export async function getAkhys(client) {
 					displayName: skin.displayName,
 					contentTierUuid: skin.contentTierUuid,
 					displayIcon: skin.displayIcon,
-					user_id: null,
-					tierRank: tier.rank,
+					userId: null,
+					tierRank: tier.rank != null ? String(tier.rank) : null,
 					tierColor: tier.highlightColor?.slice(0, 6) || "F2F3F3",
 					tierText: formatTierText(tier.rank, skin.displayName),
 					basePrice: basePrice.toFixed(0),
-					maxPrice: calculateMaxPrice(basePrice, skin).toFixed(0),
+					maxPrice: parseInt(calculateMaxPrice(basePrice, skin).toFixed(0)),
 				};
 			});
 
 		if (skinsToInsert.length > 0) {
-			insertManySkins(skinsToInsert);
+			await skinService.insertManySkins(skinsToInsert);
 		}
 		console.log(`[Sync] Fetched and synced ${skinsToInsert.length} Valorant skins.`);
 	} catch (err) {
@@ -175,7 +161,7 @@ export function setupCronJobs(client, io) {
 	cron.schedule(process.env.CRON_EXPR, async () => {
 		console.log("[Cron] Running daily midnight tasks...");
 		try {
-			resetDailyReward.run();
+			await userService.resetDailyReward();
 			console.log("[Cron] Daily rewards have been reset for all users.");
 			//if (!getSOTD.get()) {
 			initTodaysSOTD();
@@ -184,16 +170,16 @@ export function setupCronJobs(client, io) {
 			console.error("[Cron] Error during daily reset:", e);
 		}
 		try {
-			const offers = getMarketOffers.all();
+			const offers = await marketService.getMarketOffers();
 			const now = Date.now();
 			const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
 			for (const offer of offers) {
-				if (now >= offer.closing_at + TWO_DAYS) {
-					const offerBids = getOfferBids.all(offer.id);
+				if (now >= offer.closingAt + TWO_DAYS) {
+					const offerBids = await marketService.getOfferBids(offer.id);
 					for (const bid of offerBids) {
-						deleteBid.run(bid.id);
+						await marketService.deleteBid(bid.id);
 					}
-					deleteMarketOffer.run(offer.id);
+					await marketService.deleteMarketOffer(offer.id);
 					console.log(`[Cron] Deleted expired market offer ID: ${offer.id}`);
 				}
 			}
@@ -207,14 +193,11 @@ export function setupCronJobs(client, io) {
 		console.log("[Cron] Running daily 7 AM data sync...");
 		await getAkhys(client);
 		try {
-			const akhys = getAllAkhys.all();
+			const akhys = await userService.getAllAkhys();
 			for (const akhy of akhys) {
 				const user = await client.users.cache.get(akhy.id);
 				try {
-					updateUserAvatar.run({
-						id: akhy.id,
-						avatarUrl: user.displayAvatarURL({ dynamic: true, size: 256 }),
-					});
+					await userService.updateUserAvatar(akhy.id, user.displayAvatarURL({ dynamic: true, size: 256 }));
 				} catch (err) {
 					console.error(`[Cron] Error updating avatar for user ID: ${akhy.id}`, err);
 				}
@@ -276,51 +259,51 @@ export async function postAPOBuy(userId, amount) {
 
 // --- Miscellaneous Helpers ---
 
-function handleMarketOffersUpdate() {
+async function handleMarketOffersUpdate() {
 	const now = Date.now();
-	const offers = getMarketOffers.all();
+	const offers = await marketService.getMarketOffers();
 	offers.forEach(async (offer) => {
-		if (now >= offer.opening_at && offer.status === "pending") {
-			updateMarketOffer.run({ id: offer.id, final_price: null, buyer_id: null, status: "open" });
+		if (now >= offer.openingAt && offer.status === "pending") {
+			await marketService.updateMarketOffer({ id: offer.id, finalPrice: null, buyerId: null, status: "open" });
 			await handleMarketOfferOpening(offer.id, client);
 			await emitMarketUpdate();
 		}
-		if (now >= offer.closing_at && offer.status !== "closed") {
-			const bids = getOfferBids.all(offer.id);
+		if (now >= offer.closingAt && offer.status !== "closed") {
+			const bids = await marketService.getOfferBids(offer.id);
 
 			if (bids.length === 0) {
 				// No bids placed, mark as closed without a sale
-				updateMarketOffer.run({
+				await marketService.updateMarketOffer({
 					id: offer.id,
-					buyer_id: null,
-					final_price: null,
+					buyerId: null,
+					finalPrice: null,
 					status: "closed",
 				});
 				await emitMarketUpdate();
 			} else {
 				const lastBid = bids[0];
-				const seller = getUser.get(offer.seller_id);
-				const buyer = getUser.get(lastBid.bidder_id);
+				const seller = await userService.getUser(offer.sellerId);
+				const buyer = await userService.getUser(lastBid.bidderId);
 
 				try {
 					// Change skin ownership
-					const skin = getSkin.get(offer.skin_uuid);
+					const skin = await skinService.getSkin(offer.skinUuid);
 					if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
-					updateSkin.run({
-						user_id: buyer.id,
+					await skinService.updateSkin({
+						userId: buyer.id,
 						currentLvl: skin.currentLvl,
 						currentChroma: skin.currentChroma,
 						currentPrice: skin.currentPrice,
 						uuid: skin.uuid,
 					});
-					updateMarketOffer.run({
+					await marketService.updateMarketOffer({
 						id: offer.id,
-						buyer_id: buyer.id,
-						final_price: lastBid.offer_amount,
+						buyerId: buyer.id,
+						finalPrice: lastBid.offerAmount,
 						status: "closed",
 					});
-					const newUserCoins = seller.coins + lastBid.offer_amount;
-					updateUserCoins.run({ id: seller.id, coins: newUserCoins });
+					const newUserCoins = seller.coins + lastBid.offerAmount;
+					await userService.updateUserCoins(seller.id, newUserCoins);
 					await emitMarketUpdate();
 				} catch (e) {
 					console.error(`[Market Cron] Error processing offer ID: ${offer.id}`, e);

@@ -10,7 +10,8 @@ import {
 	getNextActivePlayer,
 	initialShuffledCards,
 } from "../../game/poker.js";
-import { getUser, insertLog, updateUserCoins } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as logService from "../../services/log.service.js";
 import { sleep } from "openai/core";
 import { client } from "../../bot/client.js";
 import { emitPokerToast, emitPokerUpdate } from "../socket.js";
@@ -131,7 +132,7 @@ export function pokerRoutes(client, io) {
 		if (Object.values(pokerRooms).some((r) => r.players[userId] || r.queue[userId])) {
 			return res.status(403).json({ message: "You are already in a room or queue." });
 		}
-		if (!pokerRooms[roomId].fakeMoney && pokerRooms[roomId].minBet > (getUser.get(userId)?.coins ?? 0)) {
+		if (!pokerRooms[roomId].fakeMoney && pokerRooms[roomId].minBet > ((await userService.getUser(userId))?.coins ?? 0)) {
 			return res.status(403).json({ message: "You do not have enough coins to join this room." });
 		}
 
@@ -147,19 +148,16 @@ export function pokerRoutes(client, io) {
 		}
 
 		if (!room.fakeMoney) {
-			const userDB = getUser.get(playerId);
+			const userDB = await userService.getUser(playerId);
 			if (userDB) {
-				updateUserCoins.run({
-					id: playerId,
-					coins: userDB.coins - room.minBet,
-				});
-				insertLog.run({
+				await userService.updateUserCoins(playerId, userDB.coins - room.minBet);
+				await logService.insertLog({
 					id: `${playerId}-poker-${Date.now()}`,
-					user_id: playerId,
-					target_user_id: null,
+					userId: playerId,
+					targetUserId: null,
 					action: "POKER_JOIN",
-					coins_amount: -room.minBet,
-					user_new_amount: userDB.coins - room.minBet,
+					coinsAmount: -room.minBet,
+					userNewAmount: userDB.coins - room.minBet,
 				});
 			}
 		}
@@ -199,7 +197,7 @@ export function pokerRoutes(client, io) {
 		}
 
 		try {
-			updatePlayerCoins(
+			await updatePlayerCoins(
 				pokerRooms[roomId].players[userId],
 				pokerRooms[roomId].players[userId].bank,
 				pokerRooms[roomId].fakeMoney,
@@ -239,7 +237,7 @@ export function pokerRoutes(client, io) {
 		}
 
 		try {
-			updatePlayerCoins(
+			await updatePlayerCoins(
 				pokerRooms[roomId].players[userId],
 				pokerRooms[roomId].players[userId].bank,
 				pokerRooms[roomId].fakeMoney,
@@ -359,7 +357,7 @@ export function pokerRoutes(client, io) {
 
 async function joinRoom(roomId, userId, io) {
 	const user = await client.users.fetch(userId);
-	const userDB = getUser.get(userId);
+	const userDB = await userService.getUser(userId);
 	const room = pokerRooms[roomId];
 
 	const playerObject = {
@@ -380,14 +378,14 @@ async function joinRoom(roomId, userId, io) {
 	} else {
 		room.players[userId] = playerObject;
 		if (!room.fakeMoney) {
-			updateUserCoins.run({ id: userId, coins: userDB.coins - room.minBet });
-			insertLog.run({
+			await userService.updateUserCoins(userId, userDB.coins - room.minBet);
+			await logService.insertLog({
 				id: `${userId}-poker-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "POKER_JOIN",
-				coins_amount: -room.minBet,
-				user_new_amount: userDB.coins - room.minBet,
+				coinsAmount: -room.minBet,
+				userNewAmount: userDB.coins - room.minBet,
 			});
 		}
 	}
@@ -539,29 +537,29 @@ function updatePlayerHandSolves(room) {
 	}
 }
 
-function updatePlayerCoins(player, amount, isFake) {
+async function updatePlayerCoins(player, amount, isFake) {
 	if (isFake) return;
-	const user = getUser.get(player.id);
+	const user = await userService.getUser(player.id);
 	if (!user) return;
 
-	const userDB = getUser.get(player.id);
-	updateUserCoins.run({ id: player.id, coins: userDB.coins + amount });
-	insertLog.run({
+	const userDB = await userService.getUser(player.id);
+	await userService.updateUserCoins(player.id, userDB.coins + amount);
+	await logService.insertLog({
 		id: `${player.id}-poker-${Date.now()}`,
-		user_id: player.id,
-		target_user_id: null,
+		userId: player.id,
+		targetUserId: null,
 		action: `POKER_${amount > 0 ? "WIN" : "LOSE"}`,
-		coins_amount: amount,
-		user_new_amount: userDB.coins + amount,
+		coinsAmount: amount,
+		userNewAmount: userDB.coins + amount,
 	});
 }
 
 async function clearAfkPlayers(room) {
-	Object.keys(room.afk).forEach((playerId) => {
+	for (const playerId of Object.keys(room.afk)) {
 		if (room.players[playerId]) {
-			updatePlayerCoins(room.players[playerId], room.players[playerId].bank, room.fakeMoney);
+			await updatePlayerCoins(room.players[playerId], room.players[playerId].bank, room.fakeMoney);
 			delete room.players[playerId];
 		}
-	});
+	}
 	room.afk = {};
 }

@@ -2,7 +2,8 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { monkePaths } from "../../game/state.js";
 import { socketEmit } from "../socket.js";
-import { getUser, updateUserCoins, insertLog } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as logService from "../../services/log.service.js";
 import { init } from "openai/_shims/index.mjs";
 
 const router = express.Router();
@@ -16,11 +17,11 @@ const router = express.Router();
 export function monkeRoutes(client, io) {
 	// --- Router Management Endpoints
 
-	router.get("/:userId", (req, res) => {
+	router.get("/:userId", async (req, res) => {
 		const { userId } = req.params;
 
 		if (!userId) return res.status(400).json({ error: "User ID is required" });
-		const user = getUser.get(userId);
+		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		const userGamePath = monkePaths[userId] || null;
 		if (!userGamePath) return res.status(404).json({ error: "No active game found for this user" });
@@ -28,29 +29,26 @@ export function monkeRoutes(client, io) {
 		return res.status(200).json({ userGamePath });
 	});
 
-	router.post("/:userId/start", (req, res) => {
+	router.post("/:userId/start", async (req, res) => {
 		const { userId } = req.params;
 		const { initialBet } = req.body;
 
 		if (!userId) return res.status(400).json({ error: "User ID is required" });
-		const user = getUser.get(userId);
+		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!initialBet) return res.status(400).json({ error: "Initial bet is required" });
 		if (initialBet > user.coins) return res.status(400).json({ error: "Insufficient coins for the initial bet" });
 
 		try {
 			const newCoins = user.coins - initialBet;
-			updateUserCoins.run({
-				id: userId,
-				coins: newCoins,
-			});
-			insertLog.run({
+			await userService.updateUserCoins(userId, newCoins);
+			await logService.insertLog({
 				id: `${userId}-monke-bet-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "MONKE_BET",
-				coins_amount: -initialBet,
-				user_new_amount: newCoins,
+				coinsAmount: -initialBet,
+				userNewAmount: newCoins,
 			});
 		} catch (error) {
 			return res.status(500).json({ error: "Failed to update user coins" });
@@ -61,12 +59,12 @@ export function monkeRoutes(client, io) {
 		return res.status(200).json({ message: "Monke game started", userGamePath: monkePaths[userId] });
 	});
 
-	router.post("/:userId/play", (req, res) => {
+	router.post("/:userId/play", async (req, res) => {
 		const { userId } = req.params;
 		const { choice, step } = req.body;
 
 		if (!userId) return res.status(400).json({ error: "User ID is required" });
-		const user = getUser.get(userId);
+		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });
 
@@ -97,10 +95,10 @@ export function monkeRoutes(client, io) {
 		}
 	});
 
-	router.post("/:userId/stop", (req, res) => {
+	router.post("/:userId/stop", async (req, res) => {
 		const { userId } = req.params;
 		if (!userId) return res.status(400).json({ error: "User ID is required" });
-		const user = getUser.get(userId);
+		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });
 		const userGamePath = monkePaths[userId];
@@ -112,17 +110,14 @@ export function monkeRoutes(client, io) {
 		const newCoins = coins + extractValue;
 
 		try {
-			updateUserCoins.run({
-				id: userId,
-				coins: newCoins,
-			});
-			insertLog.run({
+			await userService.updateUserCoins(userId, newCoins);
+			await logService.insertLog({
 				id: `${userId}-monke-withdraw-${Date.now()}`,
-				user_id: userId,
-				target_user_id: null,
+				userId: userId,
+				targetUserId: null,
 				action: "MONKE_WITHDRAW",
-				coins_amount: extractValue,
-				user_new_amount: newCoins,
+				coinsAmount: extractValue,
+				userNewAmount: newCoins,
 			});
 
 			return res.status(200).json({ message: "Game stopped", userGamePath });

@@ -5,7 +5,7 @@ import {
 	ButtonStyleTypes,
 } from "discord-interactions";
 import { activeSearchs, skins } from "../../game/state.js";
-import { getAllSkins } from "../../database/index.js";
+import * as skinService from "../../services/skin.service.js";
 
 /**
  * Handles the /search slash command.
@@ -23,7 +23,7 @@ export async function handleSearchCommand(req, res, client, interactionId) {
 
 	try {
 		// --- 1. Fetch and Filter Data ---
-		const allDbSkins = getAllSkins.all();
+		const allDbSkins = await skinService.getAllSkins();
 		const resultSkins = allDbSkins.filter(
 			(skin) =>
 				skin.displayName.toLowerCase().includes(searchValue) || skin.tierText.toLowerCase().includes(searchValue),
@@ -61,12 +61,12 @@ export async function handleSearchCommand(req, res, client, interactionId) {
 
 		// Fetch owner details if the skin is owned
 		let ownerText = "";
-		if (currentSkin.user_id) {
+		if (currentSkin.userId) {
 			try {
-				const owner = await guild.members.fetch(currentSkin.user_id);
+				const owner = await guild.members.fetch(currentSkin.userId);
 				ownerText = `| **@${owner.user.globalName || owner.user.username}** ✅`;
 			} catch (e) {
-				console.warn(`Could not fetch owner for user ID: ${currentSkin.user_id}`);
+				console.warn(`Could not fetch owner for user ID: ${currentSkin.userId}`);
 				ownerText = "| Appartenant à un utilisateur inconnu";
 			}
 		}

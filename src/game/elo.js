@@ -1,4 +1,5 @@
-import { getUser, getUserElo, insertElos, insertGame, updateElo } from "../database/index.js";
+import * as userService from "../services/user.service.js";
+import * as gameService from "../services/game.service.js";
 import { ButtonStyle, EmbedBuilder } from "discord.js";
 import { client } from "../bot/client.js";
 
@@ -12,23 +13,23 @@ import { client } from "../bot/client.js";
  */
 export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = null) {
 	// --- 1. Fetch Player Data ---
-	const p1DB = getUser.get(p1Id);
-	const p2DB = getUser.get(p2Id);
+	const p1DB = await userService.getUser(p1Id);
+	const p2DB = await userService.getUser(p2Id);
 	if (!p1DB || !p2DB) {
 		console.error(`Elo Handler: Could not find user data for ${p1Id} or ${p2Id}.`);
 		return;
 	}
 
-	let p1EloData = getUserElo.get({ id: p1Id });
-	let p2EloData = getUserElo.get({ id: p2Id });
+	let p1EloData = await gameService.getUserElo(p1Id);
+	let p2EloData = await gameService.getUserElo(p2Id);
 
 	// --- 2. Initialize Elo if it doesn't exist ---
 	if (!p1EloData) {
-		await insertElos.run({ id: p1Id, elo: 1000 });
+		await gameService.insertElo(p1Id, 1000);
 		p1EloData = { id: p1Id, elo: 1000 };
 	}
 	if (!p2EloData) {
-		await insertElos.run({ id: p2Id, elo: 1000 });
+		await gameService.insertElo(p2Id, 1000);
 		p2EloData = { id: p2Id, elo: 1000 };
 	}
 
@@ -91,34 +92,34 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 	}
 
 	// --- 4. Update Database ---
-	updateElo.run({ id: p1Id, elo: finalP1Elo });
-	updateElo.run({ id: p2Id, elo: finalP2Elo });
+	await gameService.updateElo(p1Id, finalP1Elo);
+	await gameService.updateElo(p2Id, finalP2Elo);
 
 	if (scores) {
-		insertGame.run({
+		await gameService.insertGame({
 				id: `${p1Id}-${p2Id}-${Date.now()}`,
 				p1: p1Id,
 				p2: p2Id,
-				p1_score: scores.p1,
-				p2_score: scores.p2,
-				p1_elo: p1CurrentElo,
-				p2_elo: p2CurrentElo,
-				p1_new_elo: finalP1Elo,
-				p2_new_elo: finalP2Elo,
+				p1Score: scores.p1,
+				p2Score: scores.p2,
+				p1Elo: p1CurrentElo,
+				p2Elo: p2CurrentElo,
+				p1NewElo: finalP1Elo,
+				p2NewElo: finalP2Elo,
 				type: type,
 				timestamp: Date.now(),
 			});
 	} else {
-		insertGame.run({
+		await gameService.insertGame({
 				id: `${p1Id}-${p2Id}-${Date.now()}`,
 				p1: p1Id,
 				p2: p2Id,
-				p1_score: p1Score,
-				p2_score: p2Score,
-				p1_elo: p1CurrentElo,
-				p2_elo: p2CurrentElo,
-				p1_new_elo: finalP1Elo,
-				p2_new_elo: finalP2Elo,
+				p1Score: p1Score,
+				p2Score: p2Score,
+				p1Elo: p1CurrentElo,
+				p2Elo: p2CurrentElo,
+				p1NewElo: finalP1Elo,
+				p2NewElo: finalP2Elo,
 				type: type,
 				timestamp: Date.now(),
 			});
@@ -141,11 +142,12 @@ export async function pokerEloHandler(room) {
 	if (playerIds.length < 2) return; // Not enough players to calculate Elo
 
 	// Fetch all players' Elo data at once
-	const dbPlayers = playerIds.map((id) => {
-		const user = getUser.get(id);
-		const elo = getUserElo.get({ id })?.elo || 1000;
+	const dbPlayers = await Promise.all(playerIds.map(async (id) => {
+		const user = await userService.getUser(id);
+		const eloData = await gameService.getUserElo(id);
+		const elo = eloData?.elo || 1000;
 		return { ...user, elo };
-	});
+	}));
 
 	const winnerIds = new Set(room.winners);
 	const playerCount = dbPlayers.length;
@@ -153,7 +155,7 @@ export async function pokerEloHandler(room) {
 
 	const averageElo = dbPlayers.reduce((sum, p) => sum + p.elo, 0) / playerCount;
 
-	dbPlayers.forEach((player) => {
+	for (const player of dbPlayers) {
 		// Expected score is the chance of winning against an "average" player from the field
 		const expectedScore = 1 / (1 + Math.pow(10, (averageElo - player.elo) / 400));
 
@@ -175,23 +177,23 @@ export async function pokerEloHandler(room) {
 			console.log(
 				`Elo Update (POKER) for ${player.globalName}: ${player.elo} -> ${newElo} (Δ: ${eloChange.toFixed(2)})`,
 			);
-			updateElo.run({ id: player.id, elo: newElo });
+			await gameService.updateElo(player.id, newElo);
 
-			insertGame.run({
+			await gameService.insertGame({
 				id: `${player.id}-poker-${Date.now()}`,
 				p1: player.id,
 				p2: null, // No single opponent
-				p1_score: actualScore,
-				p2_score: null,
-				p1_elo: player.elo,
-				p2_elo: Math.round(averageElo), // Log the average opponent Elo for context
-				p1_new_elo: newElo,
-				p2_new_elo: null,
+				p1Score: actualScore,
+				p2Score: null,
+				p1Elo: player.elo,
+				p2Elo: Math.round(averageElo), // Log the average opponent Elo for context
+				p1NewElo: newElo,
+				p2NewElo: null,
 				type: "POKER_ROUND",
 				timestamp: Date.now(),
 			});
 		} else {
 			console.error(`Error calculating new Elo for ${player.globalName}.`);
 		}
-	});
+	}
 }
