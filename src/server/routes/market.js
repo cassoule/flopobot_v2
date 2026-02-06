@@ -5,18 +5,10 @@ import express from "express";
 // --- Utility and API Imports ---
 // --- Discord.js Builder Imports ---
 import { ButtonStyle } from "discord.js";
-import {
-	getMarketOfferById,
-	getMarketOffers,
-	getMarketOffersBySkin,
-	getOfferBids,
-	getSkin,
-	getUser,
-	insertBid,
-	insertLog,
-	insertMarketOffer,
-	updateUserCoins,
-} from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as skinService from "../../services/skin.service.js";
+import * as logService from "../../services/log.service.js";
+import * as marketService from "../../services/market.service.js";
 import { emitMarketUpdate } from "../socket.js";
 import { handleNewMarketOffer, handleNewMarketOfferBid } from "../../utils/marketNotifs.js";
 
@@ -32,25 +24,26 @@ const router = express.Router();
 export function marketRoutes(client, io) {
 	router.get("/offers", async (req, res) => {
 		try {
-			const offers = getMarketOffers.all();
-			offers.forEach((offer) => {
-				offer.skin = getSkin.get(offer.skin_uuid);
-				offer.seller = getUser.get(offer.seller_id);
-				offer.buyer = getUser.get(offer.buyer_id) || null;
-				offer.bids = getOfferBids.all(offer.id) || {};
-				offer.bids.forEach((bid) => {
-					bid.bidder = getUser.get(bid.bidder_id);
-				});
-			});
+			const offers = await marketService.getMarketOffers();
+			for (const offer of offers) {
+				offer.skin = await skinService.getSkin(offer.skinUuid);
+				offer.seller = await userService.getUser(offer.sellerId);
+				offer.buyer = offer.buyerId ? await userService.getUser(offer.buyerId) : null;
+				offer.bids = (await marketService.getOfferBids(offer.id)) || {};
+				for (const bid of offer.bids) {
+					bid.bidder = await userService.getUser(bid.bidderId);
+				}
+			}
 			res.status(200).send({ offers });
 		} catch (e) {
+			console.log(e);
 			res.status(500).send({ error: e });
 		}
 	});
 
 	router.get("/offers/:id", async (req, res) => {
 		try {
-			const offer = getMarketOfferById.get(req.params.id);
+			const offer = await marketService.getMarketOfferById(req.params.id);
 			if (offer) {
 				res.status(200).send({ offer });
 			} else {
@@ -63,7 +56,7 @@ export function marketRoutes(client, io) {
 
 	router.get("/offers/:id/bids", async (req, res) => {
 		try {
-			const bids = getOfferBids.get(req.params.id);
+			const bids = await marketService.getOfferBids(req.params.id);
 			res.status(200).send({ bids });
 		} catch (e) {
 			res.status(500).send({ error: e });
@@ -74,13 +67,13 @@ export function marketRoutes(client, io) {
 		const { seller_id, skin_uuid, starting_price, delay, duration, timestamp } = req.body;
 		const now = Date.now();
 		try {
-			const skin = getSkin.get(skin_uuid);
+			const skin = await skinService.getSkin(skin_uuid);
 			if (!skin) return res.status(404).send({ error: "Skin not found" });
-			const seller = getUser.get(seller_id);
+			const seller = await userService.getUser(seller_id);
 			if (!seller) return res.status(404).send({ error: "Seller not found" });
-			if (skin.user_id !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+			if (skin.userId !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
 
-			const existingOffers = getMarketOffersBySkin.all(skin.uuid);
+			const existingOffers = await marketService.getMarketOffersBySkin(skin.uuid);
 			if (
 				existingOffers.length > 0 &&
 				existingOffers.some((offer) => offer.status === "open" || offer.status === "pending")
@@ -92,15 +85,15 @@ export function marketRoutes(client, io) {
 			const closing_at = opening_at + duration;
 
 			const offerId = Date.now() + "-" + seller.id + "-" + skin.uuid;
-			insertMarketOffer.run({
+			await marketService.insertMarketOffer({
 				id: offerId,
-				skin_uuid: skin.uuid,
-				seller_id: seller.id,
-				starting_price: starting_price,
-				buyout_price: null,
+				skinUuid: skin.uuid,
+				sellerId: seller.id,
+				startingPrice: starting_price,
+				buyoutPrice: null,
 				status: delay > 0 ? "pending" : "open",
-				opening_at: opening_at,
-				closing_at: closing_at,
+				openingAt: opening_at,
+				closingAt: closing_at,
 			});
 			await emitMarketUpdate();
 			await handleNewMarketOffer(offerId, client);
@@ -114,62 +107,62 @@ export function marketRoutes(client, io) {
 	router.post("/offers/:id/place-bid", async (req, res) => {
 		const { buyer_id, bid_amount, timestamp } = req.body;
 		try {
-			const offer = getMarketOfferById.get(req.params.id);
+			const offer = await marketService.getMarketOfferById(req.params.id);
 			if (!offer) return res.status(404).send({ error: "Offer not found" });
-			if (offer.closing_at < timestamp) return res.status(403).send({ error: "Bidding period has ended" });
+			if (offer.closingAt < timestamp) return res.status(403).send({ error: "Bidding period has ended" });
 
-			if (buyer_id === offer.seller_id) return res.status(403).send({ error: "You can't bid on your own offer" });
+			if (buyer_id === offer.sellerId) return res.status(403).send({ error: "You can't bid on your own offer" });
 
-			const offerBids = getOfferBids.all(offer.id);
+			const offerBids = await marketService.getOfferBids(offer.id);
 			const lastBid = offerBids[0];
 
 			if (lastBid) {
-				if (lastBid?.bidder_id === buyer_id)
+				if (lastBid?.bidderId === buyer_id)
 					return res.status(403).send({ error: "You are already the highest bidder" });
-				if (bid_amount < lastBid?.offer_amount + 10) {
+				if (bid_amount < lastBid?.offerAmount + 10) {
 					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			} else {
-				if (bid_amount < offer.starting_price + 10) {
+				if (bid_amount < offer.startingPrice + 10) {
 					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			}
 
-			const bidder = getUser.get(buyer_id);
+			const bidder = await userService.getUser(buyer_id);
 			if (!bidder) return res.status(404).send({ error: "Bidder not found" });
 			if (bidder.coins < bid_amount)
 				return res.status(403).send({ error: "You do not have enough coins to place this bid" });
 
 			const bidId = Date.now() + "-" + buyer_id + "-" + offer.id;
-			insertBid.run({
+			await marketService.insertBid({
 				id: bidId,
-				bidder_id: buyer_id,
-				market_offer_id: offer.id,
-				offer_amount: bid_amount,
+				bidderId: buyer_id,
+				marketOfferId: offer.id,
+				offerAmount: bid_amount,
 			});
 			const newCoinsAmount = bidder.coins - bid_amount;
-			updateUserCoins.run({ id: buyer_id, coins: newCoinsAmount });
-			insertLog.run({
+			await userService.updateUserCoins(buyer_id, newCoinsAmount);
+			await logService.insertLog({
 				id: `${buyer_id}-bid-${offer.id}-${Date.now()}`,
-				user_id: buyer_id,
+				userId: buyer_id,
 				action: "BID_PLACED",
-				target_user_id: null,
-				coins_amount: bid_amount,
-				user_new_amount: newCoinsAmount,
+				targetUserId: null,
+				coinsAmount: bid_amount,
+				userNewAmount: newCoinsAmount,
 			});
 
 			// Refund the previous highest bidder
 			if (lastBid) {
-				const previousBidder = getUser.get(lastBid.bidder_id);
-				const refundedCoinsAmount = previousBidder.coins + lastBid.offer_amount;
-				updateUserCoins.run({ id: previousBidder.id, coins: refundedCoinsAmount });
-				insertLog.run({
+				const previousBidder = await userService.getUser(lastBid.bidderId);
+				const refundedCoinsAmount = previousBidder.coins + lastBid.offerAmount;
+				await userService.updateUserCoins(previousBidder.id, refundedCoinsAmount);
+				await logService.insertLog({
 					id: `${previousBidder.id}-bid-refund-${offer.id}-${Date.now()}`,
-					user_id: previousBidder.id,
+					userId: previousBidder.id,
 					action: "BID_REFUNDED",
-					target_user_id: null,
-					coins_amount: lastBid.offer_amount,
-					user_new_amount: refundedCoinsAmount,
+					targetUserId: null,
+					coinsAmount: lastBid.offerAmount,
+					userNewAmount: refundedCoinsAmount,
 				});
 			}
 

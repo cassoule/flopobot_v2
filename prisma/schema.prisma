@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String @id
+  username      String
+  globalName    String?
+  warned        Int    @default(0)
+  warns         Int    @default(0)
+  allTimeWarns  Int    @default(0)
+  totalRequests Int    @default(0)
+  coins         Int    @default(0)
+  dailyQueried  Int    @default(0)
+  avatarUrl     String?
+  isAkhy        Int    @default(0)
+
+  elo           Elo?
+  skins         Skin[]
+  sellerOffers  MarketOffer[] @relation("Seller")
+  buyerOffers   MarketOffer[] @relation("Buyer")
+  bids          Bid[]
+  logs          Log[]         @relation("UserLogs")
+  targetLogs    Log[]         @relation("TargetUserLogs")
+  gamesAsP1     Game[]        @relation("Player1")
+  gamesAsP2     Game[]        @relation("Player2")
+  sotdStats     SotdStat[]
+  transactions  Transaction[]
+
+  @@map("users")
+}
+
+model Skin {
+  uuid            String  @id
+  displayName     String?
+  contentTierUuid String?
+  displayIcon     String?
+  userId          String? @map("user_id")
+  tierRank        String?
+  tierColor       String?
+  tierText        String?
+  basePrice       String?
+  currentLvl      Int?
+  currentChroma   Int?
+  currentPrice    Int?
+  maxPrice        Int?
+
+  owner        User?         @relation(fields: [userId], references: [id])
+  marketOffers MarketOffer[]
+
+  @@map("skins")
+}
+
+model MarketOffer {
+  id            String  @id
+  skinUuid      String  @map("skin_uuid")
+  sellerId      String  @map("seller_id")
+  startingPrice Int     @map("starting_price")
+  buyoutPrice   Int?    @map("buyout_price")
+  finalPrice    Int?    @map("final_price")
+  status        String
+  postedAt      DateTime? @default(now()) @map("posted_at")
+  openingAt     DateTime @map("opening_at")
+  closingAt     DateTime @map("closing_at")
+  buyerId       String? @map("buyer_id")
+
+  skin   Skin  @relation(fields: [skinUuid], references: [uuid])
+  seller User  @relation("Seller", fields: [sellerId], references: [id])
+  buyer  User? @relation("Buyer", fields: [buyerId], references: [id])
+  bids   Bid[]
+
+  @@map("market_offers")
+}
+
+model Bid {
+  id            String  @id
+  bidderId      String  @map("bidder_id")
+  marketOfferId String  @map("market_offer_id")
+  offerAmount   Int     @map("offer_amount")
+  offeredAt     DateTime? @default(now()) @map("offered_at")
+
+  bidder      User        @relation(fields: [bidderId], references: [id])
+  marketOffer MarketOffer @relation(fields: [marketOfferId], references: [id])
+
+  @@map("bids")
+}
+
+model Log {
+  id            String  @id
+  userId        String  @map("user_id")
+  action        String?
+  targetUserId  String? @map("target_user_id")
+  coinsAmount   Int?    @map("coins_amount")
+  userNewAmount Int?    @map("user_new_amount")
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  user       User  @relation("UserLogs", fields: [userId], references: [id])
+  targetUser User? @relation("TargetUserLogs", fields: [targetUserId], references: [id])
+
+  @@map("logs")
+}
+
+model Game {
+  id        String  @id
+  p1        String
+  p2        String?
+  p1Score   Int?    @map("p1_score")
+  p2Score   Int?    @map("p2_score")
+  p1Elo     Int?    @map("p1_elo")
+  p2Elo     Int?    @map("p2_elo")
+  p1NewElo  Int?    @map("p1_new_elo")
+  p2NewElo  Int?    @map("p2_new_elo")
+  type      String?
+  timestamp DateTime?
+
+  player1 User  @relation("Player1", fields: [p1], references: [id])
+  player2 User? @relation("Player2", fields: [p2], references: [id])
+
+  @@map("games")
+}
+
+model Elo {
+  id  String @id
+  elo Int
+
+  user User @relation(fields: [id], references: [id])
+
+  @@map("elos")
+}
+
+model Sotd {
+  id              Int     @id
+  tableauPiles    String?
+  foundationPiles String?
+  stockPile       String?
+  wastePile       String?
+  isDone          Int     @default(0)
+  seed            String?
+
+  @@map("sotd")
+}
+
+model SotdStat {
+  id     String @id
+  userId String @map("user_id")
+  time   Int?
+  moves  Int?
+  score  Int?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("sotd_stats")
+}
+
+model Transaction {
+  id            String  @id
+  sessionId     String  @unique @map("session_id")
+  userId        String  @map("user_id")
+  coinsAmount   Int     @map("coins_amount")
+  amountCents   Int     @map("amount_cents")
+  currency      String  @default("eur")
+  customerEmail String? @map("customer_email")
+  customerName  String? @map("customer_name")
+  paymentStatus String  @map("payment_status")
+  createdAt     DateTime? @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("transactions")
+}

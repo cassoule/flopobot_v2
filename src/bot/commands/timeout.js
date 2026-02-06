@@ -9,7 +9,7 @@ import { formatTime, getOnlineUsersWithRole } from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 import { activePolls } from "../../game/state.js";
 import { getSocketIo } from "../../server/socket.js";
-import { getUser } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
 
 /**
  * Handles the /timeout slash command.
@@ -102,12 +102,12 @@ export async function handleTimeoutCommand(req, res, client) {
 		if (remaining === 0) {
 			clearInterval(countdownInterval);
 
-			const votersList = poll.voters
-				.map((voterId) => {
-					const user = getUser.get(voterId);
+			const votersList = (await Promise.all(poll.voters
+				.map(async (voterId) => {
+					const user = await userService.getUser(voterId);
 					return `- ${user?.globalName || "Utilisateur Inconnu"}`;
 				})
-				.join("\n");
+			)).join("\n");
 
 			try {
 				await DiscordRequest(poll.endpoint, {
@@ -143,12 +143,12 @@ export async function handleTimeoutCommand(req, res, client) {
 		// --- Periodic Update Logic ---
 		// Update the message every second with the new countdown
 		try {
-			const votersList = poll.voters
-				.map((voterId) => {
-					const user = getUser.get(voterId);
+			const votersList = (await Promise.all(poll.voters
+				.map(async (voterId) => {
+					const user = await userService.getUser(voterId);
 					return `- ${user?.globalName || "Utilisateur Inconnu"}`;
 				})
-				.join("\n");
+			)).join("\n");
 
 			await DiscordRequest(poll.endpoint, {
 				method: "PATCH",

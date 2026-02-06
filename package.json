@@ -11,15 +11,17 @@
 	"scripts": {
 		"start": "node index.js",
 		"register": "node commands.js",
-		"dev": "nodemon index.js"
+		"dev": "nodemon index.js",
+		"prisma:generate": "prisma generate",
+		"prisma:migrate": "prisma migrate dev"
 	},
 	"author": "Milo Gourvest",
 	"license": "MIT",
 	"dependencies": {
 		"@google/genai": "^1.30.0",
 		"@mistralai/mistralai": "^1.6.0",
+		"@prisma/client": "^6.19.2",
 		"axios": "^1.9.0",
-		"better-sqlite3": "^11.9.1",
 		"discord-interactions": "^4.0.0",
 		"discord.js": "^14.18.0",
 		"dotenv": "^16.0.3",
@@ -27,7 +29,9 @@
 		"node-cron": "^3.0.3",
 		"openai": "^4.104.0",
 		"pokersolver": "^2.1.4",
+		"prisma": "^6.19.2",
 		"socket.io": "^4.8.1",
+		"stripe": "^20.3.0",
 		"unique-names-generator": "^4.7.1",
 		"uuid": "^11.1.0"
 	},

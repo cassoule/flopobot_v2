@@ -5,3 +5,4 @@ flopobot.db-shm
 flopobot.db-wal
 .idea
 *.db
+.claude

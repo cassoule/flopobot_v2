@@ -3,7 +3,8 @@
 // Inspired by your poker helpers API style.
 
 import { emitToast } from "../server/socket.js";
-import { getUser, insertLog, updateUserCoins } from "../database/index.js";
+import * as userService from "../services/user.service.js";
+import * as logService from "../services/log.service.js";
 import { client } from "../bot/client.js";
 import { EmbedBuilder } from "discord.js";
 
@@ -299,21 +300,18 @@ export async function settleAll(room) {
 			p.totalDelta += res.delta;
 			p.totalBets++;
 			if (res.result === "win" || res.result === "push" || res.result === "blackjack") {
-				const userDB = getUser.get(p.id);
+				const userDB = await userService.getUser(p.id);
 				if (userDB) {
 					const coins = userDB.coins;
 					try {
-						updateUserCoins.run({
-							id: p.id,
-							coins: coins + hand.bet + res.delta,
-						});
-						insertLog.run({
+						await userService.updateUserCoins(p.id, coins + hand.bet + res.delta);
+						await logService.insertLog({
 							id: `${p.id}-blackjack-${Date.now()}`,
-							user_id: p.id,
-							target_user_id: null,
+							userId: p.id,
+							targetUserId: null,
 							action: "BLACKJACK_PAYOUT",
-							coins_amount: res.delta + hand.bet,
-							user_new_amount: coins + hand.bet + res.delta,
+							coinsAmount: res.delta + hand.bet,
+							userNewAmount: coins + hand.bet + res.delta,
 						});
 						p.bank = coins + hand.bet + res.delta;
 					} catch (e) {

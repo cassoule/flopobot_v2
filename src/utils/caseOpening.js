@@ -1,4 +1,4 @@
-import { getAllAvailableSkins, getSkin } from "../database/index.js";
+import * as skinService from "../services/skin.service.js";
 import { skins } from "../game/state.js";
 import { isChampionsSkin } from "./index.js";
 
@@ -6,16 +6,15 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 	if (caseType === "esport") {
 		// Esport case: return all esport skins
 		try {	
-			const dbSkins = getAllAvailableSkins.all();
-			const esportSkins = skins
-				.filter((s) => dbSkins.find((dbSkin) => dbSkin.displayName.includes("Classic (VCT") && dbSkin.uuid === s.uuid))
-				.map((s) => {
-					const dbSkin = getSkin.get(s.uuid);
-					return {
-						...s, // Shallow copy to avoid mutating the imported 'skins' object
-						tierColor: dbSkin?.tierColor,
-					};
+			const dbSkins = await skinService.getAllAvailableSkins();
+			const esportSkins = [];
+			for (const s of skins.filter((s) => dbSkins.find((dbSkin) => dbSkin.displayName.includes("Classic (VCT") && dbSkin.uuid === s.uuid))) {
+				const dbSkin = await skinService.getSkin(s.uuid);
+				esportSkins.push({
+					...s,
+					tierColor: dbSkin?.tierColor,
 				});
+			}
 			return esportSkins;
 		} catch (e) {
 			console.log(e);
@@ -55,8 +54,8 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 	}
 
 	try {
-		const dbSkins = getAllAvailableSkins.all();
-		const weightedPool = skins
+		const dbSkins = await skinService.getAllAvailableSkins();
+		const filtered = skins
 			.filter((s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid))
 			.filter((s) => {
 				if (caseType === "ultra") {
@@ -71,16 +70,19 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 				} else {
 					return isChampionsSkin(s.displayName) === false;
 				}
-			})
-			.map((s) => {
-				const dbSkin = getSkin.get(s.uuid);
-				return {
-					...s, // Shallow copy to avoid mutating the imported 'skins' object
+			});
+		const weightedPool = [];
+		for (const s of filtered) {
+			const dbSkin = await skinService.getSkin(s.uuid);
+			const weight = tierWeights[s.contentTierUuid] ?? 0;
+			if (weight > 0) { // <--- CRITICAL: Remove 0 weight skins
+				weightedPool.push({
+					...s,
 					tierColor: dbSkin?.tierColor,
-					weight: tierWeights[s.contentTierUuid] ?? 0,
-				};
-			})
-			.filter((s) => s.weight > 0); // <--- CRITICAL: Remove 0 weight skins
+					weight,
+				});
+			}
+		}
 
 		function weightedSample(arr, count) {
 			let totalWeight = arr.reduce((sum, x) => sum + x.weight, 0);
@@ -123,7 +125,7 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 	}
 }
 
-export function drawCaseSkin(caseContent) {
+export async function drawCaseSkin(caseContent) {
 	let randomSelectedSkinIndex;
 	let randomSelectedSkinUuid;
 	try {
@@ -134,7 +136,7 @@ export function drawCaseSkin(caseContent) {
 		throw new Error("Failed to draw a skin from the case content.");
 	}
 
-	const dbSkin = getSkin.get(randomSelectedSkinUuid);
+	const dbSkin = await skinService.getSkin(randomSelectedSkinUuid);
 	const randomSkinData = skins.find((skin) => skin.uuid === dbSkin.uuid);
 	if (!randomSkinData) {
 		throw new Error(`Could not find skin data for UUID: ${dbSkin.uuid}`);

@@ -1,7 +1,9 @@
 import { InteractionResponseFlags, InteractionResponseType } from "discord-interactions";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { DiscordRequest } from "../../api/discord.js";
-import { getAllAvailableSkins, getUser, insertLog, updateSkin, updateUserCoins } from "../../database/index.js";
+import * as userService from "../../services/user.service.js";
+import * as skinService from "../../services/skin.service.js";
+import * as logService from "../../services/log.service.js";
 import { skins } from "../../game/state.js";
 
 /**
@@ -27,7 +29,7 @@ export async function handleValorantCommand(req, res, client) {
 	try {
 		// --- 1. Verify and process payment ---
 
-		const commandUser = getUser.get(userId);
+		const commandUser = await userService.getUser(userId);
 		if (!commandUser) {
 			return res.send({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -47,18 +49,15 @@ export async function handleValorantCommand(req, res, client) {
 			});
 		}
 
-		insertLog.run({
+		await logService.insertLog({
 			id: `${userId}-${Date.now()}`,
-			user_id: userId,
+			userId: userId,
 			action: "VALO_CASE_OPEN",
-			target_user_id: null,
-			coins_amount: -valoPrice,
-			user_new_amount: commandUser.coins - valoPrice,
+			targetUserId: null,
+			coinsAmount: -valoPrice,
+			userNewAmount: commandUser.coins - valoPrice,
 		});
-		updateUserCoins.run({
-			id: userId,
-			coins: commandUser.coins - valoPrice,
-		});
+		await userService.updateUserCoins(userId, commandUser.coins - valoPrice);
 
 		// --- 2. Send Initial "Opening" Response ---
 		// Acknowledge the interaction immediately with a loading message.
@@ -77,7 +76,7 @@ export async function handleValorantCommand(req, res, client) {
 			const webhookEndpoint = `webhooks/${process.env.APP_ID}/${token}/messages/@original`;
 			try {
 				// --- Skin Selection ---
-				const availableSkins = getAllAvailableSkins.all();
+				const availableSkins = await skinService.getAllAvailableSkins();
 				if (availableSkins.length === 0) {
 					throw new Error("No available skins to award.");
 				}
@@ -105,9 +104,9 @@ export async function handleValorantCommand(req, res, client) {
 				const finalPrice = calculatePrice();
 
 				// --- Update Database ---
-				await updateSkin.run({
+				await skinService.updateSkin({
 					uuid: randomSkinData.uuid,
-					user_id: userId,
+					userId: userId,
 					currentLvl: randomLevel,
 					currentChroma: randomChroma,
 					currentPrice: finalPrice,

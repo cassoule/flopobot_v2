@@ -1,4 +1,5 @@
 import { sleep } from "openai/core";
+import { AttachmentBuilder } from "discord.js";
 import {
 	buildAiMessages,
 	buildParticipantsMap,
@@ -12,18 +13,10 @@ import {
 import { calculateBasePrice, calculateMaxPrice, formatTime, getAkhys } from "../../utils/index.js";
 import { channelPointsHandler, initTodaysSOTD, randomSkinPrice, slowmodesHandler } from "../../game/points.js";
 import { activePolls, activeSlowmodes, requestTimestamps, skins } from "../../game/state.js";
-import {
-	flopoDB,
-	getAllSkins,
-	getAllUsers,
-	getUser,
-	hardUpdateSkin,
-	insertLog,
-	updateManyUsers,
-	updateSkin,
-	updateUserAvatar,
-	updateUserCoins,
-} from "../../database/index.js";
+import prisma from "../../prisma/client.js";
+import * as userService from "../../services/user.service.js";
+import * as skinService from "../../services/skin.service.js";
+import * as logService from "../../services/log.service.js";
 import { client } from "../client.js";
 import { drawCaseContent, drawCaseSkin, getDummySkinUpgradeProbs } from "../../utils/caseOpening.js";
 
@@ -52,10 +45,10 @@ export async function handleMessageCreate(message, client, io) {
 	// --- Main Guild Features (Points & Slowmode) ---
 	if (message.guildId === process.env.GUILD_ID) {
 		// Award points for activity
-		const pointsAwarded = channelPointsHandler(message);
-		if (pointsAwarded) {
-			io.emit("data-updated", { table: "users", action: "update" });
-		}
+		// const pointsAwarded = channelPointsHandler(message);
+		// if (pointsAwarded) {
+		// 	io.emit("data-updated", { table: "users", action: "update" });
+		// }
 
 		// Enforce active slowmodes
 		const wasSlowmoded = await slowmodesHandler(message, activeSlowmodes);
@@ -88,7 +81,7 @@ export async function handleMessageCreate(message, client, io) {
 // --- Sub-handler for AI Logic ---
 async function handleAiMention(message, client, io) {
 	const authorId = message.author.id;
-	let authorDB = getUser.get(authorId);
+	let authorDB = await userService.getUser(authorId);
 	if (!authorDB) return; // Should not happen if user is in DB, but good practice
 
 	// --- Rate Limiting ---
@@ -104,7 +97,7 @@ async function handleAiMention(message, client, io) {
 		authorDB.warned = 1;
 		authorDB.warns += 1;
 		authorDB.allTimeWarns += 1;
-		updateManyUsers([authorDB]);
+		await userService.updateManyUsers([authorDB]);
 
 		// Apply timeout if warn count is too high
 		if (authorDB.warns > (parseInt(process.env.MAX_WARNS) || 10)) {
@@ -134,7 +127,7 @@ async function handleAiMention(message, client, io) {
 	authorDB.warned = 0;
 	authorDB.warns = 0;
 	authorDB.totalRequests += 1;
-	updateManyUsers([authorDB]);
+	await userService.updateManyUsers([authorDB]);
 
 	// --- AI Processing ---
 	try {
@@ -238,14 +231,18 @@ async function handleAdminCommands(message) {
 			message.reply("New Solitaire of the Day initialized.");
 			break;
 		case `${prefix}:users`:
-			console.log(getAllUsers.all());
+			console.log(await userService.getAllUsers());
 			break;
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");
 			try {
-				const stmt = flopoDB.prepare(sqlCommand);
-				const result = sqlCommand.trim().toUpperCase().startsWith("SELECT") ? stmt.all() : stmt.run();
-				message.reply("```json\n" + JSON.stringify(result, null, 2).substring(0, 1900) + "\n```");
+				const result = sqlCommand.trim().toUpperCase().startsWith("SELECT")
+					? await prisma.$queryRawUnsafe(sqlCommand)
+					: await prisma.$executeRawUnsafe(sqlCommand);
+				const jsonString = JSON.stringify(result, null, 2);
+				const buffer = Buffer.from(jsonString, "utf-8");
+				const attachment = new AttachmentBuilder(buffer, { name: "sql-result.json" });
+				message.reply({ content: "SQL query executed successfully:", files: [attachment] });
 			} catch (e) {
 				message.reply(`SQL Error: ${e.message}`);
 			}
@@ -263,16 +260,16 @@ async function handleAdminCommands(message) {
 				avatarUrl: akhy.user.displayAvatarURL({ dynamic: true, size: 256 }),
 			}));
 
-			usersToUpdate.forEach((user) => {
+			for (const user of usersToUpdate) {
 				try {
-					updateUserAvatar.run(user);
+					await userService.updateUserAvatar(user.id, user.avatarUrl);
 				} catch (err) {}
-			});
+			}
 			break;
 		case `${prefix}:rework-skins`:
 			console.log("Reworking all skin prices...");
-			const dbSkins = getAllSkins.all();
-			dbSkins.forEach((skin) => {
+			const dbSkins = await skinService.getAllSkins();
+			for (const skin of dbSkins) {
 				const fetchedSkin = skins.find((s) => s.uuid === skin.uuid);
 				const basePrice = calculateBasePrice(fetchedSkin, skin.tierRank)?.toFixed(0);
 				const calculatePrice = () => {
@@ -283,12 +280,12 @@ async function handleAdminCommands(message) {
 					return parseFloat(result.toFixed(0));
 				};
 				const maxPrice = calculateMaxPrice(basePrice, fetchedSkin).toFixed(0);
-				hardUpdateSkin.run({
+				await skinService.hardUpdateSkin({
 					uuid: skin.uuid,
 					displayName: skin.displayName,
 					contentTierUuid: skin.contentTierUuid,
 					displayIcon: skin.displayIcon,
-					user_id: skin.user_id,
+					userId: skin.userId,
 					tierRank: skin.tierRank,
 					tierColor: skin.tierColor,
 					tierText: skin.tierText,
@@ -298,7 +295,7 @@ async function handleAdminCommands(message) {
 					currentPrice: skin.currentPrice ? calculatePrice() : null,
 					maxPrice: maxPrice,
 				});
-			});
+			}
 			console.log("Reworked", dbSkins.length, "skins.");
 			break;
 		case `${prefix}:cases-test`:
@@ -324,7 +321,7 @@ async function handleAdminCommands(message) {
 
 				for (let i = 0; i < caseCount; i++) {
 					const skins = await drawCaseContent(caseType);
-					const result = drawCaseSkin(skins);
+					const result = await drawCaseSkin(skins);
 					totalResValue += result.finalPrice;
 					if (result.finalPrice > highestSkinPrice) highestSkinPrice = result.finalPrice;
 					if (result.finalPrice > 0 && result.finalPrice < 100) priceTiers["0"] += 1;
@@ -354,26 +351,23 @@ async function handleAdminCommands(message) {
 			break;
 		case `${prefix}:refund-skins`:
 			try {
-				const DBskins = getAllSkins.all();
+				const DBskins = await skinService.getAllSkins();
 				for (const skin of DBskins) {
-					const owner = getUser.get(skin.user_id);
+					const owner = await userService.getUser(skin.userId);
 					if (owner) {
-						updateUserCoins.run({
-							id: owner.id,
-							coins: owner.coins + skin.currentPrice,
-						});
-						insertLog.run({
+						await userService.updateUserCoins(owner.id, owner.coins + skin.currentPrice);
+						await logService.insertLog({
 							id: `${skin.uuid}-skin-refund-${Date.now()}`,
-							user_id: owner.id,
-							target_user_id: null,
+							userId: owner.id,
+							targetUserId: null,
 							action: "SKIN_REFUND",
-							coins_amount: skin.currentPrice,
-							user_new_amount: owner.coins + skin.currentPrice,
+							coinsAmount: skin.currentPrice,
+							userNewAmount: owner.coins + skin.currentPrice,
 						});
 					}
-					updateSkin.run({
+					await skinService.updateSkin({
 						uuid: skin.uuid,
-						user_id: null,
+						userId: null,
 						currentPrice: null,
 						currentLvl: null,
 						currentChroma: null,

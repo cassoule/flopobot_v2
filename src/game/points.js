@@ -1,15 +1,7 @@
-import {
-	clearSOTDStats,
-	deleteSOTD,
-	getAllSkins,
-	getAllSOTDStats,
-	getUser,
-	insertGame,
-	insertLog,
-	insertSOTD,
-	pruneOldLogs,
-	updateUserCoins
-} from "../database/index.js";
+import * as userService from "../services/user.service.js";
+import * as skinService from "../services/skin.service.js";
+import * as logService from "../services/log.service.js";
+import * as solitaireService from "../services/solitaire.service.js";
 import { activeSlowmodes, activeSolitaireGames, messagesTimestamps, skins } from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { emitSolitaireUpdate } from "../server/socket.js";
@@ -22,7 +14,7 @@ import { emitSolitaireUpdate } from "../server/socket.js";
  */
 export async function channelPointsHandler(message) {
 	const author = message.author;
-	const authorDB = getUser.get(author.id);
+	const authorDB = await userService.getUser(author.id);
 
 	if (!authorDB) {
 		// User not in our database, do nothing.
@@ -53,21 +45,18 @@ export async function channelPointsHandler(message) {
 	const coinsToAdd = recentTimestamps.length === 10 ? 50 : 10;
 	const newCoinTotal = authorDB.coins + coinsToAdd;
 
-	updateUserCoins.run({
-		id: author.id,
-		coins: newCoinTotal,
-	});
+	await userService.updateUserCoins(author.id, newCoinTotal);
 
-	insertLog.run({
+	await logService.insertLog({
 		id: `${author.id}-${now}`,
-		user_id: author.id,
+		userId: author.id,
 		action: "AUTO_COINS",
-		target_user_id: null,
-		coins_amount: coinsToAdd,
-		user_new_amount: newCoinTotal,
+		targetUserId: null,
+		coinsAmount: coinsToAdd,
+		userNewAmount: newCoinTotal,
 	});
 
-	await pruneOldLogs();
+	await logService.pruneOldLogs();
 
 	return true; // Indicate that points were awarded
 }
@@ -116,8 +105,8 @@ export async function slowmodesHandler(message) {
  * Used for testing and simulations.
  * @returns {string} The calculated random price as a string.
  */
-export function randomSkinPrice() {
-	const dbSkins = getAllSkins.all();
+export async function randomSkinPrice() {
+	const dbSkins = await skinService.getAllSkins();
 	if (dbSkins.length === 0) return "0.00";
 
 	const randomDbSkin = dbSkins[Math.floor(Math.random() * dbSkins.length)];
@@ -144,30 +133,30 @@ export function randomSkinPrice() {
  * Initializes the Solitaire of the Day.
  * This function clears previous stats, awards the winner, and generates a new daily seed.
  */
-export function initTodaysSOTD() {
+export async function initTodaysSOTD() {
 	console.log(`Initializing new Solitaire of the Day...`);
 
 	// 1. Award previous day's winner
-	const rankings = getAllSOTDStats.all();
+	const rankings = await solitaireService.getAllSOTDStats();
 	if (rankings.length > 0) {
-		const winnerId = rankings[0].user_id;
-		const secondPlaceId = rankings[1] ? rankings[1].user_id : null;
-		const thirdPlaceId = rankings[2] ? rankings[2].user_id : null;
-		const winnerUser = getUser.get(winnerId);
-		const secondPlaceUser = secondPlaceId ? getUser.get(secondPlaceId) : null;
-		const thirdPlaceUser = thirdPlaceId ? getUser.get(thirdPlaceId) : null;
+		const winnerId = rankings[0].userId;
+		const secondPlaceId = rankings[1] ? rankings[1].userId : null;
+		const thirdPlaceId = rankings[2] ? rankings[2].userId : null;
+		const winnerUser = await userService.getUser(winnerId);
+		const secondPlaceUser = secondPlaceId ? await userService.getUser(secondPlaceId) : null;
+		const thirdPlaceUser = thirdPlaceId ? await userService.getUser(thirdPlaceId) : null;
 
 		if (winnerUser) {
 			const reward = 2500;
 			const newCoinTotal = winnerUser.coins + reward;
-			updateUserCoins.run({ id: winnerId, coins: newCoinTotal });
-			insertLog.run({
+			await userService.updateUserCoins(winnerId, newCoinTotal);
+			await logService.insertLog({
 				id: `${winnerId}-sotd-win-${Date.now()}`,
-				target_user_id: null,
-				user_id: winnerId,
+				targetUserId: null,
+				userId: winnerId,
 				action: "SOTD_FIRST_PLACE",
-				coins_amount: reward,
-				user_new_amount: newCoinTotal,
+				coinsAmount: reward,
+				userNewAmount: newCoinTotal,
 			});
 			console.log(
 				`${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
@@ -176,14 +165,14 @@ export function initTodaysSOTD() {
 		if (secondPlaceUser) {
 			const reward = 1500;
 			const newCoinTotal = secondPlaceUser.coins + reward;
-			updateUserCoins.run({ id: secondPlaceId, coins: newCoinTotal });
-			insertLog.run({
+			await userService.updateUserCoins(secondPlaceId, newCoinTotal);
+			await logService.insertLog({
 				id: `${secondPlaceId}-sotd-second-${Date.now()}`,
-				target_user_id: null,
-				user_id: secondPlaceId,
+				targetUserId: null,
+				userId: secondPlaceId,
 				action: "SOTD_SECOND_PLACE",
-				coins_amount: reward,
-				user_new_amount: newCoinTotal,
+				coinsAmount: reward,
+				userNewAmount: newCoinTotal,
 			});
 			console.log(
 				`${secondPlaceUser.globalName || secondPlaceUser.username} got second place in the previous SOTD and received ${reward} coins.`,
@@ -192,14 +181,14 @@ export function initTodaysSOTD() {
 		if (thirdPlaceUser) {
 			const reward = 750;
 			const newCoinTotal = thirdPlaceUser.coins + reward;
-			updateUserCoins.run({ id: thirdPlaceId, coins: newCoinTotal });
-			insertLog.run({
+			await userService.updateUserCoins(thirdPlaceId, newCoinTotal);
+			await logService.insertLog({
 				id: `${thirdPlaceId}-sotd-third-${Date.now()}`,
-				target_user_id: null,
-				user_id: thirdPlaceId,
+				targetUserId: null,
+				userId: thirdPlaceId,
 				action: "SOTD_THIRD_PLACE",
-				coins_amount: reward,
-				user_new_amount: newCoinTotal,
+				coinsAmount: reward,
+				userNewAmount: newCoinTotal,
 			});
 			console.log(
 				`${thirdPlaceUser.globalName || thirdPlaceUser.username} got third place in the previous SOTD and received ${reward} coins.`,
@@ -221,9 +210,9 @@ export function initTodaysSOTD() {
 
 	// 3. Clear old stats and save the new game state to the database
 	try {
-		clearSOTDStats.run();
-		deleteSOTD.run();
-		insertSOTD.run({
+		await solitaireService.clearSOTDStats();
+		await solitaireService.deleteSOTD();
+		await solitaireService.insertSOTD({
 			tableauPiles: JSON.stringify(todaysSOTD.tableauPiles),
 			foundationPiles: JSON.stringify(todaysSOTD.foundationPiles),
 			stockPile: JSON.stringify(todaysSOTD.stockPile),

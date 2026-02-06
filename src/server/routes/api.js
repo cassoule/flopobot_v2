@@ -1,27 +1,14 @@
 import express from "express";
 import { sleep } from "openai/core";
+import Stripe from "stripe";
 
-// --- Database Imports ---
-import {
-	getAllAkhys,
-	getAllUsers,
-	getLogs,
-	getMarketOffersBySkin,
-	getOfferBids,
-	getSkin,
-	getUser,
-	getUserElo,
-	getUserGames,
-	getUserInventory,
-	getUserLogs,
-	getUsersByElo,
-	insertLog,
-	insertUser,
-	pruneOldLogs,
-	queryDailyReward,
-	updateSkin,
-	updateUserCoins,
-} from "../../database/index.js";
+// --- Service Imports ---
+import * as userService from "../../services/user.service.js";
+import * as gameService from "../../services/game.service.js";
+import * as skinService from "../../services/skin.service.js";
+import * as logService from "../../services/log.service.js";
+import * as transactionService from "../../services/transaction.service.js";
+import * as marketService from "../../services/market.service.js";
 
 // --- Game State Imports ---
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
@@ -52,9 +39,9 @@ export function apiRoutes(client, io) {
 		res.status(200).json({ status: "OK", message: "FlopoBot API is running." });
 	});
 
-	router.get("/users", (req, res) => {
+	router.get("/users", async (req, res) => {
 		try {
-			const users = getAllUsers.all();
+			const users = await userService.getAllUsers();
 			res.json(users);
 		} catch (error) {
 			console.error("Error fetching users:", error);
@@ -62,9 +49,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.get("/akhys", (req, res) => {
+	router.get("/akhys", async (req, res) => {
 		try {
-			const akhys = getAllAkhys.all();
+			const akhys = await userService.getAllAkhys();
 			res.json(akhys);
 		} catch (error) {
 			console.error("Error fetching akhys:", error);
@@ -77,7 +64,7 @@ export function apiRoutes(client, io) {
 		const discordUser = await client.users.fetch(discordUserId);
 
 		try {
-			insertUser.run({
+			await userService.insertUser({
 				id: discordUser.id,
 				username: discordUser.username,
 				globalName: discordUser.globalName,
@@ -89,14 +76,14 @@ export function apiRoutes(client, io) {
 				isAkhy: 0,
 			});
 
-			updateUserCoins.run({ id: discordUser.id, coins: 5000 });
-			insertLog.run({
+			await userService.updateUserCoins(discordUser.id, 5000);
+			await logService.insertLog({
 				id: `${discordUser.id}-welcome-${Date.now()}`,
-				user_id: discordUser.id,
+				userId: discordUser.id,
 				action: "WELCOME_BONUS",
-				target_user_id: null,
-				coins_amount: 5000,
-				user_new_amount: 5000,
+				targetUserId: null,
+				coinsAmount: 5000,
+				userNewAmount: 5000,
 			});
 
 			console.log(`New registered user: ${discordUser.username} (${discordUser.id})`);
@@ -137,7 +124,7 @@ export function apiRoutes(client, io) {
 			default:
 				return res.status(400).json({ error: "Invalid case type." });
 		}
-		const commandUser = getUser.get(userId);
+		const commandUser = await userService.getUser(userId);
 		if (!commandUser) return res.status(404).json({ error: "User not found." });
 		const valoPrice = caseTypeVal;
 		if (commandUser.coins < valoPrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
@@ -145,24 +132,21 @@ export function apiRoutes(client, io) {
 		try {
 			const selectedSkins = await drawCaseContent(caseType);
 
-			const result = drawCaseSkin(selectedSkins);
+			const result = await drawCaseSkin(selectedSkins);
 
 			// --- Update Database ---
-			insertLog.run({
+			await logService.insertLog({
 				id: `${userId}-${Date.now()}`,
-				user_id: userId,
+				userId: userId,
 				action: "VALO_CASE_OPEN",
-				target_user_id: null,
-				coins_amount: -valoPrice,
-				user_new_amount: commandUser.coins - valoPrice,
+				targetUserId: null,
+				coinsAmount: -valoPrice,
+				userNewAmount: commandUser.coins - valoPrice,
 			});
-			updateUserCoins.run({
-				id: userId,
-				coins: commandUser.coins - valoPrice,
-			});
-			updateSkin.run({
+			await userService.updateUserCoins(userId, commandUser.coins - valoPrice);
+			await skinService.updateSkin({
 				uuid: result.randomSkinData.uuid,
-				user_id: userId,
+				userId: userId,
 				currentLvl: result.randomLevel,
 				currentChroma: result.randomChroma,
 				currentPrice: result.finalPrice,
@@ -171,7 +155,7 @@ export function apiRoutes(client, io) {
 			console.log(
 				`${commandUser.username} opened a ${caseType} Valorant case and received skin ${result.randomSelectedSkinUuid}`,
 			);
-			const updatedSkin = getSkin.get(result.randomSkinData.uuid);
+			const updatedSkin = await skinService.getSkin(result.randomSkinData.uuid);
 			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
 			
 			const contentSkins = selectedSkins.map((item) => { 
@@ -199,14 +183,15 @@ export function apiRoutes(client, io) {
 		const { type } = req.params;
 		try {
 			const selectedSkins = await drawCaseContent(type, -1);
-			selectedSkins.forEach((item) => {
+			for (const item of selectedSkins) {
 				item.isMelee = isMeleeSkin(item.displayName);
 				item.isVCT = isVCTSkin(item.displayName);
 				item.isChampions = isChampionsSkin(item.displayName);
 				item.vctRegion = getVCTRegion(item.displayName);
-				item.basePrice = getSkin.get(item.uuid).basePrice;
-				item.maxPrice = getSkin.get(item.uuid).maxPrice;
-			});
+				const skinData = await skinService.getSkin(item.uuid);
+				item.basePrice = skinData.basePrice;
+				item.maxPrice = skinData.maxPrice;
+			}
 			res.json({ skins: selectedSkins.sort((a, b) => b.maxPrice - a.maxPrice) });
 		} catch (error) {
 			console.error("Error fetching case content:", error);
@@ -246,47 +231,44 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/skin/:uuid/instant-sell", (req, res) => {
+	router.post("/skin/:uuid/instant-sell", async (req, res) => {
 		const { userId } = req.body;
 		try {
-			const skin = getSkin.get(req.params.uuid);
+			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
 			if (
 				!skinData
 			) {
 				return res.status(403).json({ error: "Invalid skin." });
 			}
-			if (skin.user_id !== userId) {
+			if (skin.userId !== userId) {
 				return res.status(403).json({ error: "User does not own this skin." });
 			}
 
-			const marketOffers = getMarketOffersBySkin.all(skin.uuid);
+			const marketOffers = await marketService.getMarketOffersBySkin(skin.uuid);
 			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
 			if (activeOffers.length > 0) {
 				return res.status(403).json({ error: "Impossible de vendre ce skin, une offre FlopoMarket est déjà en cours." });
 			}
 
-			const commandUser = getUser.get(userId);
+			const commandUser = await userService.getUser(userId);
 			if (!commandUser) {
 				return res.status(404).json({ error: "User not found." });
 			}
 			const sellPrice = skin.currentPrice;
 
-			insertLog.run({
+			await logService.insertLog({
 				id: `${userId}-${Date.now()}`,
-				user_id: userId,
+				userId: userId,
 				action: "VALO_SKIN_INSTANT_SELL",
-				target_user_id: null,
-				coins_amount: sellPrice,
-				user_new_amount: commandUser.coins + sellPrice,
+				targetUserId: null,
+				coinsAmount: sellPrice,
+				userNewAmount: commandUser.coins + sellPrice,
 			});
-			updateUserCoins.run({
-				id: userId,
-				coins: commandUser.coins + sellPrice,
-			});
-			updateSkin.run({
+			await userService.updateUserCoins(userId, commandUser.coins + sellPrice);
+			await skinService.updateSkin({
 				uuid: skin.uuid,
-				user_id: null,
+				userId: null,
 				currentLvl: null,
 				currentChroma: null,
 				currentPrice: null,
@@ -299,9 +281,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.get("/skin-upgrade/:uuid/fetch", (req, res) => {
+	router.get("/skin-upgrade/:uuid/fetch", async (req, res) => {
 		try {
-			const skin = getSkin.get(req.params.uuid);
+			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
 			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
 
@@ -321,7 +303,7 @@ export function apiRoutes(client, io) {
 	router.post("/skin-upgrade/:uuid", async (req, res) => {
 		const { userId } = req.body;
 		try {
-			const skin = getSkin.get(req.params.uuid);
+			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
 			if (
 				!skinData ||
@@ -329,17 +311,17 @@ export function apiRoutes(client, io) {
 			) {
 				return res.status(403).json({ error: "Skin is already maxed out or invalid skin." });
 			}
-			if (skin.user_id !== userId) {
+			if (skin.userId !== userId) {
 				return res.status(403).json({ error: "User does not own this skin." });
 			}
-			const marketOffers = getMarketOffersBySkin.all(skin.uuid);
+			const marketOffers = await marketService.getMarketOffersBySkin(skin.uuid);
 			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
 			if (activeOffers.length > 0) {
 				return res.status(403).json({ error: "Impossible d'améliorer ce skin, une offre FlopoMarket est en cours." });
 			}
 			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
 
-			const commandUser = getUser.get(userId);
+			const commandUser = await userService.getUser(userId);
 			if (!commandUser) {
 				return res.status(404).json({ error: "User not found." });
 			}
@@ -347,18 +329,15 @@ export function apiRoutes(client, io) {
 				return res.status(403).json({ error: `Pas assez de FlopoCoins (${upgradePrice} requis).` });
 			}
 		
-			insertLog.run({
+			await logService.insertLog({
 				id: `${userId}-${Date.now()}`,
-				user_id: userId,
+				userId: userId,
 				action: "VALO_SKIN_UPGRADE",
-				target_user_id: null,
-				coins_amount: -upgradePrice,
-				user_new_amount: commandUser.coins - upgradePrice,
+				targetUserId: null,
+				coinsAmount: -upgradePrice,
+				userNewAmount: commandUser.coins - upgradePrice,
 			});
-			updateUserCoins.run({
-				id: userId,
-				coins: commandUser.coins - upgradePrice,
-			});
+			await userService.updateUserCoins(userId, commandUser.coins - upgradePrice);
 
 			let succeeded = false;
 			let destructed = false;
@@ -385,17 +364,17 @@ export function apiRoutes(client, io) {
 				};
 				skin.currentPrice = calculatePrice();
 		
-				updateSkin.run({
+				await skinService.updateSkin({
 					uuid: skin.uuid,
-					user_id: skin.user_id,
+					userId: skin.userId,
 					currentLvl: skin.currentLvl,
 					currentChroma: skin.currentChroma,
 					currentPrice: skin.currentPrice,
 				});
 			} else if (destructed) {
-				updateSkin.run({
+				await skinService.updateSkin({
 					uuid: skin.uuid,
-					user_id: null,
+					userId: null,
 					currentLvl: null,
 					currentChroma: null,
 					currentPrice: null,
@@ -410,9 +389,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.get("/users/by-elo", (req, res) => {
+	router.get("/users/by-elo", async (req, res) => {
 		try {
-			const users = getUsersByElo.all();
+			const users = await gameService.getUsersByElo();
 			res.json(users);
 		} catch (error) {
 			console.error("Error fetching users by Elo:", error);
@@ -422,8 +401,8 @@ export function apiRoutes(client, io) {
 
 	router.get("/logs", async (req, res) => {
 		try {
-			await pruneOldLogs();
-			const logs = getLogs.all();
+			await logService.pruneOldLogs();
+			const logs = await logService.getLogs();
 			res.status(200).json(logs);
 		} catch (error) {
 			console.error("Error fetching logs:", error);
@@ -434,7 +413,7 @@ export function apiRoutes(client, io) {
 	// --- User-Specific Routes ---
 	router.get("/user/:id", async (req, res) => {
 		try {
-			const user = getUser.get(req.params.id);
+			const user = await userService.getUser(req.params.id);
 			res.json({ user });
 		} catch (error) {
 			res.status(404).json({ error: "User not found." });
@@ -462,74 +441,75 @@ export function apiRoutes(client, io) {
 
 	router.get("/user/:id/coins", async (req, res) => {
 		try {
-			const user = getUser.get(req.params.id);
+			const user = await userService.getUser(req.params.id);
 			res.json({ coins: user.coins });
 		} catch (error) {
 			res.status(404).json({ error: "User not found." });
 		}
 	});
 
-	router.get("/user/:id/sparkline", (req, res) => {
+	router.get("/user/:id/sparkline", async (req, res) => {
 		try {
-			const logs = getUserLogs.all({ user_id: req.params.id });
+			const logs = await logService.getUserLogs(req.params.id);
 			res.json({ sparkline: logs });
 		} catch (error) {
 			res.status(500).json({ error: "Failed to fetch logs for sparkline." });
 		}
 	});
 
-	router.get("/user/:id/elo", (req, res) => {
+	router.get("/user/:id/elo", async (req, res) => {
 		try {
-			const eloData = getUserElo.get({ id: req.params.id });
+			const eloData = await gameService.getUserElo(req.params.id);
 			res.json({ elo: eloData?.elo || null });
 		} catch (e) {
 			res.status(500).json({ error: "Failed to fetch Elo data." });
 		}
 	});
 
-	router.get("/user/:id/elo-graph", (req, res) => {
+	router.get("/user/:id/elo-graph", async (req, res) => {
 		try {
-			const games = getUserGames.all({ user_id: req.params.id });
+			const games = await gameService.getUserGames(req.params.id);
 			const eloHistory = games
 				.filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD')
 				.filter((game) => game.p2 !== null)
-				.map((game) => (game.p1 === req.params.id ? game.p1_new_elo : game.p2_new_elo));
+				.map((game) => (game.p1 === req.params.id ? game.p1NewElo : game.p2NewElo));
 			eloHistory.splice(0, 0, 1000);
-			res.json({ elo_graph: eloHistory });
+			res.json({ eloGraph: eloHistory });
 		} catch (e) {
 			res.status(500).json({ error: "Failed to generate Elo graph." });
 		}
 	});
 
-	router.get("/user/:id/inventory", (req, res) => {
+	router.get("/user/:id/inventory", async (req, res) => {
 		try {
-			const inventory = getUserInventory.all({ user_id: req.params.id });
-			inventory.forEach((skin) => {
-				const marketOffers = getMarketOffersBySkin.all(skin.uuid);
-				marketOffers.forEach((offer) => {
-					offer.skin = getSkin.get(offer.skin_uuid);
-					offer.seller = getUser.get(offer.seller_id);
-					offer.buyer = getUser.get(offer.buyer_id) || null;
-					offer.bids = getOfferBids.all(offer.id) || {};
-					offer.bids.forEach((bid) => {
-						bid.bidder = getUser.get(bid.bidder_id);
-					});
-				});
+			const inventory = await skinService.getUserInventory(req.params.id);
+			for (const skin of inventory) {
+				const marketOffers = await marketService.getMarketOffersBySkin(skin.uuid);
+				for (const offer of marketOffers) {
+					offer.skin = await skinService.getSkin(offer.skinUuid);
+					offer.seller = await userService.getUser(offer.sellerId);
+					offer.buyer = offer.buyerId ? await userService.getUser(offer.buyerId) : null;
+					offer.bids = await marketService.getOfferBids(offer.id) || {};
+					for (const bid of offer.bids) {
+						bid.bidder = await userService.getUser(bid.bidderId);
+					}
+				}
 				skin.offers = marketOffers || {};
 				skin.isMelee = isMeleeSkin(skin.displayName);
 				skin.isVCT = isVCTSkin(skin.displayName);
 				skin.isChampions = isChampionsSkin(skin.displayName);
 				skin.vctRegion = getVCTRegion(skin.displayName);
-			});
+			}
 			res.json({ inventory });
 		} catch (error) {
+			console.log(error);
 			res.status(500).json({ error: "Failed to fetch inventory." });
 		}
 	});
 
 	router.get("/user/:id/games-history", async (req, res) => {
 		try {
-			const games = getUserGames.all({ user_id: req.params.id }).filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD').reverse().slice(0, 50);
+			const games = (await gameService.getUserGames(req.params.id)).filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD').reverse().slice(0, 50);
 			res.json({ games });
 		} catch (err) {
 			res.status(500).json({ error: "Failed to fetch games history." });
@@ -539,21 +519,21 @@ export function apiRoutes(client, io) {
 	router.get("/user/:id/daily", async (req, res) => {
 		const { id } = req.params;
 		try {
-			const akhy = getUser.get(id);
+			const akhy = await userService.getUser(id);
 			if (!akhy) return res.status(404).json({ message: "Utilisateur introuvable" });
 			if (akhy.dailyQueried) return res.status(403).json({ message: "Récompense journalière déjà récupérée." });
 
 			const amount = 500;
 			const newCoins = akhy.coins + amount;
-			queryDailyReward.run(id);
-			updateUserCoins.run({ id, coins: newCoins });
-			insertLog.run({
+			await userService.queryDailyReward(id);
+			await userService.updateUserCoins(id, newCoins);
+			await logService.insertLog({
 				id: `${id}-daily-${Date.now()}`,
-				user_id: id,
+				userId: id,
 				action: "DAILY_REWARD",
-				target_user_id: null,
-				coins_amount: amount,
-				user_new_amount: newCoins,
+				targetUserId: null,
+				coinsAmount: amount,
+				userNewAmount: newCoins,
 			});
 
 			await socketEmit("daily-queried", { userId: id });
@@ -584,7 +564,7 @@ export function apiRoutes(client, io) {
 
 	router.post("/change-nickname", async (req, res) => {
 		const { userId, nickname, commandUserId } = req.body;
-		const commandUser = getUser.get(commandUserId);
+		const commandUser = await userService.getUser(commandUserId);
 		if (!commandUser) return res.status(404).json({ message: "Command user not found." });
 		if (commandUser.coins < 1000) return res.status(403).json({ message: "Pas assez de FlopoCoins (1000 requis)." });
 
@@ -595,14 +575,14 @@ export function apiRoutes(client, io) {
 			await member.setNickname(nickname);
 
 			const newCoins = commandUser.coins - 1000;
-			updateUserCoins.run({ id: commandUserId, coins: newCoins });
-			insertLog.run({
+			await userService.updateUserCoins(commandUserId, newCoins);
+			await logService.insertLog({
 				id: `${commandUserId}-changenick-${Date.now()}`,
-				user_id: commandUserId,
+				userId: commandUserId,
 				action: "CHANGE_NICKNAME",
-				target_user_id: userId,
-				coins_amount: -1000,
-				user_new_amount: newCoins,
+				targetUserId: userId,
+				coinsAmount: -1000,
+				userNewAmount: newCoins,
 			});
 
 			console.log(`${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`);
@@ -635,8 +615,8 @@ export function apiRoutes(client, io) {
 	router.post("/spam-ping", async (req, res) => {
 		const { userId, commandUserId } = req.body;
 
-		const user = getUser.get(userId);
-		const commandUser = getUser.get(commandUserId);
+		const user = await userService.getUser(userId);
+		const commandUser = await userService.getUser(commandUserId);
 
 		if (!commandUser || !user) return res.status(404).json({ message: "Oups petit soucis" });
 
@@ -649,17 +629,14 @@ export function apiRoutes(client, io) {
 
 			res.status(200).json({ message: "C'est parti ehehe" });
 
-			updateUserCoins.run({
-				id: commandUserId,
-				coins: commandUser.coins - 5000,
-			});
-			insertLog.run({
+			await userService.updateUserCoins(commandUserId, commandUser.coins - 5000);
+			await logService.insertLog({
 				id: commandUserId + "-" + Date.now(),
-				user_id: commandUserId,
+				userId: commandUserId,
 				action: "SPAM_PING",
-				target_user_id: userId,
-				coins_amount: -5000,
-				user_new_amount: commandUser.coins - 5000,
+				targetUserId: userId,
+				coinsAmount: -5000,
+				userNewAmount: commandUser.coins - 5000,
 			});
 			await emitDataUpdated({ table: "users", action: "update" });
 
@@ -695,8 +672,8 @@ export function apiRoutes(client, io) {
 	router.post("/slowmode", async (req, res) => {
 		let { userId, commandUserId } = req.body;
 
-		const user = getUser.get(userId);
-		const commandUser = getUser.get(commandUserId);
+		const user = await userService.getUser(userId);
+		const commandUser = await userService.getUser(commandUserId);
 
 		if (!commandUser || !user) return res.status(404).json({ message: "Oups petit soucis" });
 
@@ -709,17 +686,14 @@ export function apiRoutes(client, io) {
 				delete activeSlowmodes[userId];
 				await socketEmit("new-slowmode", { action: "new slowmode" });
 
-				updateUserCoins.run({
-					id: commandUserId,
-					coins: commandUser.coins - 10000,
-				});
-				insertLog.run({
+				await userService.updateUserCoins(commandUserId, commandUser.coins - 10000);
+				await logService.insertLog({
 					id: commandUserId + "-" + Date.now(),
-					user_id: commandUserId,
+					userId: commandUserId,
 					action: "SLOWMODE",
-					target_user_id: userId,
-					coins_amount: -10000,
-					user_new_amount: commandUser.coins - 10000,
+					targetUserId: userId,
+					coinsAmount: -10000,
+					userNewAmount: commandUser.coins - 10000,
 				});
 
 				try {
@@ -754,17 +728,14 @@ export function apiRoutes(client, io) {
 		};
 		await socketEmit("new-slowmode", { action: "new slowmode" });
 
-		updateUserCoins.run({
-			id: commandUserId,
-			coins: commandUser.coins - 10000,
-		});
-		insertLog.run({
+		await userService.updateUserCoins(commandUserId, commandUser.coins - 10000);
+		await logService.insertLog({
 			id: commandUserId + "-" + Date.now(),
-			user_id: commandUserId,
+			userId: commandUserId,
 			action: "SLOWMODE",
-			target_user_id: userId,
-			coins_amount: -10000,
-			user_new_amount: commandUser.coins - 10000,
+			targetUserId: userId,
+			coinsAmount: -10000,
+			userNewAmount: commandUser.coins - 10000,
 		});
 		await emitDataUpdated({ table: "users", action: "update" });
 
@@ -791,8 +762,8 @@ export function apiRoutes(client, io) {
 	router.post("/timeout", async (req, res) => {
 		let { userId, commandUserId } = req.body;
 
-		const user = getUser.get(userId);
-		const commandUser = getUser.get(commandUserId);
+		const user = await userService.getUser(userId);
+		const commandUser = await userService.getUser(commandUserId);
 
 		if (!commandUser || !user) return res.status(404).json({ message: "Oups petit soucis" });
 
@@ -825,17 +796,14 @@ export function apiRoutes(client, io) {
 				return res.status(403).send({ message: `Impossible de time-out ${user.globalName}` });
 			}
 
-			updateUserCoins.run({
-				id: commandUserId,
-				coins: commandUser.coins - 10000,
-			});
-			insertLog.run({
+			await userService.updateUserCoins(commandUserId, commandUser.coins - 10000);
+			await logService.insertLog({
 				id: commandUserId + "-" + Date.now(),
-				user_id: commandUserId,
+				userId: commandUserId,
 				action: "TIMEOUT",
-				target_user_id: userId,
-				coins_amount: -10000,
-				user_new_amount: commandUser.coins - 10000,
+				targetUserId: userId,
+				coinsAmount: -10000,
+				userNewAmount: commandUser.coins - 10000,
 			});
 
 			try {
@@ -874,17 +842,14 @@ export function apiRoutes(client, io) {
 
 		await socketEmit("new-timeout", { action: "new timeout" });
 
-		updateUserCoins.run({
-			id: commandUserId,
-			coins: commandUser.coins - 100000,
-		});
-		insertLog.run({
+		await userService.updateUserCoins(commandUserId, commandUser.coins - 100000);
+		await logService.insertLog({
 			id: commandUserId + "-" + Date.now(),
-			user_id: commandUserId,
+			userId: commandUserId,
 			action: "TIMEOUT",
-			target_user_id: userId,
-			coins_amount: -100000,
-			user_new_amount: commandUser.coins - 100000,
+			targetUserId: userId,
+			coinsAmount: -100000,
+			userNewAmount: commandUser.coins - 100000,
 		});
 		await emitDataUpdated({ table: "users", action: "update" });
 
@@ -913,7 +878,7 @@ export function apiRoutes(client, io) {
 	router.post("/start-predi", async (req, res) => {
 		let { commandUserId, label, options, closingTime, payoutTime } = req.body;
 
-		const commandUser = getUser.get(commandUserId);
+		const commandUser = await userService.getUser(commandUserId);
 
 		if (!commandUser) return res.status(403).send({ message: "Oups petit problème" });
 		if (commandUser.coins < 100) return res.status(403).send({ message: "Tu n'as pas assez de FlopoCoins" });
@@ -992,17 +957,14 @@ export function apiRoutes(client, io) {
 		};
 		await socketEmit("new-predi", { action: "new predi" });
 
-		updateUserCoins.run({
-			id: commandUserId,
-			coins: commandUser.coins - 100,
-		});
-		insertLog.run({
+		await userService.updateUserCoins(commandUserId, commandUser.coins - 100);
+		await logService.insertLog({
 			id: commandUserId + "-" + Date.now(),
-			user_id: commandUserId,
+			userId: commandUserId,
 			action: "START_PREDI",
-			target_user_id: null,
-			coins_amount: -100,
-			user_new_amount: commandUser.coins - 100,
+			targetUserId: null,
+			coinsAmount: -100,
+			userNewAmount: commandUser.coins - 100,
 		});
 		await emitDataUpdated({ table: "users", action: "update" });
 
@@ -1017,7 +979,7 @@ export function apiRoutes(client, io) {
 		let intAmount = parseInt(amount);
 		if (intAmount < 10 || intAmount > 250000) return res.status(403).send({ message: "Montant invalide" });
 
-		const commandUser = getUser.get(commandUserId);
+		const commandUser = await userService.getUser(commandUserId);
 		if (!commandUser) return res.status(403).send({ message: "Oups, je ne te connais pas" });
 		if (commandUser.coins < intAmount) return res.status(403).send({ message: "Tu n'as pas assez de FlopoCoins" });
 
@@ -1063,17 +1025,14 @@ export function apiRoutes(client, io) {
 
 		await socketEmit("new-predi", { action: "new vote" });
 
-		updateUserCoins.run({
-			id: commandUserId,
-			coins: commandUser.coins - intAmount,
-		});
-		insertLog.run({
+		await userService.updateUserCoins(commandUserId, commandUser.coins - intAmount);
+		await logService.insertLog({
 			id: commandUserId + "-" + Date.now(),
-			user_id: commandUserId,
+			userId: commandUserId,
 			action: "PREDI_VOTE",
-			target_user_id: null,
-			coins_amount: -intAmount,
-			user_new_amount: commandUser.coins - intAmount,
+			targetUserId: null,
+			coinsAmount: -intAmount,
+			userNewAmount: commandUser.coins - intAmount,
 		});
 		await emitDataUpdated({ table: "users", action: "update" });
 
@@ -1083,7 +1042,7 @@ export function apiRoutes(client, io) {
 	router.post("/end-predi", async (req, res) => {
 		const { commandUserId, predi, confirm, winningOption } = req.body;
 
-		const commandUser = getUser.get(commandUserId);
+		const commandUser = await userService.getUser(commandUserId);
 		if (!commandUser) return res.status(403).send({ message: "Oups, je ne te connais pas" });
 		if (commandUserId !== process.env.DEV_ID)
 			return res.status(403).send({ message: "Tu n'as pas les permissions requises" });
@@ -1094,70 +1053,61 @@ export function apiRoutes(client, io) {
 
 		if (!confirm) {
 			activePredis[predi].cancelledTime = new Date();
-			activePredis[predi].options[0].votes.forEach((v) => {
-				const tempUser = getUser.get(v.id);
+			for (const v of activePredis[predi].options[0].votes) {
+				const tempUser = await userService.getUser(v.id);
 				try {
-					updateUserCoins.run({
-						id: v.id,
-						coins: tempUser.coins + v.amount,
-					});
-					insertLog.run({
+					await userService.updateUserCoins(v.id, tempUser.coins + v.amount);
+					await logService.insertLog({
 						id: v.id + "-" + Date.now(),
-						user_id: v.id,
+						userId: v.id,
 						action: "PREDI_REFUND",
-						target_user_id: v.id,
-						coins_amount: v.amount,
-						user_new_amount: tempUser.coins + v.amount,
+						targetUserId: v.id,
+						coinsAmount: v.amount,
+						userNewAmount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
 					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
-			});
-			activePredis[predi].options[1].votes.forEach((v) => {
-				const tempUser = getUser.get(v.id);
+			}
+			for (const v of activePredis[predi].options[1].votes) {
+				const tempUser = await userService.getUser(v.id);
 				try {
-					updateUserCoins.run({
-						id: v.id,
-						coins: tempUser.coins + v.amount,
-					});
-					insertLog.run({
+					await userService.updateUserCoins(v.id, tempUser.coins + v.amount);
+					await logService.insertLog({
 						id: v.id + "-" + Date.now(),
-						user_id: v.id,
+						userId: v.id,
 						action: "PREDI_REFUND",
-						target_user_id: v.id,
-						coins_amount: v.amount,
-						user_new_amount: tempUser.coins + v.amount,
+						targetUserId: v.id,
+						coinsAmount: v.amount,
+						userNewAmount: tempUser.coins + v.amount,
 					});
 				} catch (e) {
 					console.log(`Impossible de rembourser ${v.id} (${v.amount} coins)`);
 				}
-			});
+			}
 			activePredis[predi].closed = true;
 		} else {
 			const losingOption = winningOption === 0 ? 1 : 0;
-			activePredis[predi].options[winningOption].votes.forEach((v) => {
-				const tempUser = getUser.get(v.id);
+			for (const v of activePredis[predi].options[winningOption].votes) {
+				const tempUser = await userService.getUser(v.id);
 				const ratio =
 					activePredis[predi].options[winningOption].total === 0
 						? 0
 						: activePredis[predi].options[losingOption].total / activePredis[predi].options[winningOption].total;
 				try {
-					updateUserCoins.run({
-						id: v.id,
-						coins: tempUser.coins + v.amount * (1 + ratio),
-					});
-					insertLog.run({
+					await userService.updateUserCoins(v.id, tempUser.coins + v.amount * (1 + ratio));
+					await logService.insertLog({
 						id: v.id + "-" + Date.now(),
-						user_id: v.id,
+						userId: v.id,
 						action: "PREDI_RESULT",
-						target_user_id: v.id,
-						coins_amount: v.amount * (1 + ratio),
-						user_new_amount: tempUser.coins + v.amount * (1 + ratio),
+						targetUserId: v.id,
+						coinsAmount: v.amount * (1 + ratio),
+						userNewAmount: tempUser.coins + v.amount * (1 + ratio),
 					});
 				} catch (e) {
 					console.log(`Impossible de créditer ${v.id} (${v.amount} coins pariés, *${1 + ratio})`);
 				}
-			});
+			}
 			activePredis[predi].paidTime = new Date();
 			activePredis[predi].closed = true;
 			activePredis[predi].winning = winningOption;
@@ -1208,18 +1158,18 @@ export function apiRoutes(client, io) {
 		const { discordId, score, isWin } = req.body;
 		console.log(`[SNAKE][SOLO]${discordId}: score=${score}, isWin=${isWin}`);
 		try {
-			const user = getUser.get(discordId);
+			const user = await userService.getUser(discordId);
 			if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
 			const reward =  isWin ? score * 2 : score;
 			const newCoins = user.coins + reward;
-			updateUserCoins.run({ id: discordId, coins: newCoins });
-			insertLog.run({
+			await userService.updateUserCoins(discordId, newCoins);
+			await logService.insertLog({
 				id: `${discordId}-snake-reward-${Date.now()}`,
-				user_id: discordId,
+				userId: discordId,
 				action: "SNAKE_GAME_REWARD",
-				coins_amount: reward,
-				user_new_amount: newCoins,
-				target_user_id: null,
+				coinsAmount: reward,
+				userNewAmount: newCoins,
+				targetUserId: null,
 			});
 			await emitDataUpdated({ table: "users", action: "update" });
 			return res.status(200).json({ message: `Récompense de ${reward} FlopoCoins attribuée !` });
@@ -1277,24 +1227,174 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	// --- Admin Routes ---
+	// Fixed coin offers - server-side source of truth
+	const COIN_OFFERS = [
+		{ id: "offer_5000", coins: 5000, amount_cents: 99, label: "5 000 FlopoCoins" },
+		{ id: "offer_20000", coins: 20000, amount_cents: 299, label: "20 000 FlopoCoins" },
+		{ id: "offer_40000", coins: 40000, amount_cents: 499, label: "40 000 FlopoCoins" },
+		{ id: "offer_100000", coins: 100000, amount_cents: 999, label: "100 000 FlopoCoins" },
+	];
 
-	router.post("/buy-coins", (req, res) => {
-		const { commandUserId, coins } = req.body;
-		const user = getUser.get(commandUserId);
-		if (!user) return res.status(404).json({ error: "User not found" });
+	router.get("/coin-offers", (req, res) => {
+		res.json({ offers: COIN_OFFERS });
+	});
 
-		const newCoins = user.coins + coins;
-		updateUserCoins.run({ id: commandUserId, coins: newCoins });
-		insertLog.run({
-			id: `${commandUserId}-buycoins-${Date.now()}`,
-			user_id: commandUserId,
-			action: "BUY_COINS_ADMIN",
-			coins_amount: coins,
-			user_new_amount: newCoins,
-		});
+	router.post("/create-checkout-session", async (req, res) => {
+		const { userId, offerId } = req.body;
 
-		res.status(200).json({ message: `Added ${coins} coins.` });
+		if (!userId || !offerId) {
+			return res.status(400).json({ error: "Missing required fields: userId, offerId" });
+		}
+
+		const offer = COIN_OFFERS.find((o) => o.id === offerId);
+		if (!offer) {
+			return res.status(400).json({ error: "Invalid offer" });
+		}
+
+		const user = await userService.getUser(userId);
+		if (!user) {
+			return res.status(404).json({ error: "User not found" });
+		}
+
+		try {
+			const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+			const FLAPI_URL = process.env.DEV_SITE === "true" ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL;
+
+			const session = await stripe.checkout.sessions.create({
+				payment_method_types: ['card'],
+				line_items: [
+					{
+						price_data: {
+							currency: 'eur',
+							product_data: {
+								name: offer.label,
+								description: `Achat de ${offer.label} pour FlopoBot`,
+							},
+							unit_amount: offer.amount_cents,
+						},
+						quantity: 1,
+					},
+				],
+				mode: 'payment',
+				success_url: `${FLAPI_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+				cancel_url: `${FLAPI_URL}/dashboard`,
+				metadata: {
+					userId: userId,
+					coins: offer.coins.toString(),
+				},
+			});
+
+			console.log(`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`);
+
+			res.json({ sessionId: session.id });
+		} catch (error) {
+			console.error("Error creating checkout session:", error);
+			res.status(500).json({ error: "Failed to create checkout session" });
+		}
+	});
+
+	router.post("/buy-coins", async (req, res) => {
+		const sig = req.headers['stripe-signature'];
+		const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+		if (!endpointSecret) {
+			console.error("STRIPE_WEBHOOK_SECRET not configured");
+			return res.status(500).json({ error: "Webhook not configured" });
+		}
+
+		let event;
+		
+		try {
+			// Verify webhook signature - requires raw body
+			// Note: You need to configure Express to preserve raw body for this route
+			const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+			event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+		} catch (err) {
+			console.error(`Webhook signature verification failed: ${err.message}`);
+			return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+		}
+
+		// Handle the event
+		if (event.type === 'checkout.session.completed') {
+			const session = event.data.object;
+			
+			// Extract metadata from the checkout session
+			const commandUserId = session.metadata?.userId;
+			const expectedCoins = parseInt(session.metadata?.coins);
+			const amountPaid = session.amount_total; // in cents
+			const currency = session.currency;
+			const customerEmail = session.customer_details?.email;
+			const customerName = session.customer_details?.name;
+			
+			// Validate metadata exists
+			if (!commandUserId || !expectedCoins) {
+				console.error("Missing userId or coins in session metadata");
+				return res.status(400).json({ error: "Invalid session metadata" });
+			}
+
+			// Verify payment was successful
+			if (session.payment_status !== 'paid') {
+				console.error(`Payment not completed for session ${session.id}`);
+				return res.status(400).json({ error: "Payment not completed" });
+			}
+
+			// Check for duplicate processing (idempotency)
+			const existingTransaction = await transactionService.getTransactionBySessionId(session.id);
+			if (existingTransaction) {
+				console.log(`Payment already processed: ${session.id}`);
+				return res.status(200).json({ message: "Already processed" });
+			}
+
+			// Get user
+			const user = await userService.getUser(commandUserId);
+			if (!user) {
+				console.error(`User not found: ${commandUserId}`);
+				return res.status(404).json({ error: "User not found" });
+			}
+
+			// Update coins
+			const newCoins = user.coins + expectedCoins;
+			await userService.updateUserCoins(commandUserId, newCoins);
+
+			// Insert transaction record
+			const transactionId = `${commandUserId}-transaction-${Date.now()}`;
+			await transactionService.insertTransaction({
+				id: transactionId,
+				sessionId: session.id,
+				userId: commandUserId,
+				coinsAmount: expectedCoins,
+				amountCents: amountPaid,
+				currency: currency,
+				customerEmail: customerEmail,
+				customerName: customerName,
+				paymentStatus: session.payment_status,
+			});
+
+			// Insert log entry
+			await logService.insertLog({
+				id: `${commandUserId}-buycoins-${Date.now()}`,
+				userId: commandUserId,
+				action: "BUY_COINS",
+				targetUserId: null,
+				coinsAmount: expectedCoins,
+				userNewAmount: newCoins,
+			});
+
+			console.log(`Payment processed: ${commandUserId} purchased ${expectedCoins} coins for ${amountPaid/100} ${currency}`);
+
+			// Notify user via Discord if possible
+			try {
+				const discordUser = await client.users.fetch(commandUserId);
+				await discordUser.send(`✅ Votre achat de ${expectedCoins} FlopoCoins a été confirmé ! Merci pour votre soutien !`);
+			} catch (e) {
+				console.log(`Could not DM user ${commandUserId}:`, e.message);
+			}
+
+			return res.status(200).json({ message: `Added ${expectedCoins} coins.` });
+		}
+
+		// Return 200 for unhandled event types (Stripe requires this)
+		res.status(200).json({ received: true });
 	});
 
 	return router;

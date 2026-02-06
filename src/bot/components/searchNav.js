@@ -65,12 +65,12 @@ export async function handleSearchNav(req, res, client) {
 
 		// Fetch owner details if the skin is owned
 		let ownerText = "";
-		if (currentSkin.user_id) {
+		if (currentSkin.userId) {
 			try {
-				const owner = await client.users.fetch(currentSkin.user_id);
+				const owner = await client.users.fetch(currentSkin.userId);
 				ownerText = `| **@${owner.globalName || owner.username}** ✅`;
 			} catch (e) {
-				console.warn(`Could not fetch owner for user ID: ${currentSkin.user_id}`);
+				console.warn(`Could not fetch owner for user ID: ${currentSkin.userId}`);
 				ownerText = "| Appartenant à un utilisateur inconnu";
 			}
 		}

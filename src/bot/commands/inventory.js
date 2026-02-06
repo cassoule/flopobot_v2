@@ -5,7 +5,7 @@ import {
 	InteractionResponseFlags,
 } from "discord-interactions";
 import { activeInventories, skins } from "../../game/state.js";
-import { getUserInventory } from "../../database/index.js";
+import * as skinService from "../../services/skin.service.js";
 
 /**
  * Handles the /inventory slash command.
@@ -33,7 +33,7 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 		// --- 1. Fetch Data ---
 		const guild = await client.guilds.fetch(guild_id);
 		const targetMember = await guild.members.fetch(targetUserId);
-		const inventorySkins = getUserInventory.all({ user_id: targetUserId });
+		const inventorySkins = await skinService.getUserInventory(targetUserId);
 
 		// --- 2. Handle Empty Inventory ---
 		if (inventorySkins.length === 0) {
