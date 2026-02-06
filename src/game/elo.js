@@ -47,16 +47,16 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 	const p1Change = K_FACTOR * (p1Score - expectedP1);
 	const p2Change = K_FACTOR * (p2Score - expectedP2);
 
-	// Make losing friendlier: loser loses 80% of what winner gains
+	// Make losing friendlier: loser loses 70% of what winner gains
 	let finalP1Change = p1Change;
 	let finalP2Change = p2Change;
 
 	if (p1Score > p2Score) {
 		// P1 won, P2 lost
-		finalP2Change = p2Change * 0.8;
+		finalP2Change = p2Change * 0.7;
 	} else if (p2Score > p1Score) {
 		// P2 won, P1 lost
-		finalP1Change = p1Change * 0.8;
+		finalP1Change = p1Change * 0.7;
 	}
 	// If it's a draw (p1Score === p2Score), keep the original changes
 
