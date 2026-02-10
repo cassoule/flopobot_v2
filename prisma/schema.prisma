@@ -64,9 +64,9 @@ model MarketOffer {
   buyoutPrice   Int?    @map("buyout_price")
   finalPrice    Int?    @map("final_price")
   status        String
-  postedAt      String? @default(dbgenerated("CURRENT_TIMESTAMP")) @map("posted_at")
-  openingAt     String @map("opening_at")
-  closingAt     String @map("closing_at")
+  postedAt      DateTime? @default(now()) @map("posted_at")
+  openingAt     DateTime @map("opening_at")
+  closingAt     DateTime @map("closing_at")
   buyerId       String? @map("buyer_id")
 
   skin   Skin  @relation(fields: [skinUuid], references: [uuid])
@@ -82,7 +82,7 @@ model Bid {
   bidderId      String  @map("bidder_id")
   marketOfferId String  @map("market_offer_id")
   offerAmount   Int     @map("offer_amount")
-  offeredAt     String? @default(dbgenerated("CURRENT_TIMESTAMP")) @map("offered_at")
+  offeredAt     DateTime? @default(now()) @map("offered_at")
 
   bidder      User        @relation(fields: [bidderId], references: [id])
   marketOffer MarketOffer @relation(fields: [marketOfferId], references: [id])
@@ -97,7 +97,7 @@ model Log {
   targetUserId  String? @map("target_user_id")
   coinsAmount   Int?    @map("coins_amount")
   userNewAmount Int?    @map("user_new_amount")
-  createdAt     String? @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at")
+  createdAt     DateTime? @default(now()) @map("created_at")
 
   user       User  @relation("UserLogs", fields: [userId], references: [id])
   targetUser User? @relation("TargetUserLogs", fields: [targetUserId], references: [id])
@@ -116,7 +116,7 @@ model Game {
   p1NewElo  Int?    @map("p1_new_elo")
   p2NewElo  Int?    @map("p2_new_elo")
   type      String?
-  timestamp String?
+  timestamp DateTime? @default(now()) @map("timestamp")
 
   player1 User  @relation("Player1", fields: [p1], references: [id])
   player2 User? @relation("Player2", fields: [p2], references: [id])
@@ -167,7 +167,7 @@ model Transaction {
   customerEmail String? @map("customer_email")
   customerName  String? @map("customer_name")
   paymentStatus String  @map("payment_status")
-  createdAt     String? @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at")
+  createdAt     DateTime? @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
