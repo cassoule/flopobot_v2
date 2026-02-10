@@ -81,8 +81,8 @@ export function solitaireRoutes(client, io) {
 	router.post("/start/sotd", async (req, res) => {
 		const { userId } = req.body;
 		/*if (!userId || !getUser.get(userId)) {
-            return res.status(404).json({ error: 'User not found.' });
-        }*/
+			return res.status(404).json({ error: 'User not found.' });
+		}*/
 
 		if (activeSolitaireGames[userId]?.isSOTD) {
 			return res.json({

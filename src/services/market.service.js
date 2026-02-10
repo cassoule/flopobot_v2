@@ -1,7 +1,7 @@
 import prisma from "../prisma/client.js";
 
 function toOffer(offer) {
-	return { ...offer, openingAt: offer.openingAt.getTime(), closingAt: offer.closingAt.getTime() };
+	return { ...offer, openingAt: Number(offer.openingAt), closingAt: Number(offer.closingAt) };
 }
 
 export async function getMarketOffers() {
@@ -57,8 +57,8 @@ export async function insertMarketOffer(data) {
 	return prisma.marketOffer.create({
 		data: {
 			...data,
-			openingAt: new Date(data.openingAt),
-			closingAt: new Date(data.closingAt),
+			openingAt: String(data.openingAt),
+			closingAt: String(data.closingAt),
 		},
 	});
 }
