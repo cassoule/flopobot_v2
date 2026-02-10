@@ -54,7 +54,9 @@ export function monkeRoutes(client, io) {
 			return res.status(500).json({ error: "Failed to update user coins" });
 		}
 
-		monkePaths[userId] = [{ round: 0, choice: null, result: null, bet: initialBet, extractValue: null, timestamp: Date.now() }];
+		monkePaths[userId] = [
+			{ round: 0, choice: null, result: null, bet: initialBet, extractValue: null, timestamp: Date.now() },
+		];
 
 		return res.status(200).json({ message: "Monke game started", userGamePath: monkePaths[userId] });
 	});
@@ -70,7 +72,8 @@ export function monkeRoutes(client, io) {
 
 		const currentRound = monkePaths[userId].length - 1;
 		if (step !== currentRound) return res.status(400).json({ error: "Invalid step for the current round" });
-		if (monkePaths[userId][currentRound].choice !== null) return res.status(400).json({ error: "This round has already been played" });
+		if (monkePaths[userId][currentRound].choice !== null)
+			return res.status(400).json({ error: "This round has already been played" });
 		const randomLoseChoice = Math.floor(Math.random() * 3); // 0, 1, or 2
 
 		if (choice !== randomLoseChoice) {
@@ -79,7 +82,14 @@ export function monkeRoutes(client, io) {
 			monkePaths[userId][currentRound].extractValue = Math.round(monkePaths[userId][currentRound].bet * 1.33);
 			monkePaths[userId][currentRound].timestamp = Date.now();
 
-			monkePaths[userId].push({ round: currentRound + 1, choice: null, result: null, bet: monkePaths[userId][currentRound].extractValue, extractValue: null, timestamp: Date.now() });
+			monkePaths[userId].push({
+				round: currentRound + 1,
+				choice: null,
+				result: null,
+				bet: monkePaths[userId][currentRound].extractValue,
+				extractValue: null,
+				timestamp: Date.now(),
+			});
 
 			return res.status(200).json({ message: "Round won", userGamePath: monkePaths[userId], lost: false });
 		} else {

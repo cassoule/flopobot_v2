@@ -1,4 +1,5 @@
 import prisma from "../prisma/client.js";
+import { socketEmit } from "../server/socket.js";
 
 export async function getUser(id) {
 	const user = await prisma.user.findUnique({
@@ -36,6 +37,7 @@ export async function updateUser(data) {
 }
 
 export async function updateUserCoins(id, coins) {
+	await socketEmit("data-updated", { table: "users", action: "update", userId: id, newCoins: coins });
 	return prisma.user.update({ where: { id }, data: { coins } });
 }
 

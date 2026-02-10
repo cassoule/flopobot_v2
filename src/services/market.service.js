@@ -40,15 +40,17 @@ export async function getMarketOffersBySkin(skinUuid) {
 			buyer: { select: { username: true, globalName: true } },
 		},
 	});
-	return offers.map((offer) => toOffer({
-		...offer,
-		skinName: offer.skin?.displayName,
-		skinIcon: offer.skin?.displayIcon,
-		sellerName: offer.seller?.username,
-		sellerGlobalName: offer.seller?.globalName,
-		buyerName: offer.buyer?.username ?? null,
-		buyerGlobalName: offer.buyer?.globalName ?? null,
-	}));
+	return offers.map((offer) =>
+		toOffer({
+			...offer,
+			skinName: offer.skin?.displayName,
+			skinIcon: offer.skin?.displayIcon,
+			sellerName: offer.seller?.username,
+			sellerGlobalName: offer.seller?.globalName,
+			buyerName: offer.buyer?.username ?? null,
+			buyerGlobalName: offer.buyer?.globalName ?? null,
+		}),
+	);
 }
 
 export async function insertMarketOffer(data) {

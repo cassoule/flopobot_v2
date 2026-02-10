@@ -157,15 +157,15 @@ export function apiRoutes(client, io) {
 			);
 			const updatedSkin = await skinService.getSkin(result.randomSkinData.uuid);
 			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
-			
-			const contentSkins = selectedSkins.map((item) => { 
+
+			const contentSkins = selectedSkins.map((item) => {
 				return {
 					...item,
 					isMelee: isMeleeSkin(item.displayName),
 					isVCT: isVCTSkin(item.displayName),
 					isChampions: isChampionsSkin(item.displayName),
 					vctRegion: getVCTRegion(item.displayName),
-				}
+				};
 			});
 			res.json({
 				selectedSkins: contentSkins,
@@ -236,9 +236,7 @@ export function apiRoutes(client, io) {
 		try {
 			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
-			if (
-				!skinData
-			) {
+			if (!skinData) {
 				return res.status(403).json({ error: "Invalid skin." });
 			}
 			if (skin.userId !== userId) {
@@ -248,7 +246,9 @@ export function apiRoutes(client, io) {
 			const marketOffers = await marketService.getMarketOffersBySkin(skin.uuid);
 			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
 			if (activeOffers.length > 0) {
-				return res.status(403).json({ error: "Impossible de vendre ce skin, une offre FlopoMarket est déjà en cours." });
+				return res
+					.status(403)
+					.json({ error: "Impossible de vendre ce skin, une offre FlopoMarket est déjà en cours." });
 			}
 
 			const commandUser = await userService.getUser(userId);
@@ -288,14 +288,14 @@ export function apiRoutes(client, io) {
 			const { successProb, destructionProb, upgradePrice } = getSkinUpgradeProbs(skin, skinData);
 
 			const segments = [
-				{ id: 'SUCCEEDED',   color: '5865f2', percent: successProb, label: 'Réussie' },
-				{ id: 'DESTRUCTED', color: 'f26558', percent: destructionProb, label: 'Détruit' },
-				{ id: 'NONE',   color: '18181818', percent: 1 - successProb - destructionProb, label: 'Échec' },
-			]
-			
+				{ id: "SUCCEEDED", color: "5865f2", percent: successProb, label: "Réussie" },
+				{ id: "DESTRUCTED", color: "f26558", percent: destructionProb, label: "Détruit" },
+				{ id: "NONE", color: "18181818", percent: 1 - successProb - destructionProb, label: "Échec" },
+			];
+
 			res.json({ segments, upgradePrice });
 		} catch (error) {
-			console.log(error)
+			console.log(error);
 			res.status(500).json({ error: "Failed to fetch skin upgrade." });
 		}
 	});
@@ -305,10 +305,7 @@ export function apiRoutes(client, io) {
 		try {
 			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
-			if (
-				!skinData ||
-				(skin.currentLvl >= skinData.levels.length && skin.currentChroma >= skinData.chromas.length)
-			) {
+			if (!skinData || (skin.currentLvl >= skinData.levels.length && skin.currentChroma >= skinData.chromas.length)) {
 				return res.status(403).json({ error: "Skin is already maxed out or invalid skin." });
 			}
 			if (skin.userId !== userId) {
@@ -328,7 +325,7 @@ export function apiRoutes(client, io) {
 			if (commandUser.coins < upgradePrice) {
 				return res.status(403).json({ error: `Pas assez de FlopoCoins (${upgradePrice} requis).` });
 			}
-		
+
 			await logService.insertLog({
 				id: `${userId}-${Date.now()}`,
 				userId: userId,
@@ -341,7 +338,7 @@ export function apiRoutes(client, io) {
 
 			let succeeded = false;
 			let destructed = false;
-			
+
 			const roll = Math.random();
 			if (roll < destructionProb) {
 				destructed = true;
@@ -363,7 +360,7 @@ export function apiRoutes(client, io) {
 					return parseFloat(result.toFixed(0));
 				};
 				skin.currentPrice = calculatePrice();
-		
+
 				await skinService.updateSkin({
 					uuid: skin.uuid,
 					userId: skin.userId,
@@ -380,8 +377,10 @@ export function apiRoutes(client, io) {
 					currentPrice: null,
 				});
 			}
-			
-			console.log(`${commandUser.username} attempted to upgrade skin ${skin.uuid} - ${succeeded ? "SUCCEEDED" : destructed ? "DESTRUCTED" : "FAILED"}`);
+
+			console.log(
+				`${commandUser.username} attempted to upgrade skin ${skin.uuid} - ${succeeded ? "SUCCEEDED" : destructed ? "DESTRUCTED" : "FAILED"}`,
+			);
 			res.json({ wonId: succeeded ? "SUCCEEDED" : destructed ? "DESTRUCTED" : "NONE" });
 		} catch (error) {
 			console.error("Error fetching skin upgrade:", error);
@@ -470,7 +469,7 @@ export function apiRoutes(client, io) {
 		try {
 			const games = await gameService.getUserGames(req.params.id);
 			const eloHistory = games
-				.filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD')
+				.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
 				.filter((game) => game.p2 !== null)
 				.map((game) => (game.p1 === req.params.id ? game.p1NewElo : game.p2NewElo));
 			eloHistory.splice(0, 0, 1000);
@@ -489,7 +488,7 @@ export function apiRoutes(client, io) {
 					offer.skin = await skinService.getSkin(offer.skinUuid);
 					offer.seller = await userService.getUser(offer.sellerId);
 					offer.buyer = offer.buyerId ? await userService.getUser(offer.buyerId) : null;
-					offer.bids = await marketService.getOfferBids(offer.id) || {};
+					offer.bids = (await marketService.getOfferBids(offer.id)) || {};
 					for (const bid of offer.bids) {
 						bid.bidder = await userService.getUser(bid.bidderId);
 					}
@@ -509,7 +508,10 @@ export function apiRoutes(client, io) {
 
 	router.get("/user/:id/games-history", async (req, res) => {
 		try {
-			const games = (await gameService.getUserGames(req.params.id)).filter((g) => g.type !== 'POKER_ROUND' && g.type !== 'SOTD').reverse().slice(0, 50);
+			const games = (await gameService.getUserGames(req.params.id))
+				.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
+				.reverse()
+				.slice(0, 50);
 			res.json({ games });
 		} catch (err) {
 			res.status(500).json({ error: "Failed to fetch games history." });
@@ -1160,7 +1162,7 @@ export function apiRoutes(client, io) {
 		try {
 			const user = await userService.getUser(discordId);
 			if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
-			const reward =  isWin ? score * 2 : score;
+			const reward = isWin ? score * 2 : score;
 			const newCoins = user.coins + reward;
 			await userService.updateUserCoins(discordId, newCoins);
 			await logService.insertLog({
@@ -1182,20 +1184,19 @@ export function apiRoutes(client, io) {
 	router.post("/queue/leave", async (req, res) => {
 		const { discordId, game, reason } = req.body;
 		if (game === "snake" && (reason === "beforeunload" || reason === "route-leave")) {
-			
 			const lobby = Object.values(activeSnakeGames).find(
 				(l) => (l.p1.id === discordId || l.p2.id === discordId) && !l.gameOver,
 			);
 			if (!lobby) return;
-		
+
 			const player = lobby.p1.id === discordId ? lobby.p1 : lobby.p2;
 			const otherPlayer = lobby.p1.id === discordId ? lobby.p2 : lobby.p1;
 			if (player.gameOver === true) return res.status(200).json({ message: "Déjà quitté" });
 			player.gameOver = true;
 			otherPlayer.win = true;
-		
+
 			lobby.lastmove = Date.now();
-		
+
 			// Broadcast the updated state to both players
 			await socketEmit("snakegamestate", {
 				lobby: {
@@ -1203,7 +1204,7 @@ export function apiRoutes(client, io) {
 					p2: lobby.p2,
 				},
 			});
-		
+
 			// Check if game should end
 			if (lobby.p1.gameOver && lobby.p2.gameOver) {
 				// Both players finished - determine winner
@@ -1261,11 +1262,11 @@ export function apiRoutes(client, io) {
 			const FLAPI_URL = process.env.DEV_SITE === "true" ? process.env.FLAPI_URL_DEV : process.env.FLAPI_URL;
 
 			const session = await stripe.checkout.sessions.create({
-				payment_method_types: ['card'],
+				payment_method_types: ["card"],
 				line_items: [
 					{
 						price_data: {
-							currency: 'eur',
+							currency: "eur",
 							product_data: {
 								name: offer.label,
 								description: `Achat de ${offer.label} pour FlopoBot`,
@@ -1275,7 +1276,7 @@ export function apiRoutes(client, io) {
 						quantity: 1,
 					},
 				],
-				mode: 'payment',
+				mode: "payment",
 				success_url: `${FLAPI_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
 				cancel_url: `${FLAPI_URL}/dashboard`,
 				metadata: {
@@ -1284,9 +1285,11 @@ export function apiRoutes(client, io) {
 				},
 			});
 
-			console.log(`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`);
+			console.log(
+				`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`,
+			);
 
-			res.json({ sessionId: session.id });
+			res.json({ sessionId: session.id, url: session.url });
 		} catch (error) {
 			console.error("Error creating checkout session:", error);
 			res.status(500).json({ error: "Failed to create checkout session" });
@@ -1294,7 +1297,7 @@ export function apiRoutes(client, io) {
 	});
 
 	router.post("/buy-coins", async (req, res) => {
-		const sig = req.headers['stripe-signature'];
+		const sig = req.headers["stripe-signature"];
 		const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 		if (!endpointSecret) {
@@ -1303,7 +1306,7 @@ export function apiRoutes(client, io) {
 		}
 
 		let event;
-		
+
 		try {
 			// Verify webhook signature - requires raw body
 			// Note: You need to configure Express to preserve raw body for this route
@@ -1315,9 +1318,9 @@ export function apiRoutes(client, io) {
 		}
 
 		// Handle the event
-		if (event.type === 'checkout.session.completed') {
+		if (event.type === "checkout.session.completed") {
 			const session = event.data.object;
-			
+
 			// Extract metadata from the checkout session
 			const commandUserId = session.metadata?.userId;
 			const expectedCoins = parseInt(session.metadata?.coins);
@@ -1325,7 +1328,7 @@ export function apiRoutes(client, io) {
 			const currency = session.currency;
 			const customerEmail = session.customer_details?.email;
 			const customerName = session.customer_details?.name;
-			
+
 			// Validate metadata exists
 			if (!commandUserId || !expectedCoins) {
 				console.error("Missing userId or coins in session metadata");
@@ -1333,7 +1336,7 @@ export function apiRoutes(client, io) {
 			}
 
 			// Verify payment was successful
-			if (session.payment_status !== 'paid') {
+			if (session.payment_status !== "paid") {
 				console.error(`Payment not completed for session ${session.id}`);
 				return res.status(400).json({ error: "Payment not completed" });
 			}
@@ -1380,12 +1383,16 @@ export function apiRoutes(client, io) {
 				userNewAmount: newCoins,
 			});
 
-			console.log(`Payment processed: ${commandUserId} purchased ${expectedCoins} coins for ${amountPaid/100} ${currency}`);
+			console.log(
+				`Payment processed: ${commandUserId} purchased ${expectedCoins} coins for ${amountPaid / 100} ${currency}`,
+			);
 
 			// Notify user via Discord if possible
 			try {
 				const discordUser = await client.users.fetch(commandUserId);
-				await discordUser.send(`✅ Votre achat de ${expectedCoins} FlopoCoins a été confirmé ! Merci pour votre soutien !`);
+				await discordUser.send(
+					`✅ Votre achat de ${expectedCoins} FlopoCoins a été confirmé ! Merci pour votre soutien !`,
+				);
 			} catch (e) {
 				console.log(`Could not DM user ${commandUserId}:`, e.message);
 			}

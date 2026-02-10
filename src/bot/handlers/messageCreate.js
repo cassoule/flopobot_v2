@@ -190,22 +190,22 @@ async function handleAdminCommands(message) {
 
 	switch (command) {
 		case "?sp":
-			let msgText = ""
+			let msgText = "";
 			for (let skinTierRank = 1; skinTierRank <= 4; skinTierRank++) {
 				msgText += `\n--- Tier Rank: ${skinTierRank} ---\n`;
 				let skinMaxLevels = 4;
 				let skinMaxChromas = 4;
 				for (let skinLevel = 1; skinLevel < skinMaxLevels; skinLevel++) {
-					msgText += (`Levels: ${skinLevel}/${skinMaxLevels}, MaxChromas: ${1}/${skinMaxChromas} - `);
-					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `);
-					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `);
-					msgText += (`${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`);
+					msgText += `Levels: ${skinLevel}/${skinMaxLevels}, MaxChromas: ${1}/${skinMaxChromas} - `;
+					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `;
+					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `;
+					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`;
 				}
 				for (let skinChroma = 1; skinChroma < skinMaxChromas; skinChroma++) {
-					msgText += (`Levels: ${skinMaxLevels}/${skinMaxLevels}, MaxChromas: ${skinChroma}/${skinMaxChromas} - `);
-					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `);
-					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `);
-					msgText += (`${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`);
+					msgText += `Levels: ${skinMaxLevels}/${skinMaxLevels}, MaxChromas: ${skinChroma}/${skinMaxChromas} - `;
+					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `;
+					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `;
+					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`;
 				}
 				message.reply(msgText);
 				msgText = "";

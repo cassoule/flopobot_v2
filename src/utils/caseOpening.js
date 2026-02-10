@@ -5,10 +5,12 @@ import { isChampionsSkin } from "./index.js";
 export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 	if (caseType === "esport") {
 		// Esport case: return all esport skins
-		try {	
+		try {
 			const dbSkins = await skinService.getAllAvailableSkins();
 			const esportSkins = [];
-			for (const s of skins.filter((s) => dbSkins.find((dbSkin) => dbSkin.displayName.includes("Classic (VCT") && dbSkin.uuid === s.uuid))) {
+			for (const s of skins.filter((s) =>
+				dbSkins.find((dbSkin) => dbSkin.displayName.includes("Classic (VCT") && dbSkin.uuid === s.uuid),
+			)) {
 				const dbSkin = await skinService.getSkin(s.uuid);
 				esportSkins.push({
 					...s,
@@ -59,14 +61,14 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 			.filter((s) => dbSkins.find((dbSkin) => dbSkin.uuid === s.uuid))
 			.filter((s) => {
 				if (caseType === "ultra") {
-					return !(s.displayName.toLowerCase().includes("vct") && s.displayName.toLowerCase().includes("classic"))
+					return !(s.displayName.toLowerCase().includes("vct") && s.displayName.toLowerCase().includes("classic"));
 				} else {
 					return !s.displayName.toLowerCase().includes("vct");
 				}
 			})
 			.filter((s) => {
 				if (caseType === "ultra") {
-					return true
+					return true;
 				} else {
 					return isChampionsSkin(s.displayName) === false;
 				}
@@ -75,7 +77,8 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 		for (const s of filtered) {
 			const dbSkin = await skinService.getSkin(s.uuid);
 			const weight = tierWeights[s.contentTierUuid] ?? 0;
-			if (weight > 0) { // <--- CRITICAL: Remove 0 weight skins
+			if (weight > 0) {
+				// <--- CRITICAL: Remove 0 weight skins
 				weightedPool.push({
 					...s,
 					tierColor: dbSkin?.tierColor,
@@ -90,7 +93,7 @@ export async function drawCaseContent(caseType = "standard", poolSize = 100) {
 			const result = [];
 
 			// 2. Adjust count if the pool is smaller than requested
-			const actualCount = Math.min(count, list.length) ;
+			const actualCount = Math.min(count, list.length);
 
 			for (let i = 0; i < actualCount; i++) {
 				let r = Math.random() * totalWeight;
@@ -172,10 +175,19 @@ export async function drawCaseSkin(caseContent) {
 
 export function getSkinUpgradeProbs(skin, skinData) {
 	const successProb =
-		(1 - (((skin.currentChroma + skin.currentLvl + skinData.chromas.length + skinData.levels.length) / 18) * (parseInt(skin.tierRank) / 4)))/1.5;
-	const destructionProb = ((skin.currentChroma + skinData.levels.length) / (skinData.chromas.length + skinData.levels.length)) * (parseInt(skin.tierRank) / 5) * 0.075;
+		(1 -
+			((skin.currentChroma + skin.currentLvl + skinData.chromas.length + skinData.levels.length) / 18) *
+				(parseInt(skin.tierRank) / 4)) /
+		1.5;
+	const destructionProb =
+		((skin.currentChroma + skinData.levels.length) / (skinData.chromas.length + skinData.levels.length)) *
+		(parseInt(skin.tierRank) / 5) *
+		0.075;
 	const nextLvl = skin.currentLvl < skinData.levels.length ? skin.currentLvl + 1 : skin.currentLvl;
-	const nextChroma = skin.currentLvl === skinData.levels.length && skin.currentChroma < skinData.chromas.length ? skin.currentChroma + 1 : skin.currentChroma;
+	const nextChroma =
+		skin.currentLvl === skinData.levels.length && skin.currentChroma < skinData.chromas.length
+			? skin.currentChroma + 1
+			: skin.currentChroma;
 	const calculateNextPrice = () => {
 		let result = parseFloat(skin.basePrice);
 		result *= 1 + nextLvl / Math.max(skinData.levels.length, 2);
@@ -187,10 +199,18 @@ export function getSkinUpgradeProbs(skin, skinData) {
 	return { successProb, destructionProb, upgradePrice };
 }
 
-export function getDummySkinUpgradeProbs(skinLevel, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, skinMaxPrice) {
+export function getDummySkinUpgradeProbs(
+	skinLevel,
+	skinChroma,
+	skinTierRank,
+	skinMaxLevels,
+	skinMaxChromas,
+	skinMaxPrice,
+) {
 	const successProb =
-		1 - (((skinChroma + skinLevel + (skinMaxChromas + skinMaxLevels)) / 18) * (parseInt(skinTierRank) / 4));
-	const destructionProb = ((skinChroma + skinMaxLevels) / (skinMaxChromas + skinMaxLevels)) * (parseInt(skinTierRank) / 5) * 0.1;
-	const upgradePrice = Math.max(Math.floor((parseFloat(skinMaxPrice) * (1 - successProb))), 1);
+		1 - ((skinChroma + skinLevel + (skinMaxChromas + skinMaxLevels)) / 18) * (parseInt(skinTierRank) / 4);
+	const destructionProb =
+		((skinChroma + skinMaxLevels) / (skinMaxChromas + skinMaxLevels)) * (parseInt(skinTierRank) / 5) * 0.1;
+	const upgradePrice = Math.max(Math.floor(parseFloat(skinMaxPrice) * (1 - successProb)), 1);
 	return { successProb, destructionProb, upgradePrice };
 }

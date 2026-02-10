@@ -132,7 +132,10 @@ export function pokerRoutes(client, io) {
 		if (Object.values(pokerRooms).some((r) => r.players[userId] || r.queue[userId])) {
 			return res.status(403).json({ message: "You are already in a room or queue." });
 		}
-		if (!pokerRooms[roomId].fakeMoney && pokerRooms[roomId].minBet > ((await userService.getUser(userId))?.coins ?? 0)) {
+		if (
+			!pokerRooms[roomId].fakeMoney &&
+			pokerRooms[roomId].minBet > ((await userService.getUser(userId))?.coins ?? 0)
+		) {
 			return res.status(403).json({ message: "You do not have enough coins to join this room." });
 		}
 

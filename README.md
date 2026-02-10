@@ -7,9 +7,9 @@
 ```
 ├── public/
 │   └── images/               # Static assets
-├── src/              
+├── src/
 │   ├── api/                  # External API integrations
-│   ├── bot/                  
+│   ├── bot/
 │   │   ├── commands/         # Slash command implementations
 │   │   ├── components/       # Discord message components
 │   │   ├── handlers/         # Event handlers
@@ -17,10 +17,10 @@
 │   │   └── events.js         # Event registration
 │   ├── config/
 │   │   └── commands.js       # Slash command definitions
-│   ├── database/ 
+│   ├── database/
 │   │   └── index.js          # Database connection and models
 │   ├── game/                 # Game logic and data
-│   ├── server/       
+│   ├── server/
 │   │   ├── routes/           # Express routes
 │   │   ├── app.js            # Express app setup
 │   │   └── socket.js         # Socket.io setup
@@ -30,6 +30,7 @@
 ```
 
 ## Features
+
 - **Moderation Tools** : Includes commands for managing server members.
 - **AI Integration** : Utilizes AI APIs for enhanced interactions.
 - **Game Mechanics** : Implements game features and logic.
@@ -38,12 +39,14 @@
 - **Web Integration** : Designed to work alongside a [FlopoSite](https://floposite.com) (see [FlopoSite's repo)](https://github.com/cassoule/floposite)).
 
 ## Additional Information
-Note that FlopoBot is a work in progress, and new features and improvements are continually being added. Contributions and feedback are welcome ! 
 
-FlopoBot was orriginally created to be integrated in a specific Discord server, so adding it to other servers won't provide the full experience (for now). 
+Note that FlopoBot is a work in progress, and new features and improvements are continually being added. Contributions and feedback are welcome !
+
+FlopoBot was orriginally created to be integrated in a specific Discord server, so adding it to other servers won't provide the full experience (for now).
 
 FlopoSite though is public and can be used by anyone :)
 
 ## Related Links
+
 - [FlopoSite Website](https://floposite.com)
 - [FlopoSite Repository](https://github.com/cassoule/floposite)

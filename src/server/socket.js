@@ -95,7 +95,7 @@ async function onQueueJoin(client, gameType, playerId) {
 		console.log(`[${title}] Player ${playerId} already in queue, ignoring duplicate join.`);
 		return;
 	}
-	
+
 	if (Object.values(activeGames).some((g) => g.p1.id === playerId || g.p2.id === playerId)) {
 		console.log(`[${title}] Player ${playerId} already in active game, ignoring queue join.`);
 		return;
@@ -277,7 +277,7 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 			game.p1.id === winnerId ? 1 : 0,
 			game.p2.id === winnerId ? 1 : 0,
 			title.toUpperCase(),
-			scores
+			scores,
 		);
 		const winnerName = game.p1.id === winnerId ? game.p1.name : game.p2.name;
 		resultText = `Victoire de ${winnerName}`;
@@ -382,7 +382,7 @@ async function createGame(client, gameType) {
 	}
 
 	io.emit(`${gameType}playing`, { allPlayers: Object.values(activeGames) });
-	
+
 	// For Snake, also emit a specific match notification to the two players
 	if (gameType === "snake") {
 		io.emit("snakematch", {
@@ -395,7 +395,7 @@ async function createGame(client, gameType) {
 			},
 		});
 	}
-	
+
 	await emitQueueUpdate(client, gameType);
 }
 
