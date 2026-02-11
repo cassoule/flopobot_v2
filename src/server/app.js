@@ -12,6 +12,7 @@ import { getSocketIo } from "./socket.js";
 import { blackjackRoutes } from "./routes/blackjack.js";
 import { marketRoutes } from "./routes/market.js";
 import { monkeRoutes } from "./routes/monke.js";
+import { authRoutes } from "./routes/auth.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -25,7 +26,7 @@ app.use((req, res, next) => {
 	res.header("Access-Control-Allow-Origin", FLAPI_URL);
 	res.header(
 		"Access-Control-Allow-Headers",
-		"Content-Type, X-API-Key, ngrok-skip-browser-warning, Cache-Control, Pragma, Expires",
+		"Content-Type, Authorization, X-API-Key, ngrok-skip-browser-warning, Cache-Control, Pragma, Expires",
 	);
 	next();
 });
@@ -47,6 +48,9 @@ app.use(express.json());
 app.use("/public", express.static("public"));
 
 // --- API ROUTES ---
+
+// Auth routes (Discord OAuth2, no client/io needed)
+app.use("/api/auth", authRoutes());
 
 // General API routes (users, polls, etc.)
 app.use("/api", apiRoutes(client, io));

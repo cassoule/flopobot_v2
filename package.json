@@ -29,6 +29,7 @@
 		"discord.js": "^14.25.1",
 		"dotenv": "^16.0.3",
 		"express": "^4.18.2",
+		"jsonwebtoken": "^9.0.3",
 		"node-cron": "^3.0.3",
 		"openai": "^4.104.0",
 		"pnpm": "^10.29.2",

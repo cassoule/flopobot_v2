@@ -5,6 +5,7 @@ import { socketEmit } from "../socket.js";
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import { init } from "openai/_shims/index.mjs";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -29,11 +30,9 @@ export function monkeRoutes(client, io) {
 		return res.status(200).json({ userGamePath });
 	});
 
-	router.post("/:userId/start", async (req, res) => {
-		const { userId } = req.params;
+	router.post("/:userId/start", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const { initialBet } = req.body;
-
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!initialBet) return res.status(400).json({ error: "Initial bet is required" });
@@ -61,11 +60,9 @@ export function monkeRoutes(client, io) {
 		return res.status(200).json({ message: "Monke game started", userGamePath: monkePaths[userId] });
 	});
 
-	router.post("/:userId/play", async (req, res) => {
-		const { userId } = req.params;
+	router.post("/:userId/play", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const { choice, step } = req.body;
-
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });
@@ -105,9 +102,8 @@ export function monkeRoutes(client, io) {
 		}
 	});
 
-	router.post("/:userId/stop", async (req, res) => {
-		const { userId } = req.params;
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
+	router.post("/:userId/stop", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });

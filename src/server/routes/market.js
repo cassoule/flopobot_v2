@@ -11,6 +11,7 @@ import * as logService from "../../services/log.service.js";
 import * as marketService from "../../services/market.service.js";
 import { emitMarketUpdate } from "../socket.js";
 import { handleNewMarketOffer, handleNewMarketOfferBid } from "../../utils/marketNotifs.js";
+import { requireAuth } from "../middleware/auth.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -63,8 +64,9 @@ export function marketRoutes(client, io) {
 		}
 	});
 
-	router.post("/place-offer", async (req, res) => {
-		const { seller_id, skin_uuid, starting_price, delay, duration, timestamp } = req.body;
+	router.post("/place-offer", requireAuth, async (req, res) => {
+		const seller_id = req.userId;
+		const { skin_uuid, starting_price, delay, duration, timestamp } = req.body;
 		const now = Date.now();
 		try {
 			const skin = await skinService.getSkin(skin_uuid);
@@ -104,8 +106,9 @@ export function marketRoutes(client, io) {
 		}
 	});
 
-	router.post("/offers/:id/place-bid", async (req, res) => {
-		const { buyer_id, bid_amount, timestamp } = req.body;
+	router.post("/offers/:id/place-bid", requireAuth, async (req, res) => {
+		const buyer_id = req.userId;
+		const { bid_amount, timestamp } = req.body;
 		try {
 			const offer = await marketService.getMarketOfferById(req.params.id);
 			if (!offer) return res.status(404).send({ error: "Offer not found" });

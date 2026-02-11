@@ -16,6 +16,7 @@ import {
 	formatConnect4BoardForDiscord,
 } from "../game/various.js";
 import { eloHandler } from "../game/elo.js";
+import { verifyToken } from "./middleware/auth.js";
 
 // --- Module-level State ---
 let io;
@@ -25,10 +26,23 @@ let io;
 export function initializeSocket(server, client) {
 	io = server;
 
+	// Authenticate socket connections via JWT (optional - allows unauthenticated connections for health checks)
+	io.use((socket, next) => {
+		const token = socket.handshake.auth?.token;
+		if (token) {
+			const payload = verifyToken(token);
+			if (!payload) {
+				return next(new Error("Invalid or expired token"));
+			}
+			socket.userId = payload.discordId;
+		}
+		next();
+	});
+
 	io.on("connection", (socket) => {
-		socket.on("user-connected", async (userId) => {
-			if (!userId) return;
-			await refreshQueuesForUser(userId, client);
+		socket.on("user-connected", async () => {
+			if (!socket.userId) return;
+			await refreshQueuesForUser(socket.userId, client);
 		});
 
 		registerTicTacToeEvents(socket, client);
@@ -39,14 +53,13 @@ export function initializeSocket(server, client) {
 			io.emit("blackjack:chat", data);
 		});
 
-		socket.on("tictactoe:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
-		socket.on("connect4:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
-		socket.on("snake:queue:leave", async ({ discordId }) => await refreshQueuesForUser(discordId, client));
+		socket.on("tictactoe:queue:leave", async () => await refreshQueuesForUser(socket.userId, client));
+		socket.on("connect4:queue:leave", async () => await refreshQueuesForUser(socket.userId, client));
+		socket.on("snake:queue:leave", async () => await refreshQueuesForUser(socket.userId, client));
 
 		// catch tab kills / network drops
 		socket.on("disconnecting", async () => {
-			const discordId = socket.handshake.auth?.discordId; // or your mapping
-			await refreshQueuesForUser(discordId, client);
+			await refreshQueuesForUser(socket.userId, client);
 		});
 
 		socket.on("disconnect", () => {
@@ -64,24 +77,24 @@ export function getSocketIo() {
 // --- Event Registration ---
 
 function registerTicTacToeEvents(socket, client) {
-	socket.on("tictactoeconnection", (e) => refreshQueuesForUser(e.id, client));
-	socket.on("tictactoequeue", (e) => onQueueJoin(client, "tictactoe", e.playerId));
-	socket.on("tictactoeplaying", (e) => onTicTacToeMove(client, e));
-	socket.on("tictactoegameOver", (e) => onGameOver(client, "tictactoe", e.playerId, e.winner));
+	socket.on("tictactoeconnection", () => refreshQueuesForUser(socket.userId, client));
+	socket.on("tictactoequeue", () => onQueueJoin(client, "tictactoe", socket.userId));
+	socket.on("tictactoeplaying", (e) => onTicTacToeMove(client, { ...e, playerId: socket.userId }));
+	socket.on("tictactoegameOver", (e) => onGameOver(client, "tictactoe", socket.userId, e.winner));
 }
 
 function registerConnect4Events(socket, client) {
-	socket.on("connect4connection", (e) => refreshQueuesForUser(e.id, client));
-	socket.on("connect4queue", (e) => onQueueJoin(client, "connect4", e.playerId));
-	socket.on("connect4playing", (e) => onConnect4Move(client, e));
-	socket.on("connect4NoTime", (e) => onGameOver(client, "connect4", e.playerId, e.winner, "(temps écoulé)"));
+	socket.on("connect4connection", () => refreshQueuesForUser(socket.userId, client));
+	socket.on("connect4queue", () => onQueueJoin(client, "connect4", socket.userId));
+	socket.on("connect4playing", (e) => onConnect4Move(client, { ...e, playerId: socket.userId }));
+	socket.on("connect4NoTime", (e) => onGameOver(client, "connect4", socket.userId, e.winner, "(temps écoulé)"));
 }
 
 function registerSnakeEvents(socket, client) {
-	socket.on("snakeconnection", (e) => refreshQueuesForUser(e.id, client));
-	socket.on("snakequeue", (e) => onQueueJoin(client, "snake", e.playerId));
-	socket.on("snakegamestate", (e) => onSnakeGameStateUpdate(client, e));
-	socket.on("snakegameOver", (e) => onGameOver(client, "snake", e.playerId, e.winner));
+	socket.on("snakeconnection", () => refreshQueuesForUser(socket.userId, client));
+	socket.on("snakequeue", () => onQueueJoin(client, "snake", socket.userId));
+	socket.on("snakegamestate", (e) => onSnakeGameStateUpdate(client, { ...e, playerId: socket.userId }));
+	socket.on("snakegameOver", (e) => onGameOver(client, "snake", socket.userId, e.winner));
 }
 
 // --- Core Handlers (Preserving Original Logic) ---

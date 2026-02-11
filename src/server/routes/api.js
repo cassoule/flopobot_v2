@@ -22,6 +22,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "disc
 import { emitDataUpdated, socketEmit, onGameOver } from "../socket.js";
 import { handleCaseOpening } from "../../utils/marketNotifs.js";
 import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
+import { requireAuth } from "../middleware/auth.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -59,8 +60,8 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/register-user", async (req, res) => {
-		const { discordUserId } = req.body;
+	router.post("/register-user", requireAuth, async (req, res) => {
+		const discordUserId = req.userId;
 		const discordUser = await client.users.fetch(discordUserId);
 
 		try {
@@ -104,8 +105,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/open-case", async (req, res) => {
-		const { userId, caseType } = req.body;
+	router.post("/open-case", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { caseType } = req.body;
 
 		let caseTypeVal;
 		switch (caseType) {
@@ -231,8 +233,8 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/skin/:uuid/instant-sell", async (req, res) => {
-		const { userId } = req.body;
+	router.post("/skin/:uuid/instant-sell", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		try {
 			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
@@ -300,8 +302,8 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/skin-upgrade/:uuid", async (req, res) => {
-		const { userId } = req.body;
+	router.post("/skin-upgrade/:uuid", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		try {
 			const skin = await skinService.getSkin(req.params.uuid);
 			const skinData = skins.find((s) => s.uuid === skin.uuid);
@@ -518,8 +520,8 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.get("/user/:id/daily", async (req, res) => {
-		const { id } = req.params;
+	router.get("/user/:id/daily", requireAuth, async (req, res) => {
+		const id = req.userId;
 		try {
 			const akhy = await userService.getUser(id);
 			if (!akhy) return res.status(404).json({ message: "Utilisateur introuvable" });
@@ -551,9 +553,9 @@ export function apiRoutes(client, io) {
 		res.json({ activePolls });
 	});
 
-	router.post("/timedout", async (req, res) => {
+	router.post("/timedout", requireAuth, async (req, res) => {
 		try {
-			const { userId } = req.body;
+			const userId = req.userId;
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
 			const member = await guild.members.fetch(userId);
 			res.status(200).json({ isTimedOut: member?.isCommunicationDisabled() || false });
@@ -564,8 +566,9 @@ export function apiRoutes(client, io) {
 
 	// --- Shop & Interaction Routes ---
 
-	router.post("/change-nickname", async (req, res) => {
-		const { userId, nickname, commandUserId } = req.body;
+	router.post("/change-nickname", requireAuth, async (req, res) => {
+		const { userId, nickname } = req.body;
+		const commandUserId = req.userId;
 		const commandUser = await userService.getUser(commandUserId);
 		if (!commandUser) return res.status(404).json({ message: "Command user not found." });
 		if (commandUser.coins < 1000) return res.status(403).json({ message: "Pas assez de FlopoCoins (1000 requis)." });
@@ -614,8 +617,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/spam-ping", async (req, res) => {
-		const { userId, commandUserId } = req.body;
+	router.post("/spam-ping", requireAuth, async (req, res) => {
+		const { userId } = req.body;
+		const commandUserId = req.userId;
 
 		const user = await userService.getUser(userId);
 		const commandUser = await userService.getUser(commandUserId);
@@ -671,8 +675,9 @@ export function apiRoutes(client, io) {
 		res.status(200).json({ slowmodes: activeSlowmodes });
 	});
 
-	router.post("/slowmode", async (req, res) => {
-		let { userId, commandUserId } = req.body;
+	router.post("/slowmode", requireAuth, async (req, res) => {
+		let { userId } = req.body;
+		const commandUserId = req.userId;
 
 		const user = await userService.getUser(userId);
 		const commandUser = await userService.getUser(commandUserId);
@@ -761,8 +766,9 @@ export function apiRoutes(client, io) {
 
 	// --- Time-Out Route ---
 
-	router.post("/timeout", async (req, res) => {
-		let { userId, commandUserId } = req.body;
+	router.post("/timeout", requireAuth, async (req, res) => {
+		let { userId } = req.body;
+		const commandUserId = req.userId;
 
 		const user = await userService.getUser(userId);
 		const commandUser = await userService.getUser(commandUserId);
@@ -877,8 +883,9 @@ export function apiRoutes(client, io) {
 		res.status(200).json({ predis: reversedPredis });
 	});
 
-	router.post("/start-predi", async (req, res) => {
-		let { commandUserId, label, options, closingTime, payoutTime } = req.body;
+	router.post("/start-predi", requireAuth, async (req, res) => {
+		let { label, options, closingTime, payoutTime } = req.body;
+		const commandUserId = req.userId;
 
 		const commandUser = await userService.getUser(commandUserId);
 
@@ -973,8 +980,9 @@ export function apiRoutes(client, io) {
 		return res.status(200).json({ message: `Ta prédi '${label}' a commencée !` });
 	});
 
-	router.post("/vote-predi", async (req, res) => {
-		const { commandUserId, predi, amount, option } = req.body;
+	router.post("/vote-predi", requireAuth, async (req, res) => {
+		const { predi, amount, option } = req.body;
+		const commandUserId = req.userId;
 
 		let warning = false;
 
@@ -1041,8 +1049,9 @@ export function apiRoutes(client, io) {
 		return res.status(200).send({ message: `Vote enregistré!` });
 	});
 
-	router.post("/end-predi", async (req, res) => {
-		const { commandUserId, predi, confirm, winningOption } = req.body;
+	router.post("/end-predi", requireAuth, async (req, res) => {
+		const { predi, confirm, winningOption } = req.body;
+		const commandUserId = req.userId;
 
 		const commandUser = await userService.getUser(commandUserId);
 		if (!commandUser) return res.status(403).send({ message: "Oups, je ne te connais pas" });
@@ -1156,8 +1165,9 @@ export function apiRoutes(client, io) {
 		return res.status(200).json({ message: "Prédi close" });
 	});
 
-	router.post("/snake/reward", async (req, res) => {
-		const { discordId, score, isWin } = req.body;
+	router.post("/snake/reward", requireAuth, async (req, res) => {
+		const discordId = req.userId;
+		const { score, isWin } = req.body;
 		console.log(`[SNAKE][SOLO]${discordId}: score=${score}, isWin=${isWin}`);
 		try {
 			const user = await userService.getUser(discordId);
@@ -1181,8 +1191,9 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/queue/leave", async (req, res) => {
-		const { discordId, game, reason } = req.body;
+	router.post("/queue/leave", requireAuth, async (req, res) => {
+		const discordId = req.userId;
+		const { game, reason } = req.body;
 		if (game === "snake" && (reason === "beforeunload" || reason === "route-leave")) {
 			const lobby = Object.values(activeSnakeGames).find(
 				(l) => (l.p1.id === discordId || l.p2.id === discordId) && !l.gameOver,
@@ -1240,11 +1251,12 @@ export function apiRoutes(client, io) {
 		res.json({ offers: COIN_OFFERS });
 	});
 
-	router.post("/create-checkout-session", async (req, res) => {
-		const { userId, offerId } = req.body;
+	router.post("/create-checkout-session", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { offerId } = req.body;
 
-		if (!userId || !offerId) {
-			return res.status(400).json({ error: "Missing required fields: userId, offerId" });
+		if (!offerId) {
+			return res.status(400).json({ error: "Missing required field: offerId" });
 		}
 
 		const offer = COIN_OFFERS.find((o) => o.id === offerId);

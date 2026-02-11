@@ -23,6 +23,7 @@ import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import * as solitaireService from "../../services/solitaire.service.js";
 import { socketEmit } from "../socket.js";
+import { requireAuth } from "../middleware/auth.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -36,9 +37,9 @@ const router = express.Router();
 export function solitaireRoutes(client, io) {
 	// --- Game Initialization Endpoints ---
 
-	router.post("/start", (req, res) => {
-		const { userId, userSeed, hardMode } = req.body;
-		if (!userId) return res.status(400).json({ error: "User ID is required." });
+	router.post("/start", requireAuth, (req, res) => {
+		const userId = req.userId;
+		const { userSeed, hardMode } = req.body;
 
 		// If a game already exists for the user, return it instead of creating a new one.
 		if (activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
@@ -78,8 +79,8 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
-	router.post("/start/sotd", async (req, res) => {
-		const { userId } = req.body;
+	router.post("/start/sotd", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		/*if (!userId || !getUser.get(userId)) {
 			return res.status(404).json({ error: 'User not found.' });
 		}*/
@@ -138,16 +139,17 @@ export function solitaireRoutes(client, io) {
 		}
 	});
 
-	router.post("/reset", (req, res) => {
-		const { userId } = req.body;
+	router.post("/reset", requireAuth, (req, res) => {
+		const userId = req.userId;
 		if (activeSolitaireGames[userId]) {
 			delete activeSolitaireGames[userId];
 		}
 		res.json({ success: true, message: "Game reset." });
 	});
 
-	router.post("/move", async (req, res) => {
-		const { userId, ...moveData } = req.body;
+	router.post("/move", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { ...moveData } = req.body;
 		const gameState = activeSolitaireGames[userId];
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });
@@ -176,8 +178,8 @@ export function solitaireRoutes(client, io) {
 		}
 	});
 
-	router.post("/draw", (req, res) => {
-		const { userId } = req.body;
+	router.post("/draw", requireAuth, (req, res) => {
+		const userId = req.userId;
 		const gameState = activeSolitaireGames[userId];
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });
@@ -192,8 +194,8 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
-	router.post("/undo", (req, res) => {
-		const { userId } = req.body;
+	router.post("/undo", requireAuth, (req, res) => {
+		const userId = req.userId;
 		const gameState = activeSolitaireGames[userId];
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });

@@ -20,6 +20,7 @@ import * as logService from "../../services/log.service.js";
 import { client } from "../../bot/client.js";
 import { emitToast, emitUpdate, emitPlayerUpdate } from "../socket.js";
 import { EmbedBuilder, time } from "discord.js";
+import { requireAuth } from "../middleware/auth.js";
 
 export function blackjackRoutes(io) {
 	const router = express.Router();
@@ -123,9 +124,8 @@ export function blackjackRoutes(io) {
 	// --- Public endpoints ---
 	router.get("/", (req, res) => res.status(200).json({ room: snapshot(room) }));
 
-	router.post("/join", async (req, res) => {
-		const { userId } = req.body;
-		if (!userId) return res.status(400).json({ message: "userId required" });
+	router.post("/join", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		if (room.players[userId]) return res.status(200).json({ message: "Already here" });
 
 		const user = await client.users.fetch(userId);
@@ -191,9 +191,9 @@ export function blackjackRoutes(io) {
 		return res.status(200).json({ message: "joined" });
 	});
 
-	router.post("/leave", async (req, res) => {
-		const { userId } = req.body;
-		if (!userId || !room.players[userId]) return res.status(403).json({ message: "not in room" });
+	router.post("/leave", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		if (!room.players[userId]) return res.status(403).json({ message: "not in room" });
 
 		try {
 			const guild = await client.guilds.fetch(process.env.GUILD_ID);
@@ -238,8 +238,9 @@ export function blackjackRoutes(io) {
 		}
 	});
 
-	router.post("/bet", async (req, res) => {
-		const { userId, amount } = req.body;
+	router.post("/bet", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { amount } = req.body;
 		const p = room.players[userId];
 		if (!p) return res.status(404).json({ message: "not in room" });
 		if (room.status !== "betting") return res.status(403).json({ message: "betting-closed" });
@@ -270,8 +271,8 @@ export function blackjackRoutes(io) {
 		return res.status(200).json({ message: "bet-accepted" });
 	});
 
-	router.post("/action/:action", async (req, res) => {
-		const { userId } = req.body;
+	router.post("/action/:action", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const action = req.params.action;
 		const p = room.players[userId];
 		if (!p) return res.status(404).json({ message: "not in room" });
