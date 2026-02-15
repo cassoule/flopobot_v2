@@ -34,6 +34,9 @@ router.get("/discord", (req, res) => {
  * creates a JWT, and redirects the user back to the frontend.
  */
 router.get("/discord/callback", async (req, res) => {
+	console.log("JWT_SECRET:", process.env.JWT_SECRET)
+	console.log("DISCORD_CLIENT_SECRET:", process.env.DISCORD_CLIENT_SECRET)
+
 	const { code } = req.query;
 	if (!code) {
 		return res.status(400).json({ error: "Missing authorization code." });
