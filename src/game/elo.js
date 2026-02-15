@@ -97,35 +97,33 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 
 	if (scores) {
 		await gameService.insertGame({
-				id: `${p1Id}-${p2Id}-${Date.now()}`,
-				p1: p1Id,
-				p2: p2Id,
-				p1Score: scores.p1,
-				p2Score: scores.p2,
-				p1Elo: p1CurrentElo,
-				p2Elo: p2CurrentElo,
-				p1NewElo: finalP1Elo,
-				p2NewElo: finalP2Elo,
-				type: type,
-				timestamp: Date.now(),
-			});
+			id: `${p1Id}-${p2Id}-${Date.now()}`,
+			p1: p1Id,
+			p2: p2Id,
+			p1Score: scores.p1,
+			p2Score: scores.p2,
+			p1Elo: p1CurrentElo,
+			p2Elo: p2CurrentElo,
+			p1NewElo: finalP1Elo,
+			p2NewElo: finalP2Elo,
+			type: type,
+			timestamp: Date.now(),
+		});
 	} else {
 		await gameService.insertGame({
-				id: `${p1Id}-${p2Id}-${Date.now()}`,
-				p1: p1Id,
-				p2: p2Id,
-				p1Score: p1Score,
-				p2Score: p2Score,
-				p1Elo: p1CurrentElo,
-				p2Elo: p2CurrentElo,
-				p1NewElo: finalP1Elo,
-				p2NewElo: finalP2Elo,
-				type: type,
-				timestamp: Date.now(),
-			});
+			id: `${p1Id}-${p2Id}-${Date.now()}`,
+			p1: p1Id,
+			p2: p2Id,
+			p1Score: p1Score,
+			p2Score: p2Score,
+			p1Elo: p1CurrentElo,
+			p2Elo: p2CurrentElo,
+			p1NewElo: finalP1Elo,
+			p2NewElo: finalP2Elo,
+			type: type,
+			timestamp: Date.now(),
+		});
 	}
-
-	
 }
 
 /**
@@ -142,12 +140,14 @@ export async function pokerEloHandler(room) {
 	if (playerIds.length < 2) return; // Not enough players to calculate Elo
 
 	// Fetch all players' Elo data at once
-	const dbPlayers = await Promise.all(playerIds.map(async (id) => {
-		const user = await userService.getUser(id);
-		const eloData = await gameService.getUserElo(id);
-		const elo = eloData?.elo || 1000;
-		return { ...user, elo };
-	}));
+	const dbPlayers = await Promise.all(
+		playerIds.map(async (id) => {
+			const user = await userService.getUser(id);
+			const eloData = await gameService.getUserElo(id);
+			const elo = eloData?.elo || 1000;
+			return { ...user, elo };
+		}),
+	);
 
 	const winnerIds = new Set(room.winners);
 	const playerCount = dbPlayers.length;

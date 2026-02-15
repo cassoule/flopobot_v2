@@ -116,7 +116,7 @@ model Game {
   p1NewElo  Int?    @map("p1_new_elo")
   p2NewElo  Int?    @map("p2_new_elo")
   type      String?
-  timestamp DateTime?
+  timestamp DateTime? @default(now()) @map("timestamp")
 
   player1 User  @relation("Player1", fields: [p1], references: [id])
   player2 User? @relation("Player2", fields: [p2], references: [id])

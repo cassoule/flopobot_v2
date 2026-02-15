@@ -1,7 +1,7 @@
 import prisma from "../prisma/client.js";
 
 function toOffer(offer) {
-	return { ...offer, openingAt: offer.openingAt.getTime(), closingAt: offer.closingAt.getTime() };
+	return { ...offer, openingAt: Number(offer.openingAt), closingAt: Number(offer.closingAt) };
 }
 
 export async function getMarketOffers() {
@@ -40,23 +40,25 @@ export async function getMarketOffersBySkin(skinUuid) {
 			buyer: { select: { username: true, globalName: true } },
 		},
 	});
-	return offers.map((offer) => toOffer({
-		...offer,
-		skinName: offer.skin?.displayName,
-		skinIcon: offer.skin?.displayIcon,
-		sellerName: offer.seller?.username,
-		sellerGlobalName: offer.seller?.globalName,
-		buyerName: offer.buyer?.username ?? null,
-		buyerGlobalName: offer.buyer?.globalName ?? null,
-	}));
+	return offers.map((offer) =>
+		toOffer({
+			...offer,
+			skinName: offer.skin?.displayName,
+			skinIcon: offer.skin?.displayIcon,
+			sellerName: offer.seller?.username,
+			sellerGlobalName: offer.seller?.globalName,
+			buyerName: offer.buyer?.username ?? null,
+			buyerGlobalName: offer.buyer?.globalName ?? null,
+		}),
+	);
 }
 
 export async function insertMarketOffer(data) {
 	return prisma.marketOffer.create({
 		data: {
 			...data,
-			openingAt: new Date(data.openingAt),
-			closingAt: new Date(data.closingAt),
+			openingAt: String(data.openingAt),
+			closingAt: String(data.closingAt),
 		},
 	});
 }

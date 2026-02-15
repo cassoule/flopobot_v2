@@ -5,6 +5,7 @@ import { socketEmit } from "../socket.js";
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import { init } from "openai/_shims/index.mjs";
+import { requireAuth } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -29,11 +30,9 @@ export function monkeRoutes(client, io) {
 		return res.status(200).json({ userGamePath });
 	});
 
-	router.post("/:userId/start", async (req, res) => {
-		const { userId } = req.params;
+	router.post("/:userId/start", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const { initialBet } = req.body;
-
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!initialBet) return res.status(400).json({ error: "Initial bet is required" });
@@ -54,23 +53,24 @@ export function monkeRoutes(client, io) {
 			return res.status(500).json({ error: "Failed to update user coins" });
 		}
 
-		monkePaths[userId] = [{ round: 0, choice: null, result: null, bet: initialBet, extractValue: null, timestamp: Date.now() }];
+		monkePaths[userId] = [
+			{ round: 0, choice: null, result: null, bet: initialBet, extractValue: null, timestamp: Date.now() },
+		];
 
 		return res.status(200).json({ message: "Monke game started", userGamePath: monkePaths[userId] });
 	});
 
-	router.post("/:userId/play", async (req, res) => {
-		const { userId } = req.params;
+	router.post("/:userId/play", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const { choice, step } = req.body;
-
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });
 
 		const currentRound = monkePaths[userId].length - 1;
 		if (step !== currentRound) return res.status(400).json({ error: "Invalid step for the current round" });
-		if (monkePaths[userId][currentRound].choice !== null) return res.status(400).json({ error: "This round has already been played" });
+		if (monkePaths[userId][currentRound].choice !== null)
+			return res.status(400).json({ error: "This round has already been played" });
 		const randomLoseChoice = Math.floor(Math.random() * 3); // 0, 1, or 2
 
 		if (choice !== randomLoseChoice) {
@@ -79,7 +79,14 @@ export function monkeRoutes(client, io) {
 			monkePaths[userId][currentRound].extractValue = Math.round(monkePaths[userId][currentRound].bet * 1.33);
 			monkePaths[userId][currentRound].timestamp = Date.now();
 
-			monkePaths[userId].push({ round: currentRound + 1, choice: null, result: null, bet: monkePaths[userId][currentRound].extractValue, extractValue: null, timestamp: Date.now() });
+			monkePaths[userId].push({
+				round: currentRound + 1,
+				choice: null,
+				result: null,
+				bet: monkePaths[userId][currentRound].extractValue,
+				extractValue: null,
+				timestamp: Date.now(),
+			});
 
 			return res.status(200).json({ message: "Round won", userGamePath: monkePaths[userId], lost: false });
 		} else {
@@ -95,9 +102,8 @@ export function monkeRoutes(client, io) {
 		}
 	});
 
-	router.post("/:userId/stop", async (req, res) => {
-		const { userId } = req.params;
-		if (!userId) return res.status(400).json({ error: "User ID is required" });
+	router.post("/:userId/stop", requireAuth, async (req, res) => {
+		const userId = req.userId;
 		const user = await userService.getUser(userId);
 		if (!user) return res.status(404).json({ error: "User not found" });
 		if (!monkePaths[userId]) return res.status(400).json({ error: "No active game found for this user" });

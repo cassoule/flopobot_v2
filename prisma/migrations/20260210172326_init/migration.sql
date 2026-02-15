@@ -40,9 +40,9 @@ CREATE TABLE "market_offers" (
     "buyout_price" INTEGER,
     "final_price" INTEGER,
     "status" TEXT NOT NULL,
-    "posted_at" TEXT DEFAULT '',
-    "opening_at" TEXT NOT NULL,
-    "closing_at" TEXT NOT NULL,
+    "posted_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
+    "opening_at" DATETIME NOT NULL,
+    "closing_at" DATETIME NOT NULL,
     "buyer_id" TEXT,
     CONSTRAINT "market_offers_skin_uuid_fkey" FOREIGN KEY ("skin_uuid") REFERENCES "skins" ("uuid") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "market_offers_seller_id_fkey" FOREIGN KEY ("seller_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -55,7 +55,7 @@ CREATE TABLE "bids" (
     "bidder_id" TEXT NOT NULL,
     "market_offer_id" TEXT NOT NULL,
     "offer_amount" INTEGER NOT NULL,
-    "offered_at" TEXT DEFAULT '',
+    "offered_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "bids_bidder_id_fkey" FOREIGN KEY ("bidder_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "bids_market_offer_id_fkey" FOREIGN KEY ("market_offer_id") REFERENCES "market_offers" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -68,7 +68,7 @@ CREATE TABLE "logs" (
     "target_user_id" TEXT,
     "coins_amount" INTEGER,
     "user_new_amount" INTEGER,
-    "created_at" TEXT DEFAULT '',
+    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "logs_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "logs_target_user_id_fkey" FOREIGN KEY ("target_user_id") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -85,7 +85,7 @@ CREATE TABLE "games" (
     "p1_new_elo" INTEGER,
     "p2_new_elo" INTEGER,
     "type" TEXT,
-    "timestamp" TEXT,
+    "timestamp" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "games_p1_fkey" FOREIGN KEY ("p1") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "games_p2_fkey" FOREIGN KEY ("p2") REFERENCES "users" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -129,10 +129,9 @@ CREATE TABLE "transactions" (
     "customer_email" TEXT,
     "customer_name" TEXT,
     "payment_status" TEXT NOT NULL,
-    "created_at" TEXT DEFAULT '',
+    "created_at" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "transactions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateIndex
 CREATE UNIQUE INDEX "transactions_session_id_key" ON "transactions"("session_id");
-

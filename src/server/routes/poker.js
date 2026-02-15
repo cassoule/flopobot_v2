@@ -17,6 +17,7 @@ import { client } from "../../bot/client.js";
 import { emitPokerToast, emitPokerUpdate } from "../socket.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
 import { formatAmount } from "../../utils/index.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const { Hand } = pkg;
 
@@ -44,9 +45,9 @@ export function pokerRoutes(client, io) {
 		}
 	});
 
-	router.post("/create", async (req, res) => {
-		const { creatorId, minBet, fakeMoney } = req.body;
-		if (!creatorId) return res.status(400).json({ message: "Creator ID is required." });
+	router.post("/create", requireAuth, async (req, res) => {
+		const creatorId = req.userId;
+		const { minBet, fakeMoney } = req.body;
 
 		if (Object.values(pokerRooms).some((room) => room.host_id === creatorId || room.players[creatorId])) {
 			return res.status(403).json({ message: "You are already in a poker room." });
@@ -125,14 +126,18 @@ export function pokerRoutes(client, io) {
 		res.status(201).json({ roomId: id });
 	});
 
-	router.post("/join", async (req, res) => {
-		const { userId, roomId } = req.body;
-		if (!userId || !roomId) return res.status(400).json({ message: "User ID and Room ID are required." });
+	router.post("/join", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { roomId } = req.body;
+		if (!roomId) return res.status(400).json({ message: "Room ID is required." });
 		if (!pokerRooms[roomId]) return res.status(404).json({ message: "Room not found." });
 		if (Object.values(pokerRooms).some((r) => r.players[userId] || r.queue[userId])) {
 			return res.status(403).json({ message: "You are already in a room or queue." });
 		}
-		if (!pokerRooms[roomId].fakeMoney && pokerRooms[roomId].minBet > ((await userService.getUser(userId))?.coins ?? 0)) {
+		if (
+			!pokerRooms[roomId].fakeMoney &&
+			pokerRooms[roomId].minBet > ((await userService.getUser(userId))?.coins ?? 0)
+		) {
 			return res.status(403).json({ message: "You do not have enough coins to join this room." });
 		}
 
@@ -140,8 +145,9 @@ export function pokerRoutes(client, io) {
 		res.status(200).json({ message: "Successfully joined." });
 	});
 
-	router.post("/accept", async (req, res) => {
-		const { hostId, playerId, roomId } = req.body;
+	router.post("/accept", requireAuth, async (req, res) => {
+		const hostId = req.userId;
+		const { playerId, roomId } = req.body;
 		const room = pokerRooms[roomId];
 		if (!room || room.host_id !== hostId || !room.queue[playerId]) {
 			return res.status(403).json({ message: "Unauthorized or player not in queue." });
@@ -169,8 +175,9 @@ export function pokerRoutes(client, io) {
 		res.status(200).json({ message: "Player accepted." });
 	});
 
-	router.post("/leave", async (req, res) => {
-		const { userId, roomId } = req.body;
+	router.post("/leave", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { roomId } = req.body;
 
 		if (!pokerRooms[roomId]) return res.status(404).send({ message: "Table introuvable" });
 		if (!pokerRooms[roomId].players[userId]) return res.status(404).send({ message: "Joueur introuvable" });
@@ -220,8 +227,9 @@ export function pokerRoutes(client, io) {
 		return res.status(200);
 	});
 
-	router.post("/kick", async (req, res) => {
-		const { commandUserId, userId, roomId } = req.body;
+	router.post("/kick", requireAuth, async (req, res) => {
+		const commandUserId = req.userId;
+		const { userId, roomId } = req.body;
 
 		if (!pokerRooms[roomId]) return res.status(404).send({ message: "Table introuvable" });
 		if (!pokerRooms[roomId].players[commandUserId]) return res.status(404).send({ message: "Joueur introuvable" });
@@ -262,7 +270,7 @@ export function pokerRoutes(client, io) {
 
 	// --- Game Action Endpoints ---
 
-	router.post("/start", async (req, res) => {
+	router.post("/start", requireAuth, async (req, res) => {
 		const { roomId } = req.body;
 		const room = pokerRooms[roomId];
 		if (!room) return res.status(404).json({ message: "Room not found." });
@@ -273,7 +281,7 @@ export function pokerRoutes(client, io) {
 	});
 
 	// NEW: Endpoint to start the next hand
-	router.post("/next-hand", async (req, res) => {
+	router.post("/next-hand", requireAuth, async (req, res) => {
 		const { roomId } = req.body;
 		const room = pokerRooms[roomId];
 		if (!room || !room.waiting_for_restart) {
@@ -283,8 +291,9 @@ export function pokerRoutes(client, io) {
 		res.status(200).json({ message: "Next hand started." });
 	});
 
-	router.post("/action/:action", async (req, res) => {
-		const { playerId, amount, roomId } = req.body;
+	router.post("/action/:action", requireAuth, async (req, res) => {
+		const playerId = req.userId;
+		const { amount, roomId } = req.body;
 		const { action } = req.params;
 		const room = pokerRooms[roomId];
 

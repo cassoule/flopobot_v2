@@ -17,9 +17,7 @@ export async function getUsersByElo() {
 		include: { elo: true },
 		orderBy: { elo: { elo: "desc" } },
 	});
-	return users
-		.filter((u) => u.elo)
-		.map((u) => ({ ...u, elo: u.elo?.elo ?? null }));
+	return users.filter((u) => u.elo).map((u) => ({ ...u, elo: u.elo?.elo ?? null }));
 }
 
 function toGame(game) {

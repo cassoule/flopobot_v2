@@ -361,7 +361,10 @@ export function applyAction(room, playerId, action) {
 			if (hand.stood || hand.busted) throw new Error("Already ended");
 			hand.hasActed = true;
 			hand.cards.push(draw(room.shoe));
-			if (isBust(hand.cards)) hand.busted = true;
+			if (isBust(hand.cards)) {
+				hand.busted = true;
+				p.activeHand++;
+			}
 			return "hit";
 		}
 		case "stand": {

@@ -75,10 +75,14 @@ export async function handlePollVote(req, res) {
 
 	io.emit("poll-update"); // Notify frontend clients of the change
 
-	const votersList = (await Promise.all(poll.voters.map(async (vId) => {
-		const user = await userService.getUser(vId);
-		return `- ${user?.globalName || "Utilisateur Inconnu"}`;
-	}))).join("\n");
+	const votersList = (
+		await Promise.all(
+			poll.voters.map(async (vId) => {
+				const user = await userService.getUser(vId);
+				return `- ${user?.globalName || "Utilisateur Inconnu"}`;
+			}),
+		)
+	).join("\n");
 
 	// --- 4. Check for Majority ---
 	if (isVotingFor && poll.for >= poll.requiredMajority) {
