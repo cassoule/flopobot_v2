@@ -81,25 +81,23 @@ export function blackjackRoutes(io) {
 		for (const p of Object.values(room.players)) {
 			try {
 				if (!p.inRound) continue;
-				const h = p.hands[p.activeHand];
-				if (h && !h.hasActed && !h.busted && !h.stood && !h.surrendered) {
-					h.surrendered = true;
+				// Handle all remaining hands (important after splits)
+				for (let i = p.activeHand; i < p.hands.length; i++) {
+					const h = p.hands[i];
+					if (!h || h.busted || h.stood || h.surrendered) continue;
 					h.stood = true;
 					h.hasActed = true;
-					//room.leavingAfterRound[p.id] = true; // kick at end of round
-					emitToast({ type: "player-timeout", userId: p.id });
 					changed = true;
-				} else if (h && h.hasActed && !h.stood) {
-					h.stood = true;
-					//room.leavingAfterRound[p.id] = true; // kick at end of round
+				}
+				if (changed) {
+					p.activeHand = p.hands.length;
 					emitToast({ type: "player-auto-stand", userId: p.id });
-					changed = true;
 				}
 			} catch (e) {
 				console.log(e);
 			}
 		}
-		if (changed) emitUpdate("auto-surrender", snapshot(room));
+		//if (changed) emitUpdate("auto-surrender", snapshot(room));
 		return changed;
 	}
 
