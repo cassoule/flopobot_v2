@@ -23,7 +23,7 @@ router.get("/discord", (req, res) => {
 		response_type: "code",
 		scope: "identify",
 	});
-	console.log("Redirecting to Discord OAuth2 with params:", params.toString());
+
 	res.redirect(`${DISCORD_API}/oauth2/authorize?${params.toString()}`);
 });
 
@@ -105,7 +105,7 @@ router.get("/me", async (req, res) => {
 	const user = await userService.getUser(payload.discordId);
 	if (!user) {
 		console.warn("User not found for Discord ID in token:", payload.discordId);
-		return res.json({discordId: payload.discordId});
+		return res.json({ discordId: payload.discordId });
 	}
 
 	res.json({ user, discordId: user.id });

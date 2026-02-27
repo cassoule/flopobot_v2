@@ -1297,10 +1297,6 @@ export function apiRoutes(client, io) {
 				},
 			});
 
-			console.log(
-				`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`,
-			);
-
 			res.json({ sessionId: session.id, url: session.url });
 		} catch (error) {
 			console.error("Error creating checkout session:", error);
