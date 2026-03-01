@@ -14,16 +14,17 @@ export async function getMarketOfferById(id) {
 		where: { id },
 		include: {
 			skin: { select: { displayName: true, displayIcon: true } },
+			csSkin: { select: { displayName: true, imageUrl: true, rarity: true, wearState: true, float: true, isStattrak: true, isSouvenir: true } },
 			seller: { select: { username: true, globalName: true } },
 			buyer: { select: { username: true, globalName: true } },
 		},
 	});
 	if (!offer) return null;
-	// Flatten to match the old query shape
+	const skinData = offer.csSkin || offer.skin;
 	return toOffer({
 		...offer,
-		skinName: offer.skin?.displayName,
-		skinIcon: offer.skin?.displayIcon,
+		skinName: skinData?.displayName,
+		skinIcon: offer.skin?.displayIcon || offer.csSkin?.imageUrl,
 		sellerName: offer.seller?.username,
 		sellerGlobalName: offer.seller?.globalName,
 		buyerName: offer.buyer?.username ?? null,
@@ -53,12 +54,34 @@ export async function getMarketOffersBySkin(skinUuid) {
 	);
 }
 
+export async function getMarketOffersByCsSkin(csSkinId) {
+	const offers = await prisma.marketOffer.findMany({
+		where: { csSkinId },
+		include: {
+			csSkin: { select: { displayName: true, imageUrl: true } },
+			seller: { select: { username: true, globalName: true } },
+			buyer: { select: { username: true, globalName: true } },
+		},
+	});
+	return offers.map((offer) =>
+		toOffer({
+			...offer,
+			skinName: offer.csSkin?.displayName,
+			skinIcon: offer.csSkin?.imageUrl,
+			sellerName: offer.seller?.username,
+			sellerGlobalName: offer.seller?.globalName,
+			buyerName: offer.buyer?.username ?? null,
+			buyerGlobalName: offer.buyer?.globalName ?? null,
+		}),
+	);
+}
+
 export async function insertMarketOffer(data) {
 	return prisma.marketOffer.create({
 		data: {
 			...data,
-			openingAt: String(data.openingAt),
-			closingAt: String(data.closingAt),
+			openingAt: new Date(data.openingAt),
+			closingAt: new Date(data.closingAt),
 		},
 	});
 }

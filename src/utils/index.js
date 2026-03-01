@@ -8,6 +8,7 @@ import { initTodaysSOTD } from "../game/points.js";
 import * as userService from "../services/user.service.js";
 import * as skinService from "../services/skin.service.js";
 import * as marketService from "../services/market.service.js";
+import * as csSkinService from "../services/csSkin.service.js";
 import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
 import { emitMarketUpdate } from "../server/socket.js";
 import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
@@ -286,16 +287,22 @@ async function handleMarketOffersUpdate() {
 				const buyer = await userService.getUser(lastBid.bidderId);
 
 				try {
-					// Change skin ownership
-					const skin = await skinService.getSkin(offer.skinUuid);
-					if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
-					await skinService.updateSkin({
-						userId: buyer.id,
-						currentLvl: skin.currentLvl,
-						currentChroma: skin.currentChroma,
-						currentPrice: skin.currentPrice,
-						uuid: skin.uuid,
-					});
+					// Change skin ownership (supports both Valorant and CS2 skins)
+					if (offer.csSkinId) {
+						const csSkin = await csSkinService.getCsSkin(offer.csSkinId);
+						if (!csSkin) throw new Error(`CS skin not found for offer ID: ${offer.id}`);
+						await csSkinService.updateCsSkin({ id: csSkin.id, userId: buyer.id });
+					} else if (offer.skinUuid) {
+						const skin = await skinService.getSkin(offer.skinUuid);
+						if (!skin) throw new Error(`Skin not found for offer ID: ${offer.id}`);
+						await skinService.updateSkin({
+							userId: buyer.id,
+							currentLvl: skin.currentLvl,
+							currentChroma: skin.currentChroma,
+							currentPrice: skin.currentPrice,
+							uuid: skin.uuid,
+						});
+					}
 					await marketService.updateMarketOffer({
 						id: offer.id,
 						buyerId: buyer.id,

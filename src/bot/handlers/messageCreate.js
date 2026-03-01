@@ -21,7 +21,8 @@ import { client } from "../client.js";
 import { drawCaseContent, drawCaseSkin, getDummySkinUpgradeProbs } from "../../utils/caseOpening.js";
 import { fetchSuggestedPrices, fetchSkinsData } from "../../api/cs.js";
 import { csSkinsData, csSkinsPrices } from "../../utils/cs.state.js";
-import { getRandomSkinWithRandomSpecs } from "../../utils/cs.utils.js";
+import { getRandomSkinWithRandomSpecs, RarityToColor } from "../../utils/cs.utils.js";
+import * as csSkinService from "../../services/csSkin.service.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -431,12 +432,26 @@ async function handleAdminCommands(message) {
 		case `${prefix}:open-cs`:
 			try {
 				const randomSkin = getRandomSkinWithRandomSpecs(args[0] ? parseFloat(args[0]) : null);
+				const created = await csSkinService.insertCsSkin({
+					marketHashName: randomSkin.name,
+					displayName: randomSkin.data.name || randomSkin.name,
+					imageUrl: randomSkin.data.image || null,
+					rarity: randomSkin.data.rarity.name,
+					rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
+					weaponType: randomSkin.data.weapon?.name || null,
+					float: randomSkin.float,
+					wearState: randomSkin.wearState,
+					isStattrak: randomSkin.isStattrak,
+					isSouvenir: randomSkin.isSouvenir,
+					price: parseInt(randomSkin.price),
+					userId: message.author.id,
+				});
 				message.reply(
 					`You opened a CS:GO case and got: ${randomSkin.name} (${randomSkin.data.rarity.name}, ${
 						randomSkin.isStattrak ? "StatTrak, " : ""
 					}${randomSkin.isSouvenir ? "Souvenir, " : ""}${randomSkin.wearState} - float ${randomSkin.float})\nBase Price: ${
 						randomSkin.price ?? "N/A"
-					} Flopos\nImage url: [url](${randomSkin.data.image || "N/A"})`,
+					} Flopos\nSkin ID: ${created.id}\nImage url: [url](${randomSkin.data.image || "N/A"})`,
 				);
 			} catch (e) {
 				console.log(e);

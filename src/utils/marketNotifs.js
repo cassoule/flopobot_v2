@@ -1,12 +1,28 @@
 import * as userService from "../services/user.service.js";
 import * as skinService from "../services/skin.service.js";
+import * as csSkinService from "../services/csSkin.service.js";
 import * as marketService from "../services/market.service.js";
 import { EmbedBuilder } from "discord.js";
+
+/**
+ * Gets the skin display name and icon from an offer, supporting both Valorant and CS2 skins.
+ */
+async function getOfferSkinInfo(offer) {
+	if (offer.csSkinId) {
+		const csSkin = await csSkinService.getCsSkin(offer.csSkinId);
+		return { name: csSkin?.displayName || offer.csSkinId, icon: csSkin?.imageUrl || null };
+	}
+	if (offer.skinUuid) {
+		const skin = await skinService.getSkin(offer.skinUuid);
+		return { name: skin?.displayName || offer.skinUuid, icon: skin?.displayIcon || null };
+	}
+	return { name: "Unknown", icon: null };
+}
 
 export async function handleNewMarketOffer(offerId, client) {
 	const offer = await marketService.getMarketOfferById(offerId);
 	if (!offer) return;
-	const skin = await skinService.getSkin(offer.skinUuid);
+	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
 	const discordUserSeller = await client.users.fetch(offer.sellerId);
 	try {
@@ -14,9 +30,8 @@ export async function handleNewMarketOffer(offerId, client) {
 		if (discordUserSeller && userSeller?.isAkhy) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Offre créée")
-				.setDescription(`Ton offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** a bien été créée !`)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setDescription(`Ton offre pour le skin **${skinName}** a bien été créée !`)
+				.setColor(0x5865f2)
 				.addFields(
 					{
 						name: "📌 Statut",
@@ -37,27 +52,26 @@ export async function handleNewMarketOffer(offerId, client) {
 						value: `<t:${Math.floor(offer.closingAt / 1000)}:F>`,
 					},
 					{
-						name: "🆔 ID de l’offre",
+						name: "🆔 ID de l'offre",
 						value: `\`${offer.id}\``,
 						inline: false,
 					},
 				)
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			discordUserSeller.send({ embeds: [embed] }).catch(console.error);
 		}
 	} catch (e) {
 		console.error(e);
 	}
-	// Send notification in guild channel
 
 	try {
 		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Nouvelle offre")
-			.setDescription(`Une offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** a été créée !`)
-			.setThumbnail(skin.displayIcon)
-			.setColor(0x5865f2) // Discord blurple
+			.setDescription(`Une offre pour le skin **${skinName}** a été créée !`)
+			.setColor(0x5865f2)
 			.addFields(
 				{
 					name: "💰 Prix de départ",
@@ -78,6 +92,7 @@ export async function handleNewMarketOffer(offerId, client) {
 				},
 			)
 			.setTimestamp();
+		if (skinIcon) embed.setThumbnail(skinIcon);
 		guildChannel.send({ embeds: [embed] }).catch(console.error);
 	} catch (e) {
 		console.error(e);
@@ -87,7 +102,7 @@ export async function handleNewMarketOffer(offerId, client) {
 export async function handleMarketOfferOpening(offerId, client) {
 	const offer = await marketService.getMarketOfferById(offerId);
 	if (!offer) return;
-	const skin = await skinService.getSkin(offer.skinUuid);
+	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
 	try {
 		const discordUserSeller = await client.users.fetch(offer.sellerId);
@@ -96,10 +111,9 @@ export async function handleMarketOfferOpening(offerId, client) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Début des enchères")
 				.setDescription(
-					`Les enchères sur ton offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** viennent de commencer !`,
+					`Les enchères sur ton offre pour le skin **${skinName}** viennent de commencer !`,
 				)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setColor(0x5865f2)
 				.addFields(
 					{
 						name: "📌 Statut",
@@ -116,29 +130,28 @@ export async function handleMarketOfferOpening(offerId, client) {
 						value: `<t:${Math.floor(offer.closingAt / 1000)}:F>`,
 					},
 					{
-						name: "🆔 ID de l’offre",
+						name: "🆔 ID de l'offre",
 						value: `\`${offer.id}\``,
 						inline: false,
 					},
 				)
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			discordUserSeller.send({ embeds: [embed] }).catch(console.error);
 		}
 	} catch (e) {
 		console.error(e);
 	}
-	// Send notification in guild channel
 
 	try {
 		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Début des enchères")
 			.setDescription(
-				`Les enchères sur l'offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** viennent de commencer !`,
+				`Les enchères sur l'offre pour le skin **${skinName}** viennent de commencer !`,
 			)
-			.setThumbnail(skin.displayIcon)
-			.setColor(0x5865f2) // Discord blurple
+			.setColor(0x5865f2)
 			.addFields(
 				{
 					name: "💰 Prix de départ",
@@ -151,6 +164,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 				},
 			)
 			.setTimestamp();
+		if (skinIcon) embed.setThumbnail(skinIcon);
 		guildChannel.send({ embeds: [embed] }).catch(console.error);
 	} catch (e) {
 		console.error(e);
@@ -160,7 +174,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 export async function handleMarketOfferClosing(offerId, client) {
 	const offer = await marketService.getMarketOfferById(offerId);
 	if (!offer) return;
-	const skin = await skinService.getSkin(offer.skinUuid);
+	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 	const bids = await marketService.getOfferBids(offer.id);
 
 	const discordUserSeller = await client.users.fetch(offer.sellerId);
@@ -170,11 +184,11 @@ export async function handleMarketOfferClosing(offerId, client) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Fin des enchères")
 				.setDescription(
-					`Les enchères sur ton offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** viennent de se terminer !`,
+					`Les enchères sur ton offre pour le skin **${skinName}** viennent de se terminer !`,
 				)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setColor(0x5865f2)
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			if (bids.length === 0) {
 				embed.addFields(
@@ -183,7 +197,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 						value: "Tu conserves ce skin dans ton inventaire.",
 					},
 					{
-						name: "🆔 ID de l’offre",
+						name: "🆔 ID de l'offre",
 						value: `\`${offer.id}\``,
 						inline: false,
 					},
@@ -197,7 +211,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 						value: `Ton skin a été vendu pour \`${highestBid.offerAmount} coins\` à <@${highestBid.bidderId}> ${highestBidderUser ? "(" + highestBidderUser.username + ")" : ""}.`,
 					},
 					{
-						name: "🆔 ID de l’offre",
+						name: "🆔 ID de l'offre",
 						value: `\`${offer.id}\``,
 						inline: false,
 					},
@@ -210,19 +224,17 @@ export async function handleMarketOfferClosing(offerId, client) {
 		console.error(e);
 	}
 
-	// Send notification in guild channel
-
 	try {
 		const guild = await client.guilds.fetch(process.env.BOT_GUILD_ID);
 		const guildChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Fin des enchères")
 			.setDescription(
-				`Les enchères sur l'offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** viennent de se terminer !`,
+				`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`,
 			)
-			.setThumbnail(skin.displayIcon)
-			.setColor(0x5865f2) // Discord blurple
+			.setColor(0x5865f2)
 			.setTimestamp();
+		if (skinIcon) embed.setThumbnail(skinIcon);
 
 		if (bids.length === 0) {
 			embed.addFields({
@@ -239,21 +251,20 @@ export async function handleMarketOfferClosing(offerId, client) {
 			const discordUserBidder = await client.users.fetch(highestBid.bidderId);
 			const userBidder = await userService.getUser(highestBid.bidderId);
 			if (discordUserBidder && userBidder?.isAkhy) {
-				const embed = new EmbedBuilder()
+				const bidderEmbed = new EmbedBuilder()
 					.setTitle("🔔 Fin des enchères")
 					.setDescription(
-						`Les enchères sur l'offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** viennent de se terminer !`,
+						`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`,
 					)
-					.setThumbnail(skin.displayIcon)
-					.setColor(0x5865f2) // Discord blurple
+					.setColor(0x5865f2)
 					.setTimestamp();
-				const highestBid = bids[0];
-				embed.addFields({
+				if (skinIcon) bidderEmbed.setThumbnail(skinIcon);
+				bidderEmbed.addFields({
 					name: "✅ Enchères terminées avec succès !",
 					value: `Tu as acheté ce skin pour \`${highestBid.offerAmount} coins\` à <@${offer.sellerId}> ${discordUserSeller ? "(" + discordUserSeller.username + ")" : ""}. Il a été ajouté à ton inventaire.`,
 				});
 
-				discordUserBidder.send({ embeds: [embed] }).catch(console.error);
+				discordUserBidder.send({ embeds: [bidderEmbed] }).catch(console.error);
 			}
 		}
 		guildChannel.send({ embeds: [embed] }).catch(console.error);
@@ -263,12 +274,11 @@ export async function handleMarketOfferClosing(offerId, client) {
 }
 
 export async function handleNewMarketOfferBid(offerId, bidId, client) {
-	// Notify Seller and Bidder
 	const offer = await marketService.getMarketOfferById(offerId);
 	if (!offer) return;
 	const bid = (await marketService.getOfferBids(offerId))[0];
 	if (!bid) return;
-	const skin = await skinService.getSkin(offer.skinUuid);
+	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
 	const bidderUser = client.users.fetch(bid.bidderId);
 	try {
@@ -279,10 +289,9 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Nouvelle enchère")
 				.setDescription(
-					`Il y a eu une nouvelle enchère sur ton offre pour le skin **${skin ? skin.displayName : offer.skinUuid}**.`,
+					`Il y a eu une nouvelle enchère sur ton offre pour le skin **${skinName}**.`,
 				)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setColor(0x5865f2)
 				.addFields(
 					{
 						name: "👤 Enchérisseur",
@@ -290,7 +299,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 						inline: true,
 					},
 					{
-						name: "💰 Montant de l’enchère",
+						name: "💰 Montant de l'enchère",
 						value: `\`${bid.offerAmount} coins\``,
 						inline: true,
 					},
@@ -299,12 +308,13 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 						value: `<t:${Math.floor(offer.closingAt / 1000)}:F>`,
 					},
 					{
-						name: "🆔 ID de l’offre",
+						name: "🆔 ID de l'offre",
 						value: `\`${offer.id}\``,
 						inline: false,
 					},
 				)
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			discordUserSeller.send({ embeds: [embed] }).catch(console.error);
 		}
@@ -319,16 +329,16 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Nouvelle enchère")
 				.setDescription(
-					`Ton enchère sur l'offre pour le skin **${skin ? skin.displayName : offer.skinUuid}** a bien été placée!`,
+					`Ton enchère sur l'offre pour le skin **${skinName}** a bien été placée!`,
 				)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setColor(0x5865f2)
 				.addFields({
-					name: "💰 Montant de l’enchère",
+					name: "💰 Montant de l'enchère",
 					value: `\`${bid.offerAmount} coins\``,
 					inline: true,
 				})
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			discordUserNewBidder.send({ embeds: [embed] }).catch(console.error);
 		}
@@ -338,7 +348,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 
 	try {
 		const offerBids = await marketService.getOfferBids(offer.id);
-		if (offerBids.length < 2) return; // No previous bidder to notify
+		if (offerBids.length < 2) return;
 
 		const discordUserPreviousBidder = await client.users.fetch(offerBids[1].bidderId);
 		const userPreviousBidder = await userService.getUser(offerBids[1].bidderId);
@@ -346,10 +356,9 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Nouvelle enchère")
 				.setDescription(
-					`Quelqu'un a surenchéri sur l'offre pour le skin **${skin ? skin.displayName : offer.skinUuid}**, tu n'es plus le meilleur enchérisseur !`,
+					`Quelqu'un a surenchéri sur l'offre pour le skin **${skinName}**, tu n'es plus le meilleur enchérisseur !`,
 				)
-				.setThumbnail(skin.displayIcon)
-				.setColor(0x5865f2) // Discord blurple
+				.setColor(0x5865f2)
 				.addFields(
 					{
 						name: "👤 Enchérisseur",
@@ -357,20 +366,19 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 						inline: true,
 					},
 					{
-						name: "💰 Montant de l’enchère",
+						name: "💰 Montant de l'enchère",
 						value: `\`${bid.offerAmount} coins\``,
 						inline: true,
 					},
 				)
 				.setTimestamp();
+			if (skinIcon) embed.setThumbnail(skinIcon);
 
 			discordUserPreviousBidder.send({ embeds: [embed] }).catch(console.error);
 		}
 	} catch (e) {
 		console.error(e);
 	}
-
-	// Notify previous highest bidder
 }
 
 export async function handleCaseOpening(caseType, userId, skinUuid, client) {
@@ -384,7 +392,7 @@ export async function handleCaseOpening(caseType, userId, skinUuid, client) {
 				`${discordUser ? discordUser.username : "Un utilisateur"} vient d'ouvrir une caisse **${caseType}** et a obtenu le skin **${skin.displayName}** !`,
 			)
 			.setThumbnail(skin.displayIcon)
-			.setColor(skin.tierColor) // Discord blurple
+			.setColor(skin.tierColor)
 			.addFields(
 				{
 					name: "💰 Valeur estimée",

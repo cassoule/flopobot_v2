@@ -36,19 +36,13 @@ export const fetchSkinsData = async () => {
 			`https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json`,
 		);
 		const data = await response.json();
-        let rarities = {};
 		data.forEach((skin) => {
 			if (skin.market_hash_name) {
 				csSkinsData[skin.market_hash_name] = skin;
 			} else if (skin.name) {
-                csSkinsData[skin.name] = skin;
-            }
-            if (skin.rarity && skin.rarity.name) {
-                rarities[skin.rarity.name] = (rarities[skin.rarity.name] || 0) + 1;
-            }
-           
+				csSkinsData[skin.name] = skin;
+			}
 		});
-         console.log(rarities)
 		return data;
 	} catch (error) {
 		console.error("Error fetching skins data:", error);

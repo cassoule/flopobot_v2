@@ -35,6 +35,14 @@ const wearStateMultipliers = {
 	[StateBattleScarred]: 0.5,
 };
 
+export const TRADE_UP_MAP = {
+	"Consumer Grade": "Industrial Grade",
+	"Industrial Grade": "Mil-Spec Grade",
+	"Mil-Spec Grade": "Restricted",
+	"Restricted": "Classified",
+	"Classified": "Covert",
+};
+
 export function randomSkinRarity() {
 	const roll = Math.random();
 
@@ -42,58 +50,53 @@ export function randomSkinRarity() {
 	const covertLimit = goldLimit + 0.014;
 	const classifiedLimit = covertLimit + 0.04;
 	const restrictedLimit = classifiedLimit + 0.2;
-    const milSpecLimit = restrictedLimit + 0.5;
-    const industrialLimit = milSpecLimit + 0.2;
+	const milSpecLimit = restrictedLimit + 0.5;
+	const industrialLimit = milSpecLimit + 0.2;
 
 	if (roll < goldLimit) return "Extraordinary";
 	if (roll < covertLimit) return "Covert";
 	if (roll < classifiedLimit) return "Classified";
 	if (roll < restrictedLimit) return "Restricted";
 	if (roll < milSpecLimit) return "Mil-Spec Grade";
-    if (roll < industrialLimit) return "Industrial Grade";
+	if (roll < industrialLimit) return "Industrial Grade";
 	return "Consumer Grade";
 }
 
 export function generatePrice(rarity, float, isStattrak, isSouvenir, wearState) {
 	const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
-    console.log(ranges)
 
-	let basePrice = ranges.min + (Math.random()) * (ranges.max - ranges.min);
-    console.log(basePrice)
+	let basePrice = ranges.min + Math.random() * (ranges.max - ranges.min);
 
 	const stateMultiplier = wearStateMultipliers[wearState] ?? 1.0;
-    console.log(stateMultiplier)
 
 	let finalPrice = basePrice * stateMultiplier;
-    console.log(finalPrice)
 
 	const isExtraordinary = rarity === "Extraordinary";
 
 	if (isSouvenir && !isExtraordinary) {
-		finalPrice *= 4 + (Math.random()) * (10.0 - 4);
+		finalPrice *= 4 + Math.random() * (10.0 - 4);
 	} else if (isStattrak && !isExtraordinary) {
-		finalPrice *= 3 + (Math.random()) * (5.0 - 3);
+		finalPrice *= 3 + Math.random() * (5.0 - 3);
 	}
-    console.log(finalPrice)
-    finalPrice /= 1 + float; // Avoid division by zero and ensure float has a significant impact
+	finalPrice /= 1 + float;
 
 	if (finalPrice < 1) finalPrice = 1;
 
 	return finalPrice.toFixed(0);
 }
 
-export function isStattrak(canBeStattrak) {
+export function rollStattrak(canBeStattrak) {
 	if (!canBeStattrak) return false;
 	return Math.random() < 0.15;
 }
 
-export function isSouvenir(canBeSouvenir) {
+export function rollSouvenir(canBeSouvenir) {
 	if (!canBeSouvenir) return false;
 	return Math.random() < 0.15;
 }
 
 export function getRandomFloatInRange(min, max) {
-	return min + (Math.random()) * (max - min);
+	return min + Math.random() * (max - min);
 }
 
 export function getWearState(wear) {
@@ -106,23 +109,26 @@ export function getWearState(wear) {
 	return StateBattleScarred;
 }
 
-export function getRandomSkinWithRandomSpecs(u_float=null) {
+export function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 	const skinNames = Object.keys(csSkinsData);
-    const randomRarity = randomSkinRarity();
-    console.log(randomRarity)
-    const filteredSkinNames = skinNames.filter(name => csSkinsData[name].rarity.name === randomRarity);
+	const selectedRarity = forcedRarity || randomSkinRarity();
+	const filteredSkinNames = skinNames.filter(name => csSkinsData[name].rarity.name === selectedRarity);
 	const randomIndex = Math.floor(Math.random() * filteredSkinNames.length);
 
 	const skinName = filteredSkinNames[randomIndex];
 	const skinData = csSkinsData[skinName];
-    const float = u_float !== null ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
+	const float = u_float !== null ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
+	const wearState = getWearState(float);
+	const skinIsStattrak = rollStattrak(skinData.stattrak);
+	const skinIsSouvenir = rollSouvenir(skinData.souvenir);
+
 	return {
 		name: skinName,
 		data: skinData,
-		isStattrak: isStattrak(skinData.stattrak),
-		isSouvenir: isSouvenir(skinData.souvenir),
-		wearState: getWearState(float),
-        float: float,
-        price: generatePrice(skinData.rarity.name, float, isStattrak(skinData.stattrak), isSouvenir(skinData.souvenir), getWearState(float)),
+		isStattrak: skinIsStattrak,
+		isSouvenir: skinIsSouvenir,
+		wearState,
+		float,
+		price: generatePrice(skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, wearState),
 	};
 }
