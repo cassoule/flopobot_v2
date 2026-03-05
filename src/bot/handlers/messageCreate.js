@@ -19,6 +19,10 @@ import * as skinService from "../../services/skin.service.js";
 import * as logService from "../../services/log.service.js";
 import { client } from "../client.js";
 import { drawCaseContent, drawCaseSkin, getDummySkinUpgradeProbs } from "../../utils/caseOpening.js";
+import { fetchSuggestedPrices, fetchSkinsData } from "../../api/cs.js";
+import { csSkinsData, csSkinsPrices } from "../../utils/cs.state.js";
+import { getRandomSkinWithRandomSpecs, RarityToColor } from "../../utils/cs.utils.js";
+import * as csSkinService from "../../services/csSkin.service.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -353,7 +357,12 @@ async function handleAdminCommands(message) {
 			try {
 				const DBskins = await skinService.getAllSkins();
 				for (const skin of DBskins) {
-					const owner = await userService.getUser(skin.userId);
+					let owner = null;
+					try {
+						owner = await userService.getUser(skin.userId)
+					} catch {
+						//
+					};
 					if (owner) {
 						await userService.updateUserCoins(owner.id, owner.coins + skin.currentPrice);
 						await logService.insertLog({
@@ -379,6 +388,113 @@ async function handleAdminCommands(message) {
 				message.reply(`Error during refund skins ${e.message}`);
 			}
 
+			break;
+		case `${prefix}:cs-search`:
+			try {
+				const searchTerm = args.join(" ");
+				if (!searchTerm) {
+					message.reply("Please provide a search term.");
+					return;
+				}
+				const filteredData = csSkinsData
+					? Object.values(csSkinsData).filter((skin) => {
+							const name = skin.market_hash_name.toLowerCase();
+							return args.every((word) => name.includes(word.toLowerCase()));
+						})
+					: [];
+				if (filteredData.length === 0) {
+					message.reply(`No skins found matching "${searchTerm}".`);
+					return;
+				} else if (filteredData.length <= 10) {
+					const skinList = filteredData
+						.map(
+							(skin) =>
+								`${skin.market_hash_name} - ${
+									csSkinsPrices[skin.market_hash_name]
+										? "Sug " +
+											csSkinsPrices[skin.market_hash_name].suggested_price +
+											" | Min " +
+											csSkinsPrices[skin.market_hash_name].min_price +
+											" | Max " +
+											csSkinsPrices[skin.market_hash_name].max_price +
+											" | Avg " +
+											csSkinsPrices[skin.market_hash_name].mean_price +
+											" | Med " +
+											csSkinsPrices[skin.market_hash_name].median_price
+										: "N/A"
+								}`,
+						)
+						.join("\n");
+					message.reply(`Skins matching "${searchTerm}":\n${skinList}`);
+				} else {
+					message.reply(`Found ${filteredData.length} skins matching "${searchTerm}".`);
+				}
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error searching CS:GO skins: ${e.message}`);
+			}
+			break;
+		case `${prefix}:open-cs`:
+			try {
+				const randomSkin = await getRandomSkinWithRandomSpecs(args[0] ? parseFloat(args[0]) : null);
+				const created = await csSkinService.insertCsSkin({
+					marketHashName: randomSkin.name,
+					displayName: randomSkin.data.name || randomSkin.name,
+					imageUrl: randomSkin.data.image || null,
+					rarity: randomSkin.data.rarity.name,
+					rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
+					weaponType: randomSkin.data.weapon?.name || null,
+					float: randomSkin.float,
+					wearState: randomSkin.wearState,
+					isStattrak: randomSkin.isStattrak,
+					isSouvenir: randomSkin.isSouvenir,
+					price: parseInt(randomSkin.price),
+					userId: message.author.id,
+				});
+				message.reply(
+					`You opened a CS:GO case and got: ${randomSkin.name} (${randomSkin.data.rarity.name}, ${
+						randomSkin.isStattrak ? "StatTrak, " : ""
+					}${randomSkin.isSouvenir ? "Souvenir, " : ""}${randomSkin.wearState} - float ${randomSkin.float})\nBase Price: ${
+						randomSkin.price ?? "N/A"
+					} Flopos\nSkin ID: ${created.id}\nImage url: [url](${randomSkin.data.image || "N/A"})`,
+				);
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error opening CS:GO case: ${e.message}`);
+			}
+			break;
+		case `${prefix}:simulate-cs`:
+			try {
+				const caseCount = parseInt(args[0]) || 100;
+				const caseType = args[1] || "default";
+				let totalResValue = 0;
+				let highestSkinPrice = 0;
+				const priceTiers = {
+					"Consumer Grade": 0,
+					"Industrial Grade": 0,
+					"Mil-Spec Grade": 0,
+					"Restricted": 0,
+					"Classified": 0,
+					"Covert": 0,
+					"Extraordinary": 0,
+				};
+
+				for (let i = 0; i < caseCount; i++) {
+					const result = await getRandomSkinWithRandomSpecs();
+					totalResValue += parseInt(result.price);
+					if (parseInt(result.price) > highestSkinPrice) {
+						highestSkinPrice = parseInt(result.price);
+					}
+					priceTiers[result.data.rarity.name]++;
+				}
+				console.log(totalResValue / caseCount);
+				message.reply(
+					`${totalResValue / caseCount} average skin price over ${caseCount} ${caseType} cases.\nHighest skin price: ${highestSkinPrice}\nPrice tier distribution: ${JSON.stringify(priceTiers)}`,
+				);
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error during case simulation: ${e.message}`);
+			}
 			break;
 	}
 }

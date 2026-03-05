@@ -264,12 +264,15 @@ async function onSnakeGameStateUpdate(client, eventData) {
 			winnerId = lobby.p2.id;
 		}
 		// If scores are equal, winnerId remains null (draw)
+		io.emit("snakegameOver", { gameKey: lobby.gameKey, game: lobby, winner: winnerId });
 		await onGameOver(client, "snake", playerId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
 	} else if (lobby.p1.win || lobby.p2.win) {
 		// One player won by filling the grid
 		const winnerId = lobby.p1.win ? lobby.p1.id : lobby.p2.id;
+		io.emit("snakegameOver", { gameKey: lobby.gameKey, game: lobby, winner: winnerId });
 		await onGameOver(client, "snake", playerId, winnerId, "", { p1: lobby.p1.score, p2: lobby.p2.score });
 	}
+	delete activeSnakeGames[lobby.gameKey];
 }
 
 export async function onGameOver(client, gameType, playerId, winnerId, reason = "", scores = null) {
@@ -284,14 +287,17 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 		await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, title.toUpperCase(), scores);
 		resultText = "Égalité";
 	} else {
-		await eloHandler(
-			game.p1.id,
-			game.p2.id,
-			game.p1.id === winnerId ? 1 : 0,
-			game.p2.id === winnerId ? 1 : 0,
-			title.toUpperCase(),
-			scores,
-		);
+		// Temp fix: Don't update ELO for Snake since it's not in a stable state yet.
+		if (gameType !== "snake") {
+			await eloHandler(
+				game.p1.id,
+				game.p2.id,
+				game.p1.id === winnerId ? 1 : 0,
+				game.p2.id === winnerId ? 1 : 0,
+				title.toUpperCase(),
+				scores,
+			);
+		}
 		const winnerName = game.p1.id === winnerId ? game.p1.name : game.p2.name;
 		resultText = `Victoire de ${winnerName}`;
 	}

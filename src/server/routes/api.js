@@ -9,6 +9,7 @@ import * as skinService from "../../services/skin.service.js";
 import * as logService from "../../services/log.service.js";
 import * as transactionService from "../../services/transaction.service.js";
 import * as marketService from "../../services/market.service.js";
+import * as csSkinService from "../../services/csSkin.service.js";
 
 // --- Game State Imports ---
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
@@ -23,6 +24,7 @@ import { emitDataUpdated, socketEmit, onGameOver } from "../socket.js";
 import { handleCaseOpening } from "../../utils/marketNotifs.js";
 import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getRandomSkinWithRandomSpecs, RarityToColor, TRADE_UP_MAP } from "../../utils/cs.utils.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -181,6 +183,137 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	router.post("/open-cs-case", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 300;
+
+		const commandUser = await userService.getUser(userId);
+		if (!commandUser) return res.status(404).json({ error: "User not found." });
+		if (commandUser.coins < casePrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
+
+		try {
+			const randomSkin = await getRandomSkinWithRandomSpecs();
+
+			const created = await csSkinService.insertCsSkin({
+				marketHashName: randomSkin.name,
+				displayName: randomSkin.data.name || randomSkin.name,
+				imageUrl: randomSkin.data.image || null,
+				rarity: randomSkin.data.rarity.name,
+				rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
+				weaponType: randomSkin.data.weapon?.name || null,
+				float: randomSkin.float,
+				wearState: randomSkin.wearState,
+				isStattrak: randomSkin.isStattrak,
+				isSouvenir: randomSkin.isSouvenir,
+				price: parseInt(randomSkin.price),
+				userId: userId,
+			});
+
+			await logService.insertLog({
+				id: `${userId}-${Date.now()}`,
+				userId: userId,
+				action: "CS_CASE_OPEN",
+				targetUserId: null,
+				coinsAmount: -casePrice,
+				userNewAmount: commandUser.coins - casePrice,
+			});
+			await userService.updateUserCoins(userId, commandUser.coins - casePrice);
+
+			// Generate roulette decoy skins for the animation
+			const ROULETTE_SIZE = 50;
+			const resultIndex = 12 + Math.floor(Math.random() * 5); // Place result around index 12-16
+			const rouletteSkins = [];
+			for (let i = 0; i < ROULETTE_SIZE; i++) {
+				if (i === resultIndex) {
+					rouletteSkins.push({
+						displayName: created.displayName,
+						imageUrl: created.imageUrl,
+						rarity: created.rarity,
+						rarityColor: created.rarityColor,
+					});
+				} else {
+					const decoy = await getRandomSkinWithRandomSpecs();
+					rouletteSkins.push({
+						displayName: decoy.data.name || decoy.name,
+						imageUrl: decoy.data.image || null,
+						rarity: decoy.data.rarity.name,
+						rarityColor: RarityToColor[decoy.data.rarity.name]?.toString(16) || null,
+					});
+				}
+			}
+
+			res.json({ skin: created, rouletteSkins, resultIndex });
+		} catch (error) {
+			console.error("Error opening CS case:", error);
+			res.status(500).json({ error: "Failed to open CS case." });
+		}
+	});
+
+	router.post("/trade-up", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { skinIds } = req.body;
+
+		if (!Array.isArray(skinIds) || skinIds.length !== 10) {
+			return res.status(400).json({ error: "You must provide exactly 10 skin IDs." });
+		}
+
+		try {
+			const skins = await Promise.all(skinIds.map((id) => csSkinService.getCsSkin(id)));
+
+			// Validate all skins exist and are owned by the user
+			for (const skin of skins) {
+				if (!skin) return res.status(404).json({ error: "One or more skins not found." });
+				if (skin.userId !== userId) return res.status(403).json({ error: "You don't own all of these skins." });
+			}
+
+			// Validate all skins are the same rarity
+			const rarity = skins[0].rarity;
+			if (!skins.every((s) => s.rarity === rarity)) {
+				return res.status(400).json({ error: "All 10 skins must be the same rarity." });
+			}
+
+			// Validate rarity can be traded up
+			const nextRarity = TRADE_UP_MAP[rarity];
+			if (!nextRarity) {
+				return res.status(400).json({ error: `${rarity} skins cannot be used in trade-up contracts.` });
+			}
+
+			// Delete the 10 input skins
+			await csSkinService.deleteManyCsSkins(skinIds);
+
+			// Generate a new skin at the next rarity tier
+			const newSkin = await getRandomSkinWithRandomSpecs(null, nextRarity);
+			const created = await csSkinService.insertCsSkin({
+				marketHashName: newSkin.name,
+				displayName: newSkin.data.name || newSkin.name,
+				imageUrl: newSkin.data.image || null,
+				rarity: newSkin.data.rarity.name,
+				rarityColor: RarityToColor[newSkin.data.rarity.name]?.toString(16) || null,
+				weaponType: newSkin.data.weapon?.name || null,
+				float: newSkin.float,
+				wearState: newSkin.wearState,
+				isStattrak: newSkin.isStattrak,
+				isSouvenir: newSkin.isSouvenir,
+				price: parseInt(newSkin.price),
+				userId: userId,
+			});
+
+			await logService.insertLog({
+				id: `${userId}-${Date.now()}`,
+				userId: userId,
+				action: "CS_TRADE_UP",
+				targetUserId: null,
+				coinsAmount: 0,
+				userNewAmount: (await userService.getUser(userId)).coins,
+			});
+
+			res.json({ skin: created, consumedRarity: rarity, resultRarity: nextRarity });
+		} catch (error) {
+			console.error("Error during trade-up:", error);
+			res.status(500).json({ error: "Failed to complete trade-up contract." });
+		}
+	});
+
 	router.get("/case-content/:type", async (req, res) => {
 		const { type } = req.params;
 		try {
@@ -280,6 +413,44 @@ export function apiRoutes(client, io) {
 		} catch (error) {
 			console.error("Error fetching skin upgrade:", error);
 			res.status(500).json({ error: "Failed to fetch skin upgrade." });
+		}
+	});
+
+	router.post("/cs-skin/:id/instant-sell", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+
+			const marketOffers = await marketService.getMarketOffersByCsSkin(skin.id);
+			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
+			if (activeOffers.length > 0) {
+				return res
+					.status(403)
+					.json({ error: "Impossible de vendre ce skin, une offre FlopoMarket est déjà en cours." });
+			}
+
+			const commandUser = await userService.getUser(userId);
+			if (!commandUser) return res.status(404).json({ error: "User not found." });
+
+			const sellPrice = skin.price;
+			await logService.insertLog({
+				id: `${userId}-${Date.now()}`,
+				userId: userId,
+				action: "CS_SKIN_INSTANT_SELL",
+				targetUserId: null,
+				coinsAmount: sellPrice,
+				userNewAmount: commandUser.coins + sellPrice,
+			});
+			await userService.updateUserCoins(userId, commandUser.coins + sellPrice);
+			await csSkinService.deleteCsSkin(skin.id);
+
+			console.log(`${commandUser.username} instantly sold CS skin ${skin.displayName} for ${sellPrice} FlopoCoins`);
+			res.status(200).json({ sellPrice });
+		} catch (error) {
+			console.error("Error selling CS skin:", error);
+			res.status(500).json({ error: "Failed to sell CS skin." });
 		}
 	});
 
@@ -501,7 +672,9 @@ export function apiRoutes(client, io) {
 				skin.isChampions = isChampionsSkin(skin.displayName);
 				skin.vctRegion = getVCTRegion(skin.displayName);
 			}
-			res.json({ inventory });
+
+			const csInventory = await csSkinService.getUserCsInventory(req.params.id);
+			res.json({ inventory, csInventory });
 		} catch (error) {
 			console.log(error);
 			res.status(500).json({ error: "Failed to fetch inventory." });
@@ -1296,10 +1469,6 @@ export function apiRoutes(client, io) {
 					coins: offer.coins.toString(),
 				},
 			});
-
-			console.log(
-				`[CHECKOUT] New session for user ${userId}: ${session.id}, offer: ${offer.id} (${offer.coins} coins for ${offer.amount_cents} cents)`,
-			);
 
 			res.json({ sessionId: session.id, url: session.url });
 		} catch (error) {

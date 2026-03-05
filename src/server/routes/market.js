@@ -9,6 +9,7 @@ import * as userService from "../../services/user.service.js";
 import * as skinService from "../../services/skin.service.js";
 import * as logService from "../../services/log.service.js";
 import * as marketService from "../../services/market.service.js";
+import * as csSkinService from "../../services/csSkin.service.js";
 import { emitMarketUpdate } from "../socket.js";
 import { handleNewMarketOffer, handleNewMarketOfferBid } from "../../utils/marketNotifs.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -27,7 +28,11 @@ export function marketRoutes(client, io) {
 		try {
 			const offers = await marketService.getMarketOffers();
 			for (const offer of offers) {
-				offer.skin = await skinService.getSkin(offer.skinUuid);
+				if (offer.csSkinId) {
+					offer.csSkin = await csSkinService.getCsSkin(offer.csSkinId);
+				} else if (offer.skinUuid) {
+					offer.skin = await skinService.getSkin(offer.skinUuid);
+				}
 				offer.seller = await userService.getUser(offer.sellerId);
 				offer.buyer = offer.buyerId ? await userService.getUser(offer.buyerId) : null;
 				offer.bids = (await marketService.getOfferBids(offer.id)) || {};
@@ -66,16 +71,30 @@ export function marketRoutes(client, io) {
 
 	router.post("/place-offer", requireAuth, async (req, res) => {
 		const seller_id = req.userId;
-		const { skin_uuid, starting_price, delay, duration, timestamp } = req.body;
+		const { skin_uuid, cs_skin_id, starting_price, delay, duration, timestamp } = req.body;
 		const now = Date.now();
 		try {
-			const skin = await skinService.getSkin(skin_uuid);
-			if (!skin) return res.status(404).send({ error: "Skin not found" });
 			const seller = await userService.getUser(seller_id);
 			if (!seller) return res.status(404).send({ error: "Seller not found" });
-			if (skin.userId !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
 
-			const existingOffers = await marketService.getMarketOffersBySkin(skin.uuid);
+			let skinRef; // { skinUuid, csSkinId } - one or the other
+			if (cs_skin_id) {
+				const csSkin = await csSkinService.getCsSkin(cs_skin_id);
+				if (!csSkin) return res.status(404).send({ error: "CS skin not found" });
+				if (csSkin.userId !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+				skinRef = { csSkinId: csSkin.id };
+			} else if (skin_uuid) {
+				const skin = await skinService.getSkin(skin_uuid);
+				if (!skin) return res.status(404).send({ error: "Skin not found" });
+				if (skin.userId !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+				skinRef = { skinUuid: skin.uuid };
+			} else {
+				return res.status(400).send({ error: "Must provide skin_uuid or cs_skin_id" });
+			}
+
+			const existingOffers = skinRef.skinUuid
+				? await marketService.getMarketOffersBySkin(skinRef.skinUuid)
+				: await marketService.getMarketOffersByCsSkin(skinRef.csSkinId);
 			if (
 				existingOffers.length > 0 &&
 				existingOffers.some((offer) => offer.status === "open" || offer.status === "pending")
@@ -86,10 +105,11 @@ export function marketRoutes(client, io) {
 			const opening_at = now + delay;
 			const closing_at = opening_at + duration;
 
-			const offerId = Date.now() + "-" + seller.id + "-" + skin.uuid;
+			const offerId = Date.now() + "-" + seller.id + "-" + (skinRef.skinUuid || skinRef.csSkinId);
 			await marketService.insertMarketOffer({
 				id: offerId,
-				skinUuid: skin.uuid,
+				skinUuid: skinRef.skinUuid || null,
+				csSkinId: skinRef.csSkinId || null,
 				sellerId: seller.id,
 				startingPrice: starting_price,
 				buyoutPrice: null,

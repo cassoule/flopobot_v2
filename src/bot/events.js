@@ -1,5 +1,6 @@
 import { handleMessageCreate } from "./handlers/messageCreate.js";
 import { getAkhys } from "../utils/index.js";
+import { fetchSuggestedPrices, fetchSkinsData } from "../api/cs.js";
 
 /**
  * Initializes and attaches all necessary event listeners to the Discord client.
@@ -18,6 +19,8 @@ export function initializeEvents(client, io) {
 		await getAkhys(client);
 		console.log("[Startup] Setting up scheduled tasks...");
 		//setupCronJobs(client, io);
+		await fetchSuggestedPrices();
+		await fetchSkinsData();
 		console.log("--- FlopoBOT is fully operational ---");
 	});
 

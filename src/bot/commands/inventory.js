@@ -6,10 +6,12 @@ import {
 } from "discord-interactions";
 import { activeInventories, skins } from "../../game/state.js";
 import * as skinService from "../../services/skin.service.js";
+import * as csSkinService from "../../services/csSkin.service.js";
+import { RarityToColor } from "../../utils/cs.utils.js";
 
 /**
  * Handles the /inventory slash command.
- * Displays a paginated, interactive embed of a user's Valorant skin inventory.
+ * Displays a paginated, interactive embed of a user's skin inventory.
  *
  * @param {object} req - The Express request object.
  * @param {object} res - The Express response object.
@@ -26,16 +28,22 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 	});
 	const { member, guild_id, token, data } = req.body;
 	const commandUserId = member.user.id;
-	// User can specify another member, otherwise it defaults to themself
 	const targetUserId = data.options && data.options.length > 0 ? data.options[0].value : commandUserId;
 
 	try {
-		// --- 1. Fetch Data ---
 		const guild = await client.guilds.fetch(guild_id);
 		const targetMember = await guild.members.fetch(targetUserId);
-		const inventorySkins = await skinService.getUserInventory(targetUserId);
 
-		// --- 2. Handle Empty Inventory ---
+		// Fetch both Valorant and CS2 inventories
+		const valoSkins = await skinService.getUserInventory(targetUserId);
+		const csSkins = await csSkinService.getUserCsInventory(targetUserId);
+
+		// Combine into a unified list with a type marker
+		const inventorySkins = [
+			...csSkins.map((s) => ({ ...s, _type: "cs" })),
+			...valoSkins.map((s) => ({ ...s, _type: "valo" })),
+		];
+
 		if (inventorySkins.length === 0) {
 			return res.send({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -44,64 +52,30 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 						{
 							title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
 							description: "Cet inventaire est vide.",
-							color: 0x4f545c, // Discord Gray
+							color: 0x4f545c,
 						},
 					],
 				},
 			});
 		}
 
-		// --- 3. Store Interactive Session State ---
-		// This state is crucial for the component handlers to know which inventory to update.
 		activeInventories[interactionId] = {
-			akhyId: targetUserId, // The inventory owner
-			userId: commandUserId, // The user who ran the command
+			akhyId: targetUserId,
+			userId: commandUserId,
 			page: 0,
 			amount: inventorySkins.length,
 			endpoint: `webhooks/${process.env.APP_ID}/${token}/messages/@original`,
 			timestamp: Date.now(),
-			inventorySkins: inventorySkins, // Cache the skins to avoid re-querying the DB on each page turn
+			inventorySkins: inventorySkins,
 		};
 
-		// --- 4. Prepare Embed Content ---
 		const currentSkin = inventorySkins[0];
-		const skinData = skins.find((s) => s.uuid === currentSkin.uuid);
-		if (!skinData) {
-			throw new Error(`Skin data not found for UUID: ${currentSkin.uuid}`);
-		}
-		const totalPrice = inventorySkins.reduce((sum, skin) => sum + (skin.currentPrice || 0), 0);
+		const totalPrice = inventorySkins.reduce((sum, skin) => {
+			return sum + (skin._type === "cs" ? skin.price || 0 : skin.currentPrice || 0);
+		}, 0);
 
-		// --- Helper functions for formatting ---
-		const getChromaText = (skin, skinInfo) => {
-			let result = "";
-			for (let i = 1; i <= skinInfo.chromas.length; i++) {
-				result += skin.currentChroma === i ? "💠 " : "◾ ";
-			}
-			return result || "N/A";
-		};
+		const embed = buildSkinEmbed(currentSkin, targetMember, 1, inventorySkins.length, totalPrice);
 
-		const getChromaName = (skin, skinInfo) => {
-			if (skin.currentChroma > 1) {
-				const name = skinInfo.chromas[skin.currentChroma - 1]?.displayName
-					.replace(/[\r\n]+/g, " ")
-					.replace(skinInfo.displayName, "")
-					.trim();
-				const match = name.match(/Variante\s*[0-9\s]*-\s*([^)]+)/i);
-				return match ? match[1].trim() : name;
-			}
-			return "Base";
-		};
-
-		const getImageUrl = (skin, skinInfo) => {
-			if (skin.currentLvl === skinInfo.levels.length) {
-				const chroma = skinInfo.chromas[skin.currentChroma - 1];
-				return chroma?.fullRender || chroma?.displayIcon || skinInfo.displayIcon;
-			}
-			const level = skinInfo.levels[skin.currentLvl - 1];
-			return level?.displayIcon || skinInfo.displayIcon || skinInfo.chromas[0].fullRender;
-		};
-
-		// --- 5. Build Initial Components (Buttons) ---
 		const components = [
 			{
 				type: MessageComponentTypes.BUTTON,
@@ -117,38 +91,10 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 			},
 		];
 
-		const isUpgradable =
-			currentSkin.currentLvl < skinData.levels.length || currentSkin.currentChroma < skinData.chromas.length;
-		// Only show upgrade button if the skin is upgradable AND the command user owns the inventory
-		if (isUpgradable && targetUserId === commandUserId) {
-			components.push({
-				type: MessageComponentTypes.BUTTON,
-				custom_id: `upgrade_${interactionId}`,
-				label: `Upgrade ⏫ (${process.env.VALO_UPGRADE_PRICE || (currentSkin.maxPrice / 10).toFixed(0)} Flopos)`,
-				style: ButtonStyleTypes.PRIMARY,
-			});
-		}
-
-		// --- 6. Send Final Response ---
 		return res.send({
 			type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 			data: {
-				embeds: [
-					{
-						title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
-						color: parseInt(currentSkin.tierColor, 16) || 0xf2f3f3,
-						footer: {
-							text: `Page 1/${inventorySkins.length} | Valeur Totale : ${totalPrice.toFixed(0)} Flopos`,
-						},
-						fields: [
-							{
-								name: `${currentSkin.displayName} | ${currentSkin.currentPrice.toFixed(0)} Flopos`,
-								value: `${currentSkin.tierText}\nChroma : ${getChromaText(currentSkin, skinData)} | ${getChromaName(currentSkin, skinData)}\nLvl : **${currentSkin.currentLvl}**/${skinData.levels.length}`,
-							},
-						],
-						image: { url: getImageUrl(currentSkin, skinData) },
-					},
-				],
+				embeds: [embed],
 				components: [
 					{ type: MessageComponentTypes.ACTION_ROW, components: components },
 					{
@@ -169,4 +115,48 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 		console.error("Error handling /inventory command:", error);
 		return res.status(500).json({ error: "Failed to generate inventory." });
 	}
+}
+
+/**
+ * Builds an embed for a single skin (CS2 or Valorant).
+ */
+export function buildSkinEmbed(skin, targetMember, page, total, totalPrice) {
+	if (skin._type === "cs") {
+		const badges = [
+			skin.isStattrak ? "StatTrak™" : null,
+			skin.isSouvenir ? "Souvenir" : null,
+		].filter(Boolean).join(" | ");
+
+		return {
+			title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
+			color: RarityToColor[skin.rarity] || 0xf2f3f3,
+			footer: {
+				text: `Page ${page}/${total} | Valeur Totale : ${totalPrice} Flopos`,
+			},
+			fields: [
+				{
+					name: `${skin.displayName} | ${skin.price} Flopos`,
+					value: `${skin.rarity}${badges ? ` | ${badges}` : ""}\n${skin.wearState} (float: ${skin.float?.toFixed(8)})\n${skin.weaponType || ""}`,
+				},
+			],
+			image: skin.imageUrl ? { url: skin.imageUrl } : undefined,
+		};
+	}
+
+	// Valorant skin fallback
+	const skinData = skins.find((s) => s.uuid === skin.uuid);
+	return {
+		title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
+		color: parseInt(skin.tierColor, 16) || 0xf2f3f3,
+		footer: {
+			text: `Page ${page}/${total} | Valeur Totale : ${totalPrice} Flopos`,
+		},
+		fields: [
+			{
+				name: `${skin.displayName} | ${(skin.currentPrice || 0).toFixed(0)} Flopos`,
+				value: `${skin.tierText || "Valorant"}\nLvl : **${skin.currentLvl}**/${skinData?.levels?.length || "?"}`,
+			},
+		],
+		image: skinData ? { url: skinData.displayIcon } : undefined,
+	};
 }

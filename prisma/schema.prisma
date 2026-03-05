@@ -22,6 +22,7 @@ model User {
 
   elo           Elo?
   skins         Skin[]
+  csSkins       CsSkin[]      @relation("CsSkins")
   sellerOffers  MarketOffer[] @relation("Seller")
   buyerOffers   MarketOffer[] @relation("Buyer")
   bids          Bid[]
@@ -56,9 +57,31 @@ model Skin {
   @@map("skins")
 }
 
+model CsSkin {
+  id             String   @id @default(uuid())
+  marketHashName String   @map("market_hash_name")
+  displayName    String?
+  imageUrl       String?  @map("image_url")
+  rarity         String?
+  rarityColor    String?  @map("rarity_color")
+  weaponType     String?  @map("weapon_type")
+  float          Float?
+  wearState      String?  @map("wear_state")
+  isStattrak     Boolean  @default(false) @map("is_stattrak")
+  isSouvenir     Boolean  @default(false) @map("is_souvenir")
+  price          Int?
+  userId         String?  @map("user_id")
+
+  owner        User?         @relation("CsSkins", fields: [userId], references: [id])
+  marketOffers MarketOffer[] @relation("CsSkinOffers")
+
+  @@map("cs_skins")
+}
+
 model MarketOffer {
   id            String  @id
-  skinUuid      String  @map("skin_uuid")
+  skinUuid      String? @map("skin_uuid")
+  csSkinId      String? @map("cs_skin_id")
   sellerId      String  @map("seller_id")
   startingPrice Int     @map("starting_price")
   buyoutPrice   Int?    @map("buyout_price")
@@ -69,9 +92,10 @@ model MarketOffer {
   closingAt     DateTime @map("closing_at")
   buyerId       String? @map("buyer_id")
 
-  skin   Skin  @relation(fields: [skinUuid], references: [uuid])
-  seller User  @relation("Seller", fields: [sellerId], references: [id])
-  buyer  User? @relation("Buyer", fields: [buyerId], references: [id])
+  skin   Skin?   @relation(fields: [skinUuid], references: [uuid])
+  csSkin CsSkin? @relation("CsSkinOffers", fields: [csSkinId], references: [id])
+  seller User    @relation("Seller", fields: [sellerId], references: [id])
+  buyer  User?   @relation("Buyer", fields: [buyerId], references: [id])
   bids   Bid[]
 
   @@map("market_offers")
