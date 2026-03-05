@@ -27,6 +27,13 @@ export async function updateCsSkin(data) {
 	return prisma.csSkin.update({ where: { id }, data: rest });
 }
 
+export async function findReferenceSkin(marketHashName, isStattrak, isSouvenir) {
+	return prisma.csSkin.findFirst({
+		where: { marketHashName, isStattrak, isSouvenir, price: { not: null }, float: { not: null } },
+		orderBy: { price: "desc" },
+	});
+}
+
 export async function deleteCsSkin(id) {
 	return prisma.csSkin.delete({ where: { id } });
 }

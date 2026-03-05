@@ -185,14 +185,14 @@ export function apiRoutes(client, io) {
 
 	router.post("/open-cs-case", requireAuth, async (req, res) => {
 		const userId = req.userId;
-		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 250;
+		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 300;
 
 		const commandUser = await userService.getUser(userId);
 		if (!commandUser) return res.status(404).json({ error: "User not found." });
 		if (commandUser.coins < casePrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
 
 		try {
-			const randomSkin = getRandomSkinWithRandomSpecs(null, "Covert");
+			const randomSkin = await getRandomSkinWithRandomSpecs();
 
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: randomSkin.name,
@@ -232,7 +232,7 @@ export function apiRoutes(client, io) {
 						rarityColor: created.rarityColor,
 					});
 				} else {
-					const decoy = getRandomSkinWithRandomSpecs();
+					const decoy = await getRandomSkinWithRandomSpecs();
 					rouletteSkins.push({
 						displayName: decoy.data.name || decoy.name,
 						imageUrl: decoy.data.image || null,
@@ -282,7 +282,7 @@ export function apiRoutes(client, io) {
 			await csSkinService.deleteManyCsSkins(skinIds);
 
 			// Generate a new skin at the next rarity tier
-			const newSkin = getRandomSkinWithRandomSpecs(null, nextRarity);
+			const newSkin = await getRandomSkinWithRandomSpecs(null, nextRarity);
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: newSkin.name,
 				displayName: newSkin.data.name || newSkin.name,

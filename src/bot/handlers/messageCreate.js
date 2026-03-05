@@ -431,7 +431,7 @@ async function handleAdminCommands(message) {
 			break;
 		case `${prefix}:open-cs`:
 			try {
-				const randomSkin = getRandomSkinWithRandomSpecs(args[0] ? parseFloat(args[0]) : null);
+				const randomSkin = await getRandomSkinWithRandomSpecs(args[0] ? parseFloat(args[0]) : null);
 				const created = await csSkinService.insertCsSkin({
 					marketHashName: randomSkin.name,
 					displayName: randomSkin.data.name || randomSkin.name,
@@ -475,7 +475,7 @@ async function handleAdminCommands(message) {
 				};
 
 				for (let i = 0; i < caseCount; i++) {
-					const result = getRandomSkinWithRandomSpecs();
+					const result = await getRandomSkinWithRandomSpecs();
 					totalResValue += parseInt(result.price);
 					if (parseInt(result.price) > highestSkinPrice) {
 						highestSkinPrice = parseInt(result.price);

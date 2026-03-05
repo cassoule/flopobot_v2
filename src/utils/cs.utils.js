@@ -1,4 +1,5 @@
 import { csSkinsData, csSkinsPrices } from "./cs.state.js";
+import { findReferenceSkin } from "../services/csSkin.service.js";
 
 const StateFactoryNew = "Factory New";
 const StateMinimalWear = "Minimal Wear";
@@ -8,6 +9,7 @@ const StateBattleScarred = "Battle-Scarred";
 
 export const RarityToColor = {
 	Gold: 0xffd700, // Standard Gold
+	Extraordinary: 0xffae00, // Orange
 	Covert: 0xeb4b4b, // Red
 	Classified: 0xd32ce6, // Pink/Magenta
 	Restricted: 0x8847ff, // Purple
@@ -17,22 +19,13 @@ export const RarityToColor = {
 };
 
 const basePriceRanges = {
-	"Consumer Grade": { min: 1, max: 5 },
-	"Industrial Grade": { min: 2, max: 10 },
-	"Mil-Spec Grade": { min: 3, max: 70 },
-	"Restricted": { min: 17, max: 400 },
-	"Classified": { min: 70, max: 1700 },
-	"Covert": { min: 350, max: 17000 },
-	"Gold": { min: 10000, max: 100000 },
-	"Extraordinary": { min: 10000, max: 100000 },
-};
-
-const wearStateMultipliers = {
-	[StateFactoryNew]: 1,
-	[StateMinimalWear]: 0.75,
-	[StateFieldTested]: 0.65,
-	[StateWellWorn]: 0.6,
-	[StateBattleScarred]: 0.5,
+	"Consumer Grade": { min: 1, max: 10 },
+	"Industrial Grade": { min: 5, max: 50 },
+	"Mil-Spec Grade": { min: 20, max: 150 },
+	"Restricted": { min: 100, max: 1000 },
+	"Classified": { min: 500, max: 4000 },
+	"Covert": { min: 2500, max: 10000 },
+	"Extraordinary": { min: 1500, max: 3000 },
 };
 
 export const TRADE_UP_MAP = {
@@ -47,14 +40,14 @@ export function randomSkinRarity() {
 	const roll = Math.random();
 
 	const goldLimit = 0.003;
-	const covertLimit = goldLimit + 0.014;
-	const classifiedLimit = covertLimit + 0.04;
+	const extraLimit = goldLimit + 0.014;
+	const classifiedLimit = extraLimit + 0.04;
 	const restrictedLimit = classifiedLimit + 0.2;
 	const milSpecLimit = restrictedLimit + 0.5;
 	const industrialLimit = milSpecLimit + 0.2;
 
-	if (roll < goldLimit) return "Extraordinary";
-	if (roll < covertLimit) return "Covert";
+	if (roll < goldLimit) return "Covert";
+	if (roll < extraLimit) return "Extraordinary";
 	if (roll < classifiedLimit) return "Classified";
 	if (roll < restrictedLimit) return "Restricted";
 	if (roll < milSpecLimit) return "Mil-Spec Grade";
@@ -62,25 +55,70 @@ export function randomSkinRarity() {
 	return "Consumer Grade";
 }
 
-export function generatePrice(rarity, float, isStattrak, isSouvenir, wearState) {
+export async function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
 	const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
 
-	let basePrice = ranges.min + Math.random() * (ranges.max - ranges.min);
+	let finalPrice;
+	const ref = await findReferenceSkin(skinName, isStattrak, isSouvenir);
 
-	const stateMultiplier = wearStateMultipliers[wearState] ?? 1.0;
-
-	let finalPrice = basePrice * stateMultiplier;
-
-	const isExtraordinary = rarity === "Extraordinary";
-
-	if (isSouvenir && !isExtraordinary) {
-		finalPrice *= 4 + Math.random() * (10.0 - 4);
-	} else if (isStattrak && !isExtraordinary) {
-		finalPrice *= 3 + Math.random() * (5.0 - 3);
+	if (ref && ref.float !== null) {
+		// Derive base price from reference: refPrice = basePrice * (1 - refFloat) → basePrice = refPrice / (1 - refFloat)
+		const refBasePrice = ref.price / Math.max(1 - ref.float, 0.01);
+		finalPrice = refBasePrice * (1 - float);
+	} else {
+		// No reference: random base price, scaled by float
+		const basePrice = ranges.min + Math.random() * (ranges.max - ranges.min);
+		finalPrice = basePrice * (1 - float) + ranges.min * float;
 	}
-	finalPrice /= 1 + float;
+
+	const isGold = rarity === "Covert";
+	if (isSouvenir && !isGold) {
+		finalPrice *= 7;
+	} else if (isStattrak && !isGold) {
+		finalPrice *= 4;
+	}
 
 	if (finalPrice < 1) finalPrice = 1;
+
+	const name = skinName.toLowerCase();
+
+	// Special pattern multipliers (more specific patterns first)
+	if (name.includes("marble fade")) {
+		finalPrice *= 1.35;
+	} else if (name.includes("gamma doppler")) {
+		finalPrice *= 1.4;
+	} else if (name.includes("doppler")) {
+		finalPrice *= 1.5;
+	} else if (name.includes("fade")) {
+		finalPrice *= 1.4;
+	} else if (name.includes("crimson web")) {
+		finalPrice *= 1.3;
+	} else if (name.includes("case hardened")) {
+		finalPrice *= 1.25;
+	} else if (name.includes("lore")) {
+		finalPrice *= 1.25;
+	} else if (name.includes("tiger tooth")) {
+		finalPrice *= 1.2;
+	} else if (name.includes("slaughter")) {
+		finalPrice *= 1.2;
+	}
+
+	// Knife type boosts (more specific first)
+	if (name.includes("butterfly")) {
+		finalPrice *= 2;
+	} else if (name.includes("karambit")) {
+		finalPrice *= 1.8;
+	} else if (name.includes("m9 bayonet")) {
+		finalPrice *= 1.4;
+	} else if (name.includes("talon")) {
+		finalPrice *= 1.3;
+	} else if (name.includes("skeleton")) {
+		finalPrice *= 1.2;
+	} else if (name.includes("bayonet")) {
+		finalPrice *= 1.1;
+	} else if (name.includes("gut") || name.includes("navaja") || name.includes("falchion")) {
+		finalPrice *= 0.8;
+	}
 
 	return finalPrice.toFixed(0);
 }
@@ -109,7 +147,7 @@ export function getWearState(wear) {
 	return StateBattleScarred;
 }
 
-export function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
+export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 	const skinNames = Object.keys(csSkinsData);
 	const selectedRarity = forcedRarity || randomSkinRarity();
 	const filteredSkinNames = skinNames.filter(name => csSkinsData[name].rarity.name === selectedRarity);
@@ -117,7 +155,7 @@ export function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 
 	const skinName = filteredSkinNames[randomIndex];
 	const skinData = csSkinsData[skinName];
-	const float = u_float !== null ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
+	const float = (u_float !== null && u_float !== undefined) ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
 	const wearState = getWearState(float);
 	const skinIsStattrak = rollStattrak(skinData.stattrak);
 	const skinIsSouvenir = rollSouvenir(skinData.souvenir);
@@ -129,6 +167,6 @@ export function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 		isSouvenir: skinIsSouvenir,
 		wearState,
 		float,
-		price: generatePrice(skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, wearState),
+		price: await generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
 	};
 }
