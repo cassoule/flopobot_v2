@@ -357,7 +357,12 @@ async function handleAdminCommands(message) {
 			try {
 				const DBskins = await skinService.getAllSkins();
 				for (const skin of DBskins) {
-					const owner = await userService.getUser(skin.userId);
+					let owner = null;
+					try {
+						owner = await userService.getUser(skin.userId)
+					} catch {
+						//
+					};
 					if (owner) {
 						await userService.updateUserCoins(owner.id, owner.coins + skin.currentPrice);
 						await logService.insertLog({
