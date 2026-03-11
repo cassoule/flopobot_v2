@@ -2,6 +2,7 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { erinyesRooms } from "../../game/state.js";
 import { socketEmit } from "../socket.js";
+import { resolveUser } from "../../utils/index.js";
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ export function erinyesRoutes(client, io) {
 			res.status(404).json({ message: "You are already in a room." });
 		}
 
-		const creator = await client.users.fetch(creatorId);
+		const creator = await resolveUser(client, creatorId);
 		const id = uuidv4();
 
 		createRoom({

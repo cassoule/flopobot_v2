@@ -10,7 +10,7 @@ import {
 	MAX_ATTS_PER_MESSAGE,
 	stripMentionsOfBot,
 } from "../../utils/ai.js";
-import { calculateBasePrice, calculateMaxPrice, formatTime, getAkhys } from "../../utils/index.js";
+import { calculateBasePrice, calculateMaxPrice, formatTime, getAkhys, resolveMember } from "../../utils/index.js";
 import { channelPointsHandler, initTodaysSOTD, randomSkinPrice, slowmodesHandler } from "../../game/points.js";
 import { activePolls, activeSlowmodes, requestTimestamps, skins } from "../../game/state.js";
 import prisma from "../../prisma/client.js";
@@ -106,7 +106,7 @@ async function handleAiMention(message, client, io) {
 		// Apply timeout if warn count is too high
 		if (authorDB.warns > (parseInt(process.env.MAX_WARNS) || 10)) {
 			try {
-				const member = await message.guild.members.fetch(authorId);
+				const member = await resolveMember(message.guild, authorId);
 				const time = parseInt(process.env.SPAM_TIMEOUT_TIME);
 				await member.timeout(time, "Spam excessif du bot AI.");
 				message.channel
@@ -255,7 +255,7 @@ async function handleAdminCommands(message) {
 			await getAkhys(client);
 			break;
 		case `${prefix}:avatars`:
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
 			const members = await guild.members.fetch();
 			const akhys = members.filter((m) => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
 

@@ -17,6 +17,7 @@ import {
 } from "../game/various.js";
 import { eloHandler } from "../game/elo.js";
 import { verifyToken } from "./middleware/auth.js";
+import { resolveUser } from "../utils/index.js";
 
 // --- Module-level State ---
 let io;
@@ -319,7 +320,7 @@ async function createGame(client, gameType) {
 	const { queue, activeGames, title } = getGameAssets(gameType);
 	const p1Id = queue.shift();
 	const p2Id = queue.shift();
-	const [p1, p2] = await Promise.all([client.users.fetch(p1Id), client.users.fetch(p2Id)]);
+	const [p1, p2] = await Promise.all([resolveUser(client, p1Id), resolveUser(client, p2Id)]);
 
 	let lobby;
 	if (gameType === "tictactoe") {
@@ -426,9 +427,9 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		tictactoeQueue.splice(index, 1);
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
-			const user = await client.users.fetch(userId);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+			const user = await resolveUser(client, userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
 				.setTitle("Tic Tac Toe")
@@ -446,9 +447,9 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		connect4Queue.splice(index, 1);
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
-			const user = await client.users.fetch(userId);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+			const user = await resolveUser(client, userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
 				.setTitle("Puissance 4")
@@ -466,9 +467,9 @@ async function refreshQueuesForUser(userId, client) {
 	if (index > -1) {
 		snakeQueue.splice(index, 1);
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
-			const user = await client.users.fetch(userId);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+			const user = await resolveUser(client, userId);
 			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 			const updatedEmbed = new EmbedBuilder()
 				.setTitle("Snake 1v1")
@@ -491,7 +492,7 @@ async function emitQueueUpdate(client, gameType) {
 	const { queue, activeGames } = getGameAssets(gameType);
 	const names = await Promise.all(
 		queue.map(async (id) => {
-			const user = await client.users.fetch(id).catch(() => null);
+			const user = await resolveUser(client, id).catch(() => null);
 			return user?.globalName || user?.username;
 		}),
 	);
@@ -528,8 +529,8 @@ function getGameAssets(gameType) {
 
 async function postQueueToDiscord(client, playerId, title, url) {
 	try {
-		const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
-		const user = await client.users.fetch(playerId);
+		const generalChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
+		const user = await resolveUser(client, playerId);
 		const embed = new EmbedBuilder()
 			.setTitle(title)
 			.setDescription(`**${user.globalName || user.username}** est dans la file d'attente.`)
@@ -552,7 +553,7 @@ async function postQueueToDiscord(client, playerId, title, url) {
 }
 
 async function updateDiscordMessage(client, game, title, resultText = "") {
-	const channel = await client.channels.fetch(process.env.BOT_CHANNEL_ID).catch(() => null);
+	const channel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 	if (!channel) return null;
 
 	let description;

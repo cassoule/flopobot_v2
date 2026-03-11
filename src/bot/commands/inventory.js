@@ -8,6 +8,7 @@ import { activeInventories, skins } from "../../game/state.js";
 import * as skinService from "../../services/skin.service.js";
 import * as csSkinService from "../../services/csSkin.service.js";
 import { RarityToColor } from "../../utils/cs.utils.js";
+import { resolveMember } from "../../utils/index.js";
 
 /**
  * Handles the /inventory slash command.
@@ -31,8 +32,8 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
 	const targetUserId = data.options && data.options.length > 0 ? data.options[0].value : commandUserId;
 
 	try {
-		const guild = await client.guilds.fetch(guild_id);
-		const targetMember = await guild.members.fetch(targetUserId);
+		const guild = client.guilds.cache.get(guild_id);
+		const targetMember = await resolveMember(guild, targetUserId);
 
 		// Fetch both Valorant and CS2 inventories
 		const valoSkins = await skinService.getUserInventory(targetUserId);

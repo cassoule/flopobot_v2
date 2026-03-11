@@ -15,7 +15,7 @@ import * as csSkinService from "../../services/csSkin.service.js";
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
 
 // --- Utility and API Imports ---
-import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion } from "../../utils/index.js";
+import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion, resolveUser, resolveMember } from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 
 // --- Discord.js Builder Imports ---
@@ -64,7 +64,7 @@ export function apiRoutes(client, io) {
 
 	router.post("/register-user", requireAuth, async (req, res) => {
 		const discordUserId = req.userId;
-		const discordUser = await client.users.fetch(discordUserId);
+		const discordUser = await resolveUser(client, discordUserId);
 
 		try {
 			await userService.insertUser({
@@ -594,7 +594,7 @@ export function apiRoutes(client, io) {
 
 	router.get("/user/:id/avatar", async (req, res) => {
 		try {
-			const user = await client.users.fetch(req.params.id);
+			const user = await resolveUser(client, req.params.id);
 			const avatarUrl = user.displayAvatarURL({ format: "png", size: 256 });
 			res.json({ avatarUrl });
 		} catch (error) {
@@ -604,7 +604,7 @@ export function apiRoutes(client, io) {
 
 	router.get("/user/:id/username", async (req, res) => {
 		try {
-			const user = await client.users.fetch(req.params.id);
+			const user = await resolveUser(client, req.params.id);
 			res.json({ user });
 		} catch (error) {
 			res.status(404).json({ error: "User not found." });
@@ -729,8 +729,8 @@ export function apiRoutes(client, io) {
 	router.post("/timedout", requireAuth, async (req, res) => {
 		try {
 			const userId = req.userId;
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const member = await guild.members.fetch(userId);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const member = await resolveMember(guild, userId);
 			res.status(200).json({ isTimedOut: member?.isCommunicationDisabled() || false });
 		} catch (e) {
 			res.status(404).send({ message: "Member not found or guild unavailable." });
@@ -747,8 +747,8 @@ export function apiRoutes(client, io) {
 		if (commandUser.coins < 1000) return res.status(403).json({ message: "Pas assez de FlopoCoins (1000 requis)." });
 
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const member = await guild.members.fetch(userId);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const member = await resolveMember(guild, userId);
 			const old_nickname = member.nickname;
 			await member.setNickname(nickname);
 
@@ -766,7 +766,7 @@ export function apiRoutes(client, io) {
 			console.log(`${commandUserId} change nickname of ${userId}: ${old_nickname} -> ${nickname}`);
 
 			try {
-				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+				const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a modifié le pseudo de <@${userId}>`)
 					.addFields(
@@ -802,7 +802,7 @@ export function apiRoutes(client, io) {
 		if (commandUser.coins < 5000) return res.status(403).json({ message: "Pas assez de coins" });
 
 		try {
-			const discordUser = await client.users.fetch(userId);
+			const discordUser = await resolveUser(client, userId);
 
 			await discordUser.send(`<@${userId}>`);
 
@@ -820,8 +820,8 @@ export function apiRoutes(client, io) {
 			await emitDataUpdated({ table: "users", action: "update" });
 
 			try {
-				const guild = await client.guilds.fetch(process.env.GUILD_ID);
-				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+				const guild = client.guilds.cache.get(process.env.GUILD_ID);
+				const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a envoyé un spam ping à <@${userId}>`)
 					.setColor("#5865f2")
@@ -877,8 +877,8 @@ export function apiRoutes(client, io) {
 				});
 
 				try {
-					const guild = await client.guilds.fetch(process.env.GUILD_ID);
-					const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+					const guild = client.guilds.cache.get(process.env.GUILD_ID);
+					const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 					const embed = new EmbedBuilder()
 						.setDescription(`<@${commandUserId}> a retiré son slowmode`)
 						.setColor("#5865f2")
@@ -920,8 +920,8 @@ export function apiRoutes(client, io) {
 		await emitDataUpdated({ table: "users", action: "update" });
 
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${commandUserId}> a mis <@${userId}> en slowmode pendant 1h`)
 				.setColor("#5865f2")
@@ -952,8 +952,8 @@ export function apiRoutes(client, io) {
 
 		if (!user) return res.status(403).send({ message: "Oups petit problème" });
 
-		const guild = await client.guilds.fetch(process.env.GUILD_ID);
-		const member = await guild.members.fetch(userId);
+		const guild = client.guilds.cache.get(process.env.GUILD_ID);
+		const member = await resolveMember(guild, userId);
 
 		if (userId === commandUserId) {
 			if (
@@ -988,7 +988,7 @@ export function apiRoutes(client, io) {
 			});
 
 			try {
-				const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+				const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 				const embed = new EmbedBuilder()
 					.setDescription(`<@${commandUserId}> a retiré son time-out`)
 					.setColor("#5865f2")
@@ -1035,7 +1035,7 @@ export function apiRoutes(client, io) {
 		await emitDataUpdated({ table: "users", action: "update" });
 
 		try {
-			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${commandUserId}> a time-out <@${userId}> pour 12h`)
 				.setColor("#5865f2")
@@ -1076,8 +1076,8 @@ export function apiRoutes(client, io) {
 
 		let msgId;
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setTitle(`Prédiction de ${commandUser.username}`)
 				.setDescription(`**${label}**`)
@@ -1298,8 +1298,8 @@ export function apiRoutes(client, io) {
 		}
 
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.GENERAL_CHANNEL_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
 			const message = await generalChannel.messages.fetch(activePredis[predi].msgId);
 			const updatedEmbed = new EmbedBuilder()
 				.setTitle(`Prédiction de ${commandUser.username}`)
@@ -1570,7 +1570,7 @@ export function apiRoutes(client, io) {
 
 			// Notify user via Discord if possible
 			try {
-				const discordUser = await client.users.fetch(commandUserId);
+				const discordUser = await resolveUser(client, commandUserId);
 				await discordUser.send(
 					`✅ Votre achat de ${expectedCoins} FlopoCoins a été confirmé ! Merci pour votre soutien !`,
 				);

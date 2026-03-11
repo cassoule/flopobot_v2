@@ -1,5 +1,6 @@
 import { InteractionResponseType } from "discord-interactions";
 import * as skinService from "../../services/skin.service.js";
+import { resolveMember } from "../../utils/index.js";
 
 /**
  * Handles the /skins slash command.
@@ -14,7 +15,7 @@ export async function handleSkinsCommand(req, res, client) {
 	try {
 		// --- 1. Fetch Data ---
 		const topSkins = await skinService.getTopSkins();
-		const guild = await client.guilds.fetch(guild_id);
+		const guild = client.guilds.cache.get(guild_id);
 		const fields = [];
 
 		// --- 2. Build Embed Fields Asynchronously ---
@@ -25,7 +26,7 @@ export async function handleSkinsCommand(req, res, client) {
 			// If the skin has an owner, fetch their details
 			if (skin.userId) {
 				try {
-					const owner = await guild.members.fetch(skin.userId);
+					const owner = await resolveMember(guild, skin.userId);
 					// Use globalName if available, otherwise fallback to username
 					ownerText = `**@${owner.user.globalName || owner.user.username}** ✅`;
 				} catch (e) {

@@ -5,7 +5,7 @@ import {
 	ButtonStyleTypes,
 } from "discord-interactions";
 
-import { formatTime, getOnlineUsersWithRole } from "../../utils/index.js";
+import { formatTime, getOnlineUsersWithRole, resolveMember } from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 import { activePolls } from "../../game/state.js";
 import { getSocketIo } from "../../server/socket.js";
@@ -28,9 +28,9 @@ export async function handleTimeoutCommand(req, res, client) {
 	const time = options[1].value;
 
 	// Fetch member objects from Discord
-	const guild = await client.guilds.fetch(guild_id);
-	const fromMember = await guild.members.fetch(userId);
-	const toMember = await guild.members.fetch(targetUserId);
+	const guild = client.guilds.cache.get(guild_id);
+	const fromMember = await resolveMember(guild, userId);
+	const toMember = await resolveMember(guild, targetUserId);
 
 	// --- Validation Checks ---
 	// 1. Check if a poll is already running for the target user

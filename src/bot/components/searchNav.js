@@ -7,6 +7,7 @@ import {
 
 import { DiscordRequest } from "../../api/discord.js";
 import { activeSearchs, skins } from "../../game/state.js";
+import { resolveUser } from "../../utils/index.js";
 
 /**
  * Handles navigation button clicks (Previous/Next) for the search results embed.
@@ -67,7 +68,7 @@ export async function handleSearchNav(req, res, client) {
 		let ownerText = "";
 		if (currentSkin.userId) {
 			try {
-				const owner = await client.users.fetch(currentSkin.userId);
+				const owner = await resolveUser(client, currentSkin.userId);
 				ownerText = `| **@${owner.globalName || owner.username}** ✅`;
 			} catch (e) {
 				console.warn(`Could not fetch owner for user ID: ${currentSkin.userId}`);

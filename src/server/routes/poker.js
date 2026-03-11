@@ -16,7 +16,7 @@ import { sleep } from "openai/core";
 import { client } from "../../bot/client.js";
 import { emitPokerToast, emitPokerUpdate } from "../socket.js";
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from "discord.js";
-import { formatAmount } from "../../utils/index.js";
+import { formatAmount, resolveUser } from "../../utils/index.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const { Hand } = pkg;
@@ -53,8 +53,8 @@ export function pokerRoutes(client, io) {
 			return res.status(403).json({ message: "You are already in a poker room." });
 		}
 
-		const guild = await client.guilds.fetch(process.env.GUILD_ID);
-		const creator = await client.users.fetch(creatorId);
+		const guild = client.guilds.cache.get(process.env.GUILD_ID);
+		const creator = await resolveUser(client, creatorId);
 		const id = uuidv4();
 		const name = uniqueNamesGenerator({
 			dictionaries: [adjectives, ["Poker"]],
@@ -91,7 +91,7 @@ export function pokerRoutes(client, io) {
 		await emitPokerUpdate({ room: pokerRooms[id], type: "room-created" });
 
 		try {
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setTitle("Flopoker 🃏")
 				.setDescription(`<@${creatorId}> a créé une table de poker`)
@@ -365,7 +365,7 @@ export function pokerRoutes(client, io) {
 // --- Helper Functions ---
 
 async function joinRoom(roomId, userId, io) {
-	const user = await client.users.fetch(userId);
+	const user = await resolveUser(client, userId);
 	const userDB = await userService.getUser(userId);
 	const room = pokerRooms[roomId];
 
