@@ -26,6 +26,7 @@ initializeSocket(io, client);
 
 // --- BOT INITIALIZATION ---
 initializeEvents(client, io);
+console.log("Logging in...");
 client.login(process.env.BOT_TOKEN).then(() => {
 	console.log(`Logged in as ${client.user.tag}`);
 	console.log("[Discord Bot Events Initialized]");

@@ -81,6 +81,8 @@ router.get("/discord/callback", async (req, res) => {
 		res.redirect(`${FLAPI_URL}/auth/callback?token=${token}&discordId=${discordUser.id}`);
 	} catch (error) {
 		console.error("Discord OAuth2 error:", error.response?.data || error.message);
+		console.log("Status:", error.response?.status);
+		console.log("Headers:", JSON.stringify(error.response?.headers));
 		res.redirect(`${FLAPI_URL}/auth/callback?error=auth_failed`);
 	}
 });
