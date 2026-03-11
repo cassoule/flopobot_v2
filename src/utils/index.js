@@ -37,7 +37,7 @@ export async function getAkhys(client) {
 	try {
 		// 1. Fetch Discord Members
 		const initial_akhys = (await userService.getAllUsers()).length;
-		const guild = await client.guilds.fetch(process.env.GUILD_ID);
+		const guild = client.guilds.cache.get(process.env.GUILD_ID);
 		const members = await guild.members.fetch();
 		const akhys = members.filter((m) => !m.user.bot && m.roles.cache.has(process.env.AKHY_ROLE_ID));
 
@@ -546,4 +546,12 @@ export function getVCTRegion(skinName) {
 export function isChampionsSkin(skinName) {
 	const name = skinName.toLowerCase();
 	return name.includes("champions");
+}
+
+export async function resolveUser(client, userId) {
+	return client.users.cache.get(userId) || await client.users.fetch(userId);
+}
+
+export async function resolveMember(guild, userId) {
+	return guild.members.cache.get(userId) || await guild.members.fetch(userId);
 }

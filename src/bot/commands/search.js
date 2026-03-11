@@ -6,6 +6,7 @@ import {
 } from "discord-interactions";
 import { activeSearchs, skins } from "../../game/state.js";
 import * as skinService from "../../services/skin.service.js";
+import { resolveMember } from "../../utils/index.js";
 
 /**
  * Handles the /search slash command.
@@ -52,7 +53,7 @@ export async function handleSearchCommand(req, res, client, interactionId) {
 		};
 
 		// --- 4. Prepare Initial Embed Content ---
-		const guild = await client.guilds.fetch(guild_id);
+		const guild = client.guilds.cache.get(guild_id);
 		const currentSkin = resultSkins[0];
 		const skinData = skins.find((s) => s.uuid === currentSkin.uuid);
 		if (!skinData) {
@@ -63,7 +64,7 @@ export async function handleSearchCommand(req, res, client, interactionId) {
 		let ownerText = "";
 		if (currentSkin.userId) {
 			try {
-				const owner = await guild.members.fetch(currentSkin.userId);
+				const owner = await resolveMember(guild, currentSkin.userId);
 				ownerText = `| **@${owner.user.globalName || owner.user.username}** ✅`;
 			} catch (e) {
 				console.warn(`Could not fetch owner for user ID: ${currentSkin.userId}`);

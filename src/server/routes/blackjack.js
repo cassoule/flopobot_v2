@@ -21,6 +21,7 @@ import { client } from "../../bot/client.js";
 import { emitToast, emitUpdate, emitPlayerUpdate } from "../socket.js";
 import { EmbedBuilder, time } from "discord.js";
 import { requireAuth } from "../middleware/auth.js";
+import { resolveUser } from "../../utils/index.js";
 
 export function blackjackRoutes(io) {
 	const router = express.Router();
@@ -126,7 +127,7 @@ export function blackjackRoutes(io) {
 		const userId = req.userId;
 		if (room.players[userId]) return res.status(200).json({ message: "Already here" });
 
-		const user = await client.users.fetch(userId);
+		const user = await resolveUser(client, userId);
 		const bank = (await userService.getUser(userId))?.coins ?? 0;
 
 		room.players[userId] = {
@@ -155,8 +156,8 @@ export function blackjackRoutes(io) {
 		};
 
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 			const embed = new EmbedBuilder()
 				.setDescription(`<@${userId}> joue au Blackjack`)
 				.addFields(
@@ -194,8 +195,8 @@ export function blackjackRoutes(io) {
 		if (!room.players[userId]) return res.status(403).json({ message: "not in room" });
 
 		try {
-			const guild = await client.guilds.fetch(process.env.GUILD_ID);
-			const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+			const guild = client.guilds.cache.get(process.env.GUILD_ID);
+			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 			const msg = await generalChannel.messages.fetch(room.players[userId].msgId);
 			const updatedEmbed = new EmbedBuilder()
 				.setDescription(`<@${userId}> a quitté la table de Blackjack.`)
@@ -226,7 +227,7 @@ export function blackjackRoutes(io) {
 		} else {
 			delete room.players[userId];
 			emitUpdate("player-left", snapshot(room));
-			const user = await client.users.fetch(userId);
+			const user = await resolveUser(client, userId);
 			emitPlayerUpdate({
 				id: userId,
 				msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`,
@@ -367,7 +368,7 @@ export function blackjackRoutes(io) {
 			// Remove leavers
 			for (const userId of Object.keys(room.leavingAfterRound)) {
 				delete room.players[userId];
-				const user = await client.users.fetch(userId);
+				const user = await resolveUser(client, userId);
 				emitPlayerUpdate({
 					id: userId,
 					msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`,

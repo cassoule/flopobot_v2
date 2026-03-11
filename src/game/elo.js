@@ -2,6 +2,7 @@ import * as userService from "../services/user.service.js";
 import * as gameService from "../services/game.service.js";
 import { ButtonStyle, EmbedBuilder } from "discord.js";
 import { client } from "../bot/client.js";
+import { resolveUser } from "../utils/index.js";
 
 /**
  * Handles Elo calculation for a standard 1v1 game.
@@ -72,9 +73,9 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 	console.log(`Elo Update (${type}) for ${p1DB.globalName}: ${p1CurrentElo} -> ${finalP1Elo}`);
 	console.log(`Elo Update (${type}) for ${p2DB.globalName}: ${p2CurrentElo} -> ${finalP2Elo}`);
 	try {
-		const generalChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
-		const user1 = await client.users.fetch(p1Id);
-		const user2 = await client.users.fetch(p2Id);
+		const generalChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
+		const user1 = await resolveUser(client, p1Id);
+		const user2 = await resolveUser(client, p2Id);
 		const diff1 = finalP1Elo - p1CurrentElo;
 		const diff2 = finalP2Elo - p2CurrentElo;
 		const embed = new EmbedBuilder()

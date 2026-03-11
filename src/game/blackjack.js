@@ -323,8 +323,8 @@ export async function settleAll(room) {
 			hand.result = res.result;
 			hand.delta = res.delta;
 			try {
-				const guild = await client.guilds.fetch(process.env.GUILD_ID);
-				const generalChannel = await guild.channels.fetch(process.env.BOT_CHANNEL_ID);
+				const guild = client.guilds.cache.get(process.env.GUILD_ID);
+				const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 				const msg = await generalChannel.messages.fetch(p.msgId);
 				const updatedEmbed = new EmbedBuilder()
 					.setDescription(`<@${p.id}> joue au Blackjack.`)

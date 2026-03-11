@@ -8,6 +8,7 @@ import {
 import { DiscordRequest } from "../../api/discord.js";
 import { activeInventories } from "../../game/state.js";
 import { buildSkinEmbed } from "../commands/inventory.js";
+import { resolveMember } from "../../utils/index.js";
 
 /**
  * Handles navigation button clicks (Previous/Next) for the inventory embed.
@@ -55,8 +56,8 @@ export async function handleInventoryNav(req, res, client) {
 		const currentPage = inventorySession.page;
 		const currentSkin = inventorySkins[currentPage];
 
-		const guild = await client.guilds.fetch(guild_id);
-		const targetMember = await guild.members.fetch(inventorySession.akhyId);
+		const guild = client.guilds.cache.get(guild_id);
+		const targetMember = await resolveMember(guild, inventorySession.akhyId);
 		const totalPrice = inventorySkins.reduce((sum, skin) => {
 			return sum + (skin._type === "cs" ? skin.price || 0 : skin.currentPrice || 0);
 		}, 0);

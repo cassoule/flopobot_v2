@@ -3,6 +3,7 @@ import * as skinService from "../services/skin.service.js";
 import * as csSkinService from "../services/csSkin.service.js";
 import * as marketService from "../services/market.service.js";
 import { EmbedBuilder } from "discord.js";
+import { resolveUser } from "./index.js";
 
 /**
  * Gets the skin display name and icon from an offer, supporting both Valorant and CS2 skins.
@@ -24,7 +25,7 @@ export async function handleNewMarketOffer(offerId, client) {
 	if (!offer) return;
 	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
-	const discordUserSeller = await client.users.fetch(offer.sellerId);
+	const discordUserSeller = await resolveUser(client, offer.sellerId);
 	try {
 		const userSeller = await userService.getUser(offer.sellerId);
 		if (discordUserSeller && userSeller?.isAkhy) {
@@ -67,7 +68,7 @@ export async function handleNewMarketOffer(offerId, client) {
 	}
 
 	try {
-		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+		const guildChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Nouvelle offre")
 			.setDescription(`Une offre pour le skin **${skinName}** a été créée !`)
@@ -105,7 +106,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
 	try {
-		const discordUserSeller = await client.users.fetch(offer.sellerId);
+		const discordUserSeller = await resolveUser(client, offer.sellerId);
 		const userSeller = await userService.getUser(offer.sellerId);
 		if (discordUserSeller && userSeller?.isAkhy) {
 			const embed = new EmbedBuilder()
@@ -145,7 +146,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 	}
 
 	try {
-		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+		const guildChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Début des enchères")
 			.setDescription(
@@ -177,7 +178,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 	const bids = await marketService.getOfferBids(offer.id);
 
-	const discordUserSeller = await client.users.fetch(offer.sellerId);
+	const discordUserSeller = await resolveUser(client, offer.sellerId);
 	try {
 		const userSeller = await userService.getUser(offer.sellerId);
 		if (discordUserSeller && userSeller?.isAkhy) {
@@ -204,7 +205,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 				);
 			} else {
 				const highestBid = bids[0];
-				const highestBidderUser = await client.users.fetch(highestBid.bidderId);
+				const highestBidderUser = await resolveUser(client, highestBid.bidderId);
 				embed.addFields(
 					{
 						name: "✅ Enchères terminées avec succès !",
@@ -225,8 +226,8 @@ export async function handleMarketOfferClosing(offerId, client) {
 	}
 
 	try {
-		const guild = await client.guilds.fetch(process.env.BOT_GUILD_ID);
-		const guildChannel = await guild.channels?.fetch(process.env.BOT_CHANNEL_ID);
+		const guild = client.guilds.cache.get(process.env.GUILD_ID);
+		const guildChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Fin des enchères")
 			.setDescription(
@@ -243,12 +244,12 @@ export async function handleMarketOfferClosing(offerId, client) {
 			});
 		} else {
 			const highestBid = bids[0];
-			const highestBidderUser = await client.users.fetch(highestBid.bidderId);
+			const highestBidderUser = await resolveUser(client, highestBid.bidderId);
 			embed.addFields({
 				name: "✅ Enchères terminées avec succès !",
 				value: `Le skin de <@${offer.sellerId}> ${discordUserSeller ? "(" + discordUserSeller.username + ")" : ""} a été vendu pour \`${highestBid.offerAmount} coins\` à <@${highestBid.bidderId}> ${highestBidderUser ? "(" + highestBidderUser.username + ")" : ""}.`,
 			});
-			const discordUserBidder = await client.users.fetch(highestBid.bidderId);
+			const discordUserBidder = await resolveUser(client, highestBid.bidderId);
 			const userBidder = await userService.getUser(highestBid.bidderId);
 			if (discordUserBidder && userBidder?.isAkhy) {
 				const bidderEmbed = new EmbedBuilder()
@@ -280,9 +281,9 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 	if (!bid) return;
 	const { name: skinName, icon: skinIcon } = await getOfferSkinInfo(offer);
 
-	const bidderUser = client.users.fetch(bid.bidderId);
+	const bidderUser = await resolveUser(client, bid.bidderId);
 	try {
-		const discordUserSeller = await client.users.fetch(offer.sellerId);
+		const discordUserSeller = await resolveUser(client, offer.sellerId);
 		const userSeller = await userService.getUser(offer.sellerId);
 
 		if (discordUserSeller && userSeller?.isAkhy) {
@@ -323,7 +324,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 	}
 
 	try {
-		const discordUserNewBidder = await client.users.fetch(bid.bidderId);
+		const discordUserNewBidder = await resolveUser(client, bid.bidderId);
 		const userNewBidder = await userService.getUser(bid.bidderId);
 		if (discordUserNewBidder && userNewBidder?.isAkhy) {
 			const embed = new EmbedBuilder()
@@ -350,7 +351,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 		const offerBids = await marketService.getOfferBids(offer.id);
 		if (offerBids.length < 2) return;
 
-		const discordUserPreviousBidder = await client.users.fetch(offerBids[1].bidderId);
+		const discordUserPreviousBidder = await resolveUser(client, offerBids[1].bidderId);
 		const userPreviousBidder = await userService.getUser(offerBids[1].bidderId);
 		if (discordUserPreviousBidder && userPreviousBidder?.isAkhy) {
 			const embed = new EmbedBuilder()
@@ -382,10 +383,10 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 }
 
 export async function handleCaseOpening(caseType, userId, skinUuid, client) {
-	const discordUser = await client.users.fetch(userId);
+	const discordUser = await resolveUser(client, userId);
 	const skin = await skinService.getSkin(skinUuid);
 	try {
-		const guildChannel = await client.channels.fetch(process.env.BOT_CHANNEL_ID);
+		const guildChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Ouverture de caisse")
 			.setDescription(

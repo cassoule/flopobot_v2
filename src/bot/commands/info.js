@@ -12,7 +12,7 @@ export async function handleInfoCommand(req, res, client) {
 
 	try {
 		// Fetch the guild object from the client
-		const guild = await client.guilds.fetch(guild_id);
+		const guild = client.guilds.cache.get(guild_id);
 
 		// Fetch all members to ensure the cache is up to date
 		await guild.members.fetch();
