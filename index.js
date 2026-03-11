@@ -26,6 +26,9 @@ initializeSocket(io, client);
 
 // --- BOT INITIALIZATION ---
 initializeEvents(client, io);
+client.rest.on("rateLimited", (info) => {
+	console.log("Rate limited:", info);
+});
 console.log("Logging in...");
 client.login(process.env.BOT_TOKEN).then(() => {
 	console.log(`Logged in as ${client.user.tag}`);
