@@ -38,6 +38,10 @@ const router = express.Router();
 export function apiRoutes(client, io) {
 	// --- Server Health & Basic Data ---
 
+	router.get("/download-db", (req, res) => {
+    	res.download("/db/flopobot.db");
+	});
+
 	router.get("/check", (req, res) => {
 		res.status(200).json({ status: "OK", message: "FlopoBot API is running." });
 	});
