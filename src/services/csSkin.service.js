@@ -18,6 +18,12 @@ export async function getUserCsSkinsByRarity(userId, rarity) {
 	});
 }
 
+export async function getAllOwnedCsSkins() {
+	return prisma.csSkin.findMany({
+		where: { userId: { not: null } },
+	});
+}
+
 export async function insertCsSkin(data) {
 	return prisma.csSkin.create({ data });
 }

@@ -355,34 +355,33 @@ async function handleAdminCommands(message) {
 			break;
 		case `${prefix}:refund-skins`:
 			try {
-				const DBskins = await skinService.getAllSkins();
-				for (const skin of DBskins) {
+				const allCsSkins = await csSkinService.getAllOwnedCsSkins();
+				let refundedCount = 0;
+				let totalRefunded = 0;
+				for (const skin of allCsSkins) {
+					const price = skin.price || 0;
 					let owner = null;
 					try {
-						owner = await userService.getUser(skin.userId)
+						owner = await userService.getUser(skin.userId);
 					} catch {
 						//
-					};
+					}
 					if (owner) {
-						await userService.updateUserCoins(owner.id, owner.coins + skin.currentPrice);
+						await userService.updateUserCoins(owner.id, owner.coins + price);
 						await logService.insertLog({
-							id: `${skin.uuid}-skin-refund-${Date.now()}`,
+							id: `${skin.id}-cs-skin-refund-${Date.now()}`,
 							userId: owner.id,
 							targetUserId: null,
-							action: "SKIN_REFUND",
-							coinsAmount: skin.currentPrice,
-							userNewAmount: owner.coins + skin.currentPrice,
+							action: "CS_SKIN_REFUND",
+							coinsAmount: price,
+							userNewAmount: owner.coins + price,
 						});
+						totalRefunded += price;
+						refundedCount++;
 					}
-					await skinService.updateSkin({
-						uuid: skin.uuid,
-						userId: null,
-						currentPrice: null,
-						currentLvl: null,
-						currentChroma: null,
-					});
+					await csSkinService.deleteCsSkin(skin.id);
 				}
-				message.reply("All skins refunded.");
+				message.reply(`Refunded ${refundedCount} CS skins (${totalRefunded} FlopoCoins total).`);
 			} catch (e) {
 				console.log(e);
 				message.reply(`Error during refund skins ${e.message}`);

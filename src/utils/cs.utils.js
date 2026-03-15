@@ -1,11 +1,24 @@
-import { csSkinsData, csSkinsPrices } from "./cs.state.js";
-import { findReferenceSkin } from "../services/csSkin.service.js";
+import { csSkinsData, csSkinsPriceIndex, weaponRarityPriceMap } from "./cs.state.js";
 
 const StateFactoryNew = "Factory New";
 const StateMinimalWear = "Minimal Wear";
 const StateFieldTested = "Field-Tested";
 const StateWellWorn = "Well-Worn";
 const StateBattleScarred = "Battle-Scarred";
+
+const EUR_TO_FLOPOS = parseInt(process.env.EUR_TO_FLOPOS) || 6;
+const FLOAT_MODIFIER_MAX = 0.05;
+const STATTRAK_FALLBACK_MULTIPLIER = 3.5;
+const SOUVENIR_FALLBACK_MULTIPLIER = 6;
+
+const WEAR_STATE_ORDER = [StateFactoryNew, StateMinimalWear, StateFieldTested, StateWellWorn, StateBattleScarred];
+const WEAR_STATE_RANGES = {
+	[StateFactoryNew]:    { min: 0.00, max: 0.07 },
+	[StateMinimalWear]:   { min: 0.07, max: 0.15 },
+	[StateFieldTested]:   { min: 0.15, max: 0.38 },
+	[StateWellWorn]:      { min: 0.38, max: 0.45 },
+	[StateBattleScarred]: { min: 0.45, max: 1.00 },
+};
 
 export const RarityToColor = {
 	Gold: 0xffd700, // Standard Gold
@@ -18,14 +31,15 @@ export const RarityToColor = {
 	"Consumer Grade": 0xb0c3d9, // Light Grey/White
 };
 
+// Last-resort fallback price ranges in EUR (used only when Skinport has no data)
 const basePriceRanges = {
-	"Consumer Grade": { min: 1, max: 10 },
-	"Industrial Grade": { min: 5, max: 50 },
-	"Mil-Spec Grade": { min: 20, max: 150 },
-	"Restricted": { min: 100, max: 1000 },
-	"Classified": { min: 500, max: 4000 },
-	"Covert": { min: 2500, max: 10000 },
-	"Extraordinary": { min: 1500, max: 3000 },
+	"Consumer Grade": { min: 0.03, max: 0.10 },
+	"Industrial Grade": { min: 0.05, max: 0.30 },
+	"Mil-Spec Grade": { min: 0.10, max: 1.50 },
+	"Restricted": { min: 1.00, max: 10.00 },
+	"Classified": { min: 5.00, max: 40.00 },
+	"Covert": { min: 25.00, max: 150.00 },
+	"Extraordinary": { min: 100.00, max: 800.00 },
 };
 
 export const TRADE_UP_MAP = {
@@ -55,70 +69,115 @@ export function randomSkinRarity() {
 	return "Consumer Grade";
 }
 
-export async function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
-	const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
+function getSkinportPrice(priceData) {
+	if (!priceData) return null;
+	return priceData.suggested_price ?? priceData.median_price ?? priceData.mean_price ?? priceData.min_price ?? null;
+}
 
-	let finalPrice;
-	const ref = await findReferenceSkin(skinName, isStattrak, isSouvenir);
+function applyFloatModifier(basePrice, float, wearState) {
+	const range = WEAR_STATE_RANGES[wearState];
+	if (!range) return basePrice;
+	const span = range.max - range.min;
+	if (span <= 0) return basePrice;
+	// 0 = best float in range, 1 = worst
+	const positionInRange = (float - range.min) / span;
+	const modifier = 1 + FLOAT_MODIFIER_MAX * (1 - 2 * positionInRange);
+	return basePrice * modifier;
+}
 
-	if (ref && ref.float !== null) {
-		// Derive base price from reference: refPrice = basePrice * (1 - refFloat) → basePrice = refPrice / (1 - refFloat)
-		const refBasePrice = ref.price / Math.max(1 - ref.float, 0.01);
-		finalPrice = refBasePrice * (1 - float);
-	} else {
-		// No reference: random base price, scaled by float
-		const basePrice = ranges.min + Math.random() * (ranges.max - ranges.min);
-		finalPrice = basePrice * (1 - float) + ranges.min * float;
+function getAdjacentWearStates(wearState) {
+	const idx = WEAR_STATE_ORDER.indexOf(wearState);
+	if (idx === -1) return [];
+	// Return wear states ordered by proximity
+	const adjacent = [];
+	for (let dist = 1; dist < WEAR_STATE_ORDER.length; dist++) {
+		if (idx - dist >= 0) adjacent.push(WEAR_STATE_ORDER[idx - dist]);
+		if (idx + dist < WEAR_STATE_ORDER.length) adjacent.push(WEAR_STATE_ORDER[idx + dist]);
+	}
+	return adjacent;
+}
+
+function lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir) {
+	const skinEntry = csSkinsPriceIndex[skinName];
+	if (!skinEntry) return null;
+
+	const variant = isSouvenir ? "souvenir" : isStattrak ? "stattrak" : "base";
+
+	// 1. Exact match: correct variant + wear state
+	let price = getSkinportPrice(skinEntry[variant]?.[wearState]);
+	if (price !== null) return price;
+
+	// 2. Drop variant: use base price × multiplier
+	if (variant !== "base") {
+		const basePrice = getSkinportPrice(skinEntry["base"]?.[wearState]);
+		if (basePrice !== null) {
+			const multiplier = isSouvenir ? SOUVENIR_FALLBACK_MULTIPLIER : STATTRAK_FALLBACK_MULTIPLIER;
+			return basePrice * multiplier;
+		}
 	}
 
-	const isGold = rarity === "Covert";
-	if (isSouvenir && !isGold) {
-		finalPrice *= 7;
-	} else if (isStattrak && !isGold) {
-		finalPrice *= 4;
+	// 3. Adjacent wear state (same variant, then base with multiplier)
+	for (const adjWear of getAdjacentWearStates(wearState)) {
+		const adjPrice = getSkinportPrice(skinEntry[variant]?.[adjWear]);
+		if (adjPrice !== null) return adjPrice;
+
+		if (variant !== "base") {
+			const adjBase = getSkinportPrice(skinEntry["base"]?.[adjWear]);
+			if (adjBase !== null) {
+				const multiplier = isSouvenir ? SOUVENIR_FALLBACK_MULTIPLIER : STATTRAK_FALLBACK_MULTIPLIER;
+				return adjBase * multiplier;
+			}
+		}
 	}
 
-	if (finalPrice < 1) finalPrice = 1;
+	return null;
+}
 
-	const name = skinName.toLowerCase();
+function findSimilarSkinPrice(skinName, rarity, wearState) {
+	const skinData = csSkinsData[skinName];
+	const weapon = skinData?.weapon?.name;
+	if (!weapon) return null;
 
-	// Special pattern multipliers (more specific patterns first)
-	if (name.includes("marble fade")) {
-		finalPrice *= 1.35;
-	} else if (name.includes("gamma doppler")) {
-		finalPrice *= 1.4;
-	} else if (name.includes("doppler")) {
-		finalPrice *= 1.5;
-	} else if (name.includes("fade")) {
-		finalPrice *= 1.4;
-	} else if (name.includes("crimson web")) {
-		finalPrice *= 1.3;
-	} else if (name.includes("case hardened")) {
-		finalPrice *= 1.25;
-	} else if (name.includes("lore")) {
-		finalPrice *= 1.25;
-	} else if (name.includes("tiger tooth")) {
-		finalPrice *= 1.2;
-	} else if (name.includes("slaughter")) {
-		finalPrice *= 1.2;
+	const candidates = weaponRarityPriceMap[weapon]?.[rarity];
+	if (!candidates || candidates.length === 0) return null;
+
+	// Pick a random candidate that has a price for this wear state
+	const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+	for (const candidate of shuffled) {
+		if (candidate === skinName) continue;
+		const entry = csSkinsPriceIndex[candidate];
+		if (!entry) continue;
+		// Try base variant first
+		const price = getSkinportPrice(entry["base"]?.[wearState]);
+		if (price !== null) return price;
+		// Try any wear state
+		for (const ws of WEAR_STATE_ORDER) {
+			const wsPrice = getSkinportPrice(entry["base"]?.[ws]);
+			if (wsPrice !== null) return wsPrice;
+		}
 	}
 
-	// Knife type boosts (more specific first)
-	if (name.includes("butterfly")) {
-		finalPrice *= 2;
-	} else if (name.includes("karambit")) {
-		finalPrice *= 1.8;
-	} else if (name.includes("m9 bayonet")) {
-		finalPrice *= 1.4;
-	} else if (name.includes("talon")) {
-		finalPrice *= 1.3;
-	} else if (name.includes("skeleton")) {
-		finalPrice *= 1.2;
-	} else if (name.includes("bayonet")) {
-		finalPrice *= 1.1;
-	} else if (name.includes("gut") || name.includes("navaja") || name.includes("falchion")) {
-		finalPrice *= 0.8;
+	return null;
+}
+
+export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
+	const wearState = getWearState(float);
+	let eurPrice = lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir);
+
+	if (eurPrice === null) {
+		// 4. Similar skin: same weapon + same rarity
+		eurPrice = findSimilarSkinPrice(skinName, rarity, wearState);
 	}
+
+	if (eurPrice === null) {
+		// 5. Last resort: rarity-based random range (already in EUR-ish scale)
+		const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
+		eurPrice = ranges.min + Math.random() * (ranges.max - ranges.min);
+	}
+
+	let finalPrice = Math.round(eurPrice * EUR_TO_FLOPOS);
+	finalPrice = applyFloatModifier(finalPrice, float, wearState);
+	finalPrice = Math.max(Math.round(finalPrice), 1);
 
 	return finalPrice.toFixed(0);
 }
@@ -167,6 +226,6 @@ export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 		isSouvenir: skinIsSouvenir,
 		wearState,
 		float,
-		price: await generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
+		price: generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
 	};
 }
