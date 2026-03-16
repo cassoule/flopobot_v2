@@ -14,7 +14,7 @@ export async function deleteSOTD() {
 
 export async function getAllSOTDStats() {
 	const stats = await prisma.sotdStat.findMany({
-		include: { user: { select: { globalName: true, avatarUrl: true } } },
+		include: { user: { select: { username: true, globalName: true, avatarUrl: true } } },
 		orderBy: [{ score: "desc" }, { moves: "asc" }, { time: "asc" }],
 	});
 	return stats.map((s) => ({
