@@ -236,7 +236,7 @@ async function handleWin(userId, gameState, io) {
 	if (!currentUser) return;
 
 	if (gameState.hardMode) {
-		const bonus = 100;
+		const bonus = 500;
 		const newCoins = currentUser.coins + bonus;
 		await userService.updateUserCoins(userId, newCoins);
 		await logService.insertLog({
