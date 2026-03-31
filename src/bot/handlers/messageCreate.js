@@ -12,7 +12,8 @@ import {
 } from "../../utils/ai.js";
 import { calculateBasePrice, calculateMaxPrice, formatTime, getAkhys, resolveMember } from "../../utils/index.js";
 import { channelPointsHandler, initTodaysSOTD, randomSkinPrice, slowmodesHandler } from "../../game/points.js";
-import { activePolls, activeSlowmodes, requestTimestamps, skins } from "../../game/state.js";
+import { activePolls, activeSlowmodes, requestTimestamps, skins, maintenance } from "../../game/state.js";
+import { activateMaintenance, deactivateMaintenance, startMaintenanceNotifications } from "../../server/socket.js";
 import prisma from "../../prisma/client.js";
 import * as userService from "../../services/user.service.js";
 import * as skinService from "../../services/skin.service.js";
@@ -193,49 +194,9 @@ async function handleAdminCommands(message) {
 	const [command, ...args] = message.content.split(" ");
 
 	switch (command) {
-		case "?sp":
-			let msgText = "";
-			for (let skinTierRank = 1; skinTierRank <= 4; skinTierRank++) {
-				msgText += `\n--- Tier Rank: ${skinTierRank} ---\n`;
-				let skinMaxLevels = 4;
-				let skinMaxChromas = 4;
-				for (let skinLevel = 1; skinLevel < skinMaxLevels; skinLevel++) {
-					msgText += `Levels: ${skinLevel}/${skinMaxLevels}, MaxChromas: ${1}/${skinMaxChromas} - `;
-					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `;
-					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `;
-					msgText += `${getDummySkinUpgradeProbs(skinLevel, 1, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`;
-				}
-				for (let skinChroma = 1; skinChroma < skinMaxChromas; skinChroma++) {
-					msgText += `Levels: ${skinMaxLevels}/${skinMaxLevels}, MaxChromas: ${skinChroma}/${skinMaxChromas} - `;
-					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).successProb.toFixed(4)}, `;
-					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).destructionProb.toFixed(4)}, `;
-					msgText += `${getDummySkinUpgradeProbs(skinMaxLevels, skinChroma, skinTierRank, skinMaxLevels, skinMaxChromas, 15).upgradePrice}\n`;
-				}
-				message.reply(msgText);
-				msgText = "";
-			}
-			break;
-		case "?v":
-			console.log("Active Polls:", activePolls);
-			break;
-		case "?sv":
-			const amount = parseInt(args[0], 10);
-			if (isNaN(amount)) return message.reply("Invalid amount.");
-			let sum = 0;
-			const start_at = Date.now();
-			for (let i = 0; i < amount; i++) {
-				sum += parseFloat(randomSkinPrice());
-			}
-			console.log(
-				`Result for ${amount} skins: Avg: ~${(sum / amount).toFixed(0)} Flopos | Total: ${sum.toFixed(0)} Flopos | Elapsed: ${Date.now() - start_at}ms`,
-			);
-			break;
 		case `${prefix}:sotd`:
 			initTodaysSOTD();
 			message.reply("New Solitaire of the Day initialized.");
-			break;
-		case `${prefix}:users`:
-			console.log(await userService.getAllUsers());
 			break;
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");
@@ -268,89 +229,6 @@ async function handleAdminCommands(message) {
 				try {
 					await userService.updateUserAvatar(user.id, user.avatarUrl);
 				} catch (err) {}
-			}
-			break;
-		case `${prefix}:rework-skins`:
-			console.log("Reworking all skin prices...");
-			const dbSkins = await skinService.getAllSkins();
-			for (const skin of dbSkins) {
-				const fetchedSkin = skins.find((s) => s.uuid === skin.uuid);
-				const basePrice = calculateBasePrice(fetchedSkin, skin.tierRank)?.toFixed(0);
-				const calculatePrice = () => {
-					if (!skin.basePrice) return null;
-					let result = parseFloat(basePrice);
-					result *= 1 + skin.currentLvl / Math.max(fetchedSkin.levels.length, 2);
-					result *= 1 + skin.currentChroma / 4;
-					return parseFloat(result.toFixed(0));
-				};
-				const maxPrice = calculateMaxPrice(basePrice, fetchedSkin).toFixed(0);
-				await skinService.hardUpdateSkin({
-					uuid: skin.uuid,
-					displayName: skin.displayName,
-					contentTierUuid: skin.contentTierUuid,
-					displayIcon: skin.displayIcon,
-					userId: skin.userId,
-					tierRank: skin.tierRank,
-					tierColor: skin.tierColor,
-					tierText: skin.tierText,
-					basePrice: basePrice,
-					currentLvl: skin.currentLvl || null,
-					currentChroma: skin.currentChroma || null,
-					currentPrice: skin.currentPrice ? calculatePrice() : null,
-					maxPrice: maxPrice,
-				});
-			}
-			console.log("Reworked", dbSkins.length, "skins.");
-			break;
-		case `${prefix}:cases-test`:
-			try {
-				const caseType = args[0] ?? "standard";
-				const caseCount = args[1] ?? 1;
-
-				let totalResValue = 0;
-				let highestSkinPrice = 0;
-				let priceTiers = {
-					0: 0,
-					100: 0,
-					200: 0,
-					300: 0,
-					400: 0,
-					500: 0,
-					600: 0,
-					700: 0,
-					800: 0,
-					900: 0,
-					1000: 0,
-				};
-
-				for (let i = 0; i < caseCount; i++) {
-					const skins = await drawCaseContent(caseType);
-					const result = await drawCaseSkin(skins);
-					totalResValue += result.finalPrice;
-					if (result.finalPrice > highestSkinPrice) highestSkinPrice = result.finalPrice;
-					if (result.finalPrice > 0 && result.finalPrice < 100) priceTiers["0"] += 1;
-					if (result.finalPrice >= 100 && result.finalPrice < 200) priceTiers["100"] += 1;
-					if (result.finalPrice >= 200 && result.finalPrice < 300) priceTiers["200"] += 1;
-					if (result.finalPrice >= 300 && result.finalPrice < 400) priceTiers["300"] += 1;
-					if (result.finalPrice >= 400 && result.finalPrice < 500) priceTiers["400"] += 1;
-					if (result.finalPrice >= 500 && result.finalPrice < 600) priceTiers["500"] += 1;
-					if (result.finalPrice >= 600 && result.finalPrice < 700) priceTiers["600"] += 1;
-					if (result.finalPrice >= 700 && result.finalPrice < 800) priceTiers["700"] += 1;
-					if (result.finalPrice >= 800 && result.finalPrice < 900) priceTiers["800"] += 1;
-					if (result.finalPrice >= 900 && result.finalPrice < 1000) priceTiers["900"] += 1;
-					if (result.finalPrice >= 1000) priceTiers["1000"] += 1;
-					console.log(
-						`Case ${i + 1}: Won a skin worth ${result.finalPrice} Flopos, ${caseType}, ${result.updatedSkin.tierRank}`,
-					);
-				}
-
-				console.log(totalResValue / caseCount);
-				message.reply(
-					`${totalResValue / caseCount} average skin price over ${caseCount} ${caseType} cases.\nHighest skin price: ${highestSkinPrice}\nPrice tier distribution: ${JSON.stringify(priceTiers)}`,
-				);
-			} catch (e) {
-				console.log(e);
-				message.reply(`Error during case test: ${e.message}`);
 			}
 			break;
 		case `${prefix}:refund-skins`:
@@ -433,67 +311,108 @@ async function handleAdminCommands(message) {
 				message.reply(`Error searching CS:GO skins: ${e.message}`);
 			}
 			break;
-		case `${prefix}:open-cs`:
-			try {
-				const randomSkin = await getRandomSkinWithRandomSpecs(args[0] ? parseFloat(args[0]) : null);
-				const created = await csSkinService.insertCsSkin({
-					marketHashName: randomSkin.name,
-					displayName: randomSkin.data.name || randomSkin.name,
-					imageUrl: randomSkin.data.image || null,
-					rarity: randomSkin.data.rarity.name,
-					rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
-					weaponType: randomSkin.data.weapon?.name || null,
-					float: randomSkin.float,
-					wearState: randomSkin.wearState,
-					isStattrak: randomSkin.isStattrak,
-					isSouvenir: randomSkin.isSouvenir,
-					price: parseInt(randomSkin.price),
-					userId: message.author.id,
-				});
-				message.reply(
-					`You opened a CS:GO case and got: ${randomSkin.name} (${randomSkin.data.rarity.name}, ${
-						randomSkin.isStattrak ? "StatTrak, " : ""
-					}${randomSkin.isSouvenir ? "Souvenir, " : ""}${randomSkin.wearState} - float ${randomSkin.float})\nBase Price: ${
-						randomSkin.price ?? "N/A"
-					} Flopos\nSkin ID: ${created.id}\nImage url: [url](${randomSkin.data.image || "N/A"})`,
-				);
-			} catch (e) {
-				console.log(e);
-				message.reply(`Error opening CS:GO case: ${e.message}`);
-			}
+		case `${prefix}:maintenance`:
+			handleMaintenanceCommand(message, args);
 			break;
-		case `${prefix}:simulate-cs`:
-			try {
-				const caseCount = parseInt(args[0]) || 100;
-				const caseType = args[1] || "default";
-				let totalResValue = 0;
-				let highestSkinPrice = 0;
-				const priceTiers = {
-					"Consumer Grade": 0,
-					"Industrial Grade": 0,
-					"Mil-Spec Grade": 0,
-					"Restricted": 0,
-					"Classified": 0,
-					"Covert": 0,
-					"Extraordinary": 0,
-				};
+	}
+}
 
-				for (let i = 0; i < caseCount; i++) {
-					const result = await getRandomSkinWithRandomSpecs();
-					totalResValue += parseInt(result.price);
-					if (parseInt(result.price) > highestSkinPrice) {
-						highestSkinPrice = parseInt(result.price);
-					}
-					priceTiers[result.data.rarity.name]++;
-				}
-				console.log(totalResValue / caseCount);
-				message.reply(
-					`${totalResValue / caseCount} average skin price over ${caseCount} ${caseType} cases.\nHighest skin price: ${highestSkinPrice}\nPrice tier distribution: ${JSON.stringify(priceTiers)}`,
-				);
-			} catch (e) {
-				console.log(e);
-				message.reply(`Error during case simulation: ${e.message}`);
-			}
-			break;
+function parseDuration(str) {
+	const match = str.match(/^(\d+)(s|m|h|d)$/);
+	if (!match) return null;
+	const value = parseInt(match[1]);
+	const unit = match[2];
+	const multipliers = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+	return value * multipliers[unit];
+}
+
+function formatDuration(ms) {
+	if (ms >= 86400000) return `${Math.round(ms / 86400000)}d`;
+	if (ms >= 3600000) return `${Math.round(ms / 3600000)}h`;
+	if (ms >= 60000) return `${Math.round(ms / 60000)}m`;
+	return `${Math.round(ms / 1000)}s`;
+}
+
+function handleMaintenanceCommand(message, args) {
+	// Status check
+	if (args[0] === "status") {
+		if (maintenance.active) {
+			const endInfo = maintenance.scheduledEnd
+				? `\nFin prévue: <t:${Math.floor(maintenance.scheduledEnd / 1000)}:R>`
+				: "\nFin: manuelle";
+			message.reply(`🔧 Maintenance **active**.${endInfo}`);
+		} else if (maintenance.startTimer) {
+			const startInfo = `\nDébut prévu: <t:${Math.floor(maintenance.scheduledStart / 1000)}:R>`;
+			const endInfo = maintenance.scheduledEnd
+				? `\nFin prévue: <t:${Math.floor(maintenance.scheduledEnd / 1000)}:R>`
+				: "\nFin: manuelle";
+			message.reply(`⏳ Maintenance **programmée**.${startInfo}${endInfo}`);
+		} else {
+			message.reply("✅ Pas de maintenance en cours.");
+		}
+		return;
+	}
+
+	// Explicit off
+	if (args[0] === "off") {
+		deactivateMaintenance();
+		message.reply("✅ Maintenance désactivée.");
+		return;
+	}
+
+	// No args: toggle
+	if (args.length === 0) {
+		if (maintenance.active || maintenance.startTimer) {
+			deactivateMaintenance();
+			message.reply("✅ Maintenance désactivée.");
+		} else {
+			activateMaintenance(null);
+			message.reply("🔧 Maintenance activée. API et sockets bloqués.\nUtilise `maintenance off` pour désactiver.");
+		}
+		return;
+	}
+
+	// 1 arg: scheduled start, manual end
+	if (args.length === 1) {
+		const startDelay = parseDuration(args[0]);
+		if (!startDelay) {
+			message.reply("Format invalide. Utilise: `30s`, `5m`, `2h`, `1d`");
+			return;
+		}
+		const startAt = Date.now() + startDelay;
+		maintenance.scheduledStart = startAt;
+		maintenance.startTimer = setTimeout(() => {
+			activateMaintenance(null);
+		}, startDelay);
+		startMaintenanceNotifications();
+		message.reply(
+			`⏳ Maintenance programmée dans **${formatDuration(startDelay)}** (<t:${Math.floor(startAt / 1000)}:R>).\nFin: manuelle.`,
+		);
+		return;
+	}
+
+	// 2 args: scheduled start + scheduled end (duration after start)
+	if (args.length >= 2) {
+		const startDelay = parseDuration(args[0]);
+		const endDuration = parseDuration(args[1]);
+		if (!startDelay || !endDuration) {
+			message.reply("Format invalide. Utilise: `30s`, `5m`, `2h`, `1d`");
+			return;
+		}
+		const startAt = Date.now() + startDelay;
+		const endAt = startAt + endDuration;
+		maintenance.scheduledStart = startAt;
+		maintenance.scheduledEnd = endAt;
+		maintenance.startTimer = setTimeout(() => {
+			activateMaintenance(endAt);
+			maintenance.endTimer = setTimeout(() => {
+				deactivateMaintenance();
+			}, endDuration);
+		}, startDelay);
+		startMaintenanceNotifications();
+		message.reply(
+			`⏳ Maintenance programmée:\n- Début: dans **${formatDuration(startDelay)}** (<t:${Math.floor(startAt / 1000)}:R>)\n- Fin: après **${formatDuration(endDuration)}** (<t:${Math.floor(endAt / 1000)}:R>)`,
+		);
+		return;
 	}
 }

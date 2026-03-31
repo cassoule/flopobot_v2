@@ -42,10 +42,6 @@ export function apiRoutes(client, io) {
     	res.download("/db/flopobot.db");
 	});
 
-	router.get("/check", (req, res) => {
-		res.status(200).json({ status: "OK", message: "FlopoBot API is running." });
-	});
-
 	router.get("/users", async (req, res) => {
 		try {
 			const users = await userService.getAllUsers();
@@ -1345,7 +1341,6 @@ export function apiRoutes(client, io) {
 	router.post("/snake/reward", requireAuth, async (req, res) => {
 		const discordId = req.userId;
 		const { score, isWin } = req.body;
-		console.log(`[SNAKE][SOLO]${discordId}: score=${score}, isWin=${isWin}`);
 		try {
 			const user = await userService.getUser(discordId);
 			if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });

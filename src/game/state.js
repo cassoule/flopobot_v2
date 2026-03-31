@@ -77,3 +77,13 @@ export let requestTimestamps = new Map();
 // In-memory cache for Valorant skin data fetched from the API.
 // This prevents re-fetching the same data on every command use.
 export let skins = [];
+
+// --- Maintenance Mode State ---
+export let maintenance = {
+	active: false,
+	scheduledStart: null,
+	scheduledEnd: null,
+	startTimer: null,
+	endTimer: null,
+	notifyInterval: null,
+};

@@ -18,6 +18,7 @@ import {
 import { eloHandler } from "../game/elo.js";
 import { verifyToken } from "./middleware/auth.js";
 import { resolveUser } from "../utils/index.js";
+import { maintenance } from "../game/state.js";
 
 // --- Module-level State ---
 let io;
@@ -26,6 +27,14 @@ let io;
 
 export function initializeSocket(server, client) {
 	io = server;
+
+	// Block new connections during maintenance
+	io.use((socket, next) => {
+		if (maintenance.active) {
+			return next(new Error("Maintenance in progress"));
+		}
+		next();
+	});
 
 	// Authenticate socket connections via JWT (optional - allows unauthenticated connections for health checks)
 	io.use((socket, next) => {
@@ -41,6 +50,14 @@ export function initializeSocket(server, client) {
 	});
 
 	io.on("connection", (socket) => {
+		// Send scheduled maintenance info to newly connected clients
+		if (maintenance.scheduledStart && !maintenance.active) {
+			socket.emit("maintenance-scheduled", {
+				startsAt: maintenance.scheduledStart,
+				estimatedEnd: maintenance.scheduledEnd,
+			});
+		}
+
 		socket.on("user-connected", async () => {
 			if (!socket.userId) return;
 			await refreshQueuesForUser(socket.userId, client);
@@ -106,12 +123,10 @@ async function onQueueJoin(client, gameType, playerId) {
 
 	// Check if player is already in queue or in an active game
 	if (queue.includes(playerId)) {
-		console.log(`[${title}] Player ${playerId} already in queue, ignoring duplicate join.`);
 		return;
 	}
 
 	if (Object.values(activeGames).some((g) => g.p1.id === playerId || g.p2.id === playerId)) {
-		console.log(`[${title}] Player ${playerId} already in active game, ignoring queue join.`);
 		return;
 	}
 
@@ -630,3 +645,59 @@ export const emitToast = (payload) => io.emit("blackjack:toast", payload);
 export const emitSolitaireUpdate = (userId, moves) => io.emit("solitaire:update", { userId, moves });
 
 export const emitMarketUpdate = () => io.emit("market:update");
+
+// --- Maintenance Mode Helpers ---
+
+export function activateMaintenance(scheduledEnd = null) {
+	stopMaintenanceNotifications();
+	maintenance.active = true;
+	maintenance.scheduledEnd = scheduledEnd;
+	io.emit("maintenance-update", { active: true, estimatedEnd: scheduledEnd });
+	// Disconnect all connected sockets after notifying them
+	for (const [, socket] of io.sockets.sockets) {
+		socket.disconnect(true);
+	}
+}
+
+export function deactivateMaintenance() {
+	stopMaintenanceNotifications();
+	maintenance.active = false;
+	maintenance.scheduledStart = null;
+	maintenance.scheduledEnd = null;
+	if (maintenance.startTimer) {
+		clearTimeout(maintenance.startTimer);
+		maintenance.startTimer = null;
+	}
+	if (maintenance.endTimer) {
+		clearTimeout(maintenance.endTimer);
+		maintenance.endTimer = null;
+	}
+	io.emit("maintenance-scheduled", null);
+}
+
+export function startMaintenanceNotifications() {
+	// Emit immediately so current clients know right away
+	io.emit("maintenance-scheduled", {
+		startsAt: maintenance.scheduledStart,
+		estimatedEnd: maintenance.scheduledEnd,
+	});
+
+	// Re-emit every 60s so clients get live countdowns
+	maintenance.notifyInterval = setInterval(() => {
+		if (!maintenance.scheduledStart || maintenance.active) {
+			stopMaintenanceNotifications();
+			return;
+		}
+		io.emit("maintenance-scheduled", {
+			startsAt: maintenance.scheduledStart,
+			estimatedEnd: maintenance.scheduledEnd,
+		});
+	}, 60_000);
+}
+
+function stopMaintenanceNotifications() {
+	if (maintenance.notifyInterval) {
+		clearInterval(maintenance.notifyInterval);
+		maintenance.notifyInterval = null;
+	}
+}

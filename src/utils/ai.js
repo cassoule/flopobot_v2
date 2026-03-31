@@ -46,9 +46,6 @@ export async function gork(messageHistory) {
 		// --- Google Gemini Provider ---
 		else if (modelProvider.toLowerCase() === "gemini" && gemini) {
 			// Gemini requires a slightly different history format.
-			messageHistory.forEach((message) => {
-				console.log(message.role);
-			});
 			const systemMessage = messageHistory.find((msg) => msg.role === "system");
 			const systemInstruction = systemMessage ? systemMessage.content : undefined;
 
