@@ -18,6 +18,7 @@ import {
 import { eloHandler } from "../game/elo.js";
 import { verifyToken } from "./middleware/auth.js";
 import { resolveUser } from "../utils/index.js";
+import * as userService from "../services/user.service.js";
 import { maintenance } from "../game/state.js";
 
 // --- Module-level State ---
@@ -570,6 +571,9 @@ async function postQueueToDiscord(client, playerId, title, url) {
 async function updateDiscordMessage(client, game, title, resultText = "") {
 	const channel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 	if (!channel) return null;
+
+	const [p1User, p2User] = await Promise.all([userService.getUser(game.p1.id), userService.getUser(game.p2.id)]);
+	if (!p1User?.isAkhy && !p2User?.isAkhy) return null;
 
 	let description;
 	if (title === "Tic Tac Toe") {

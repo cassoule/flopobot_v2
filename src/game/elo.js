@@ -3,13 +3,7 @@ import * as gameService from "../services/game.service.js";
 import { EmbedBuilder } from "discord.js";
 import { client } from "../bot/client.js";
 import { resolveUser } from "../utils/index.js";
-import {
-	calculateNewRatings,
-	DEFAULT_RATING,
-	DEFAULT_RD,
-	DEFAULT_VOLATILITY,
-	PLACEMENT_GAMES,
-} from "./glicko2.js";
+import { calculateNewRatings, DEFAULT_RATING, DEFAULT_RD, DEFAULT_VOLATILITY, PLACEMENT_GAMES } from "./glicko2.js";
 
 function formatPlayerLine(name, oldElo, newElo, gamesPlayed) {
 	const diff = newElo - oldElo;
@@ -54,26 +48,42 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 	const p1NewGames = p1EloData.gamesPlayed + 1;
 	const p2NewGames = p2EloData.gamesPlayed + 1;
 
-	console.log(`Rating Update (${type}) for ${p1DB.globalName}: ${p1EloData.elo} -> ${finalP1Elo} (RD: ${p1EloData.rd} -> ${p1Result.rd})`);
-	console.log(`Rating Update (${type}) for ${p2DB.globalName}: ${p2EloData.elo} -> ${finalP2Elo} (RD: ${p2EloData.rd} -> ${p2Result.rd})`);
+	console.log(
+		`Rating Update (${type}) for ${p1DB.globalName}: ${p1EloData.elo} -> ${finalP1Elo} (RD: ${p1EloData.rd} -> ${p1Result.rd})`,
+	);
+	console.log(
+		`Rating Update (${type}) for ${p2DB.globalName}: ${p2EloData.elo} -> ${finalP2Elo} (RD: ${p2EloData.rd} -> ${p2Result.rd})`,
+	);
 
-	try {
-		const generalChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
-		const user1 = await resolveUser(client, p1Id);
-		const user2 = await resolveUser(client, p2Id);
-		const embed = new EmbedBuilder()
-			.setTitle(`FlopoRank - ${type}`)
-			.setDescription(
-				`${formatPlayerLine(user1.globalName || user1.username, p1EloData.elo, finalP1Elo, p1NewGames)}\n\n${formatPlayerLine(user2.globalName || user2.username, p2EloData.elo, finalP2Elo, p2NewGames)}`,
-			)
-			.setColor("#5865f2");
-		await generalChannel.send({ embeds: [embed] });
-	} catch (e) {
-		console.error(`Failed to post rating update message`, e);
+	if (p1DB.isAkhy || p2DB.isAkhy) {
+		try {
+			const generalChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
+			const user1 = await resolveUser(client, p1Id);
+			const user2 = await resolveUser(client, p2Id);
+			const embed = new EmbedBuilder()
+				.setTitle(`FlopoRank - ${type}`)
+				.setDescription(
+					`${formatPlayerLine(user1.globalName || user1.username, p1EloData.elo, finalP1Elo, p1NewGames)}\n\n${formatPlayerLine(user2.globalName || user2.username, p2EloData.elo, finalP2Elo, p2NewGames)}`,
+				)
+				.setColor("#5865f2");
+			await generalChannel.send({ embeds: [embed] });
+		} catch (e) {
+			console.error(`Failed to post rating update message`, e);
+		}
 	}
 
-	await gameService.updateElo(p1Id, { elo: finalP1Elo, rd: p1Result.rd, volatility: p1Result.volatility, gamesPlayed: p1NewGames });
-	await gameService.updateElo(p2Id, { elo: finalP2Elo, rd: p2Result.rd, volatility: p2Result.volatility, gamesPlayed: p2NewGames });
+	await gameService.updateElo(p1Id, {
+		elo: finalP1Elo,
+		rd: p1Result.rd,
+		volatility: p1Result.volatility,
+		gamesPlayed: p1NewGames,
+	});
+	await gameService.updateElo(p2Id, {
+		elo: finalP2Elo,
+		rd: p2Result.rd,
+		volatility: p2Result.volatility,
+		gamesPlayed: p2NewGames,
+	});
 
 	const gameScores = scores || { p1: p1Score, p2: p2Score };
 	await gameService.insertGame({
@@ -141,7 +151,12 @@ export async function pokerEloHandler(room) {
 			console.log(
 				`Rating Update (POKER) for ${player.globalName}: ${player.rating} -> ${newElo} (RD: ${player.rd} -> ${result.rd})`,
 			);
-			await gameService.updateElo(player.id, { elo: newElo, rd: result.rd, volatility: result.volatility, gamesPlayed: newGames });
+			await gameService.updateElo(player.id, {
+				elo: newElo,
+				rd: result.rd,
+				volatility: result.volatility,
+				gamesPlayed: newGames,
+			});
 
 			await gameService.insertGame({
 				id: `${player.id}-poker-${Date.now()}`,
