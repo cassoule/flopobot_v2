@@ -2,7 +2,7 @@ import prisma from "../prisma/client.js";
 
 function printLog(log) {
 	const timestamp = log.createdAt.toISOString();
-	return `[${timestamp}][${log.action}] @${log.userId} balance: ${log.userNewAmount} (${log.coinsAmount >= 0 ? "+" : ""}${log.coinsAmount})`;
+	return `[${timestamp}][${log.action.padEnd(25)}] @${log.userId} balance: ${log.userNewAmount.toString().padStart(12)} (${log.coinsAmount >= 0 ? "+" : ""}${log.coinsAmount})`;
 }
 
 export async function insertLog(data) {

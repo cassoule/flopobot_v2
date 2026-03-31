@@ -133,7 +133,6 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
  */
 export async function pokerEloHandler(room) {
 	if (room.fakeMoney) {
-		console.log("Skipping Elo update for fake money poker game.");
 		return;
 	}
 

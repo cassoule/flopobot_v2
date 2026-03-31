@@ -13,6 +13,7 @@ import { blackjackRoutes } from "./routes/blackjack.js";
 import { marketRoutes } from "./routes/market.js";
 import { monkeRoutes } from "./routes/monke.js";
 import { authRoutes } from "./routes/auth.js";
+import { maintenance } from "../game/state.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -24,10 +25,12 @@ const FLAPI_URL = process.env.DEV_SITE === "true" ? process.env.FLAPI_URL_DEV : 
 // CORS Middleware
 app.use((req, res, next) => {
 	res.header("Access-Control-Allow-Origin", FLAPI_URL);
+	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
 	res.header(
 		"Access-Control-Allow-Headers",
 		"Content-Type, Authorization, X-API-Key, ngrok-skip-browser-warning, Cache-Control, Pragma, Expires",
 	);
+	if (req.method === "OPTIONS") return res.sendStatus(204);
 	next();
 });
 
@@ -46,6 +49,39 @@ app.use(express.json());
 
 // --- STATIC ASSETS ---
 app.use("/public", express.static("public"));
+
+// --- HEALTH CHECK (before maintenance gate) ---
+app.get("/api/check", (req, res) => {
+	if (maintenance.active) {
+		return res.status(503).json({
+			error: "maintenance",
+			message: "L'API est en maintenance.",
+			estimatedEnd: maintenance.scheduledEnd || null,
+		});
+	}
+	if (maintenance.scheduledStart) {
+		return res.status(200).json({
+			status: "OK",
+			scheduledMaintenance: {
+				startsAt: maintenance.scheduledStart,
+				estimatedEnd: maintenance.scheduledEnd,
+			},
+		});
+	}
+	res.status(200).json({ status: "OK", message: "FlopoBot API is running." });
+});
+
+// --- MAINTENANCE MODE MIDDLEWARE ---
+app.use("/api", (req, res, next) => {
+	if (maintenance.active) {
+		return res.status(503).json({
+			error: "maintenance",
+			message: "L'API est en maintenance.",
+			estimatedEnd: maintenance.scheduledEnd || null,
+		});
+	}
+	next();
+});
 
 // --- API ROUTES ---
 

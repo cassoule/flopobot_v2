@@ -142,11 +142,11 @@ export function marketRoutes(client, io) {
 			if (lastBid) {
 				if (lastBid?.bidderId === buyer_id)
 					return res.status(403).send({ error: "You are already the highest bidder" });
-				if (bid_amount < lastBid?.offerAmount + 10) {
+				if (bid_amount < lastBid?.offerAmount + 1) {
 					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			} else {
-				if (bid_amount < offer.startingPrice + 10) {
+				if (bid_amount < offer.startingPrice + 1) {
 					return res.status(403).send({ error: "Bid amount is below minimum" });
 				}
 			}
