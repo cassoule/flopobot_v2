@@ -10,7 +10,7 @@ export async function insertLog(data) {
 		const log = await prisma.log.create({ data });
 		console.log(printLog(log));
 		return 0;
-	} catch (error) {		
+	} catch (error) {
 		console.error("Error inserting log:", error);
 		return 1;
 	}

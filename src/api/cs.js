@@ -32,9 +32,7 @@ export const fetchSuggestedPrices = async () => {
 
 export const fetchSkinsData = async () => {
 	try {
-		const response = await fetch(
-			`https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json`,
-		);
+		const response = await fetch(`https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json`);
 		const data = await response.json();
 		data.forEach((skin) => {
 			if (skin.market_hash_name) {

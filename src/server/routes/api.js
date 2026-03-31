@@ -15,7 +15,15 @@ import * as csSkinService from "../../services/csSkin.service.js";
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
 
 // --- Utility and API Imports ---
-import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion, resolveUser, resolveMember } from "../../utils/index.js";
+import {
+	formatTime,
+	isMeleeSkin,
+	isVCTSkin,
+	isChampionsSkin,
+	getVCTRegion,
+	resolveUser,
+	resolveMember,
+} from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 
 // --- Discord.js Builder Imports ---
@@ -39,7 +47,7 @@ export function apiRoutes(client, io) {
 	// --- Server Health & Basic Data ---
 
 	router.get("/download-db", (req, res) => {
-    	res.download("/db/flopobot.db");
+		res.download("/db/flopobot.db");
 	});
 
 	router.get("/users", async (req, res) => {
@@ -632,7 +640,12 @@ export function apiRoutes(client, io) {
 	router.get("/user/:id/elo", async (req, res) => {
 		try {
 			const eloData = await gameService.getUserElo(req.params.id);
-			res.json({ elo: eloData?.elo || null });
+			res.json({
+				elo: eloData?.elo || null,
+				rd: eloData?.rd || null,
+				gamesPlayed: eloData?.gamesPlayed ?? 0,
+				isPlacement: (eloData?.gamesPlayed ?? 0) < 5,
+			});
 		} catch (e) {
 			res.status(500).json({ error: "Failed to fetch Elo data." });
 		}
@@ -645,7 +658,7 @@ export function apiRoutes(client, io) {
 				.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
 				.filter((game) => game.p2 !== null)
 				.map((game) => (game.p1 === req.params.id ? game.p1NewElo : game.p2NewElo));
-			eloHistory.splice(0, 0, 1000);
+			eloHistory.splice(0, 0, 1500);
 			res.json({ eloGraph: eloHistory });
 		} catch (e) {
 			res.status(500).json({ error: "Failed to generate Elo graph." });

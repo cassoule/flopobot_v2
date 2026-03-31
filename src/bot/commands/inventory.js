@@ -123,10 +123,9 @@ export async function handleInventoryCommand(req, res, client, interactionId) {
  */
 export function buildSkinEmbed(skin, targetMember, page, total, totalPrice) {
 	if (skin._type === "cs") {
-		const badges = [
-			skin.isStattrak ? "StatTrak™" : null,
-			skin.isSouvenir ? "Souvenir" : null,
-		].filter(Boolean).join(" | ");
+		const badges = [skin.isStattrak ? "StatTrak™" : null, skin.isSouvenir ? "Souvenir" : null]
+			.filter(Boolean)
+			.join(" | ");
 
 		return {
 			title: `Inventaire de ${targetMember.user.globalName || targetMember.user.username}`,
