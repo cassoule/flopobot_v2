@@ -103,6 +103,11 @@ export async function eloHandler(p1Id, p2Id, p1Score, p2Score, type, scores = nu
 		type: type,
 		timestamp: Date.now(),
 	});
+
+	return {
+		[p1Id]: { oldElo: p1EloData.elo, newElo: finalP1Elo, gamesPlayed: p1NewGames },
+		[p2Id]: { oldElo: p2EloData.elo, newElo: finalP2Elo, gamesPlayed: p2NewGames },
+	};
 }
 
 /**

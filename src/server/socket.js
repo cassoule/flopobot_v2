@@ -300,13 +300,14 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 
 	game.gameOver = true;
 	let resultText;
+	let eloChanges = null;
 	if (winnerId === null) {
-		await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, title.toUpperCase(), scores);
+		eloChanges = await eloHandler(game.p1.id, game.p2.id, 0.5, 0.5, title.toUpperCase(), scores);
 		resultText = "Égalité";
 	} else {
 		// Temp fix: Don't update ELO for Snake since it's not in a stable state yet.
 		if (gameType !== "snake") {
-			await eloHandler(
+			eloChanges = await eloHandler(
 				game.p1.id,
 				game.p2.id,
 				game.p1.id === winnerId ? 1 : 0,
@@ -319,8 +320,8 @@ export async function onGameOver(client, gameType, playerId, winnerId, reason = 
 		resultText = `Victoire de ${winnerName}`;
 	}
 
-	if (gameType === "tictactoe") io.emit("tictactoegameOver", { game, winner: winnerId });
-	if (gameType === "connect4") io.emit("connect4gameOver", { game, winner: winnerId });
+	if (gameType === "tictactoe") io.emit("tictactoegameOver", { game, winner: winnerId, eloChanges });
+	if (gameType === "connect4") io.emit("connect4gameOver", { game, winner: winnerId, eloChanges });
 	if (gameType === "snake") io.emit("snakegameOver", { gameKey: game.gameKey, game, winner: winnerId });
 
 	await updateDiscordMessage(client, game, title, `${resultText} ${reason}`);
@@ -442,60 +443,66 @@ async function refreshQueuesForUser(userId, client) {
 	let index = tictactoeQueue.indexOf(userId);
 	if (index > -1) {
 		tictactoeQueue.splice(index, 1);
-		try {
-			const guild = client.guilds.cache.get(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
-			const user = await resolveUser(client, userId);
-			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
-			const updatedEmbed = new EmbedBuilder()
-				.setTitle("Tic Tac Toe")
-				.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
-				.setColor(0xed4245)
-				.setTimestamp(new Date());
-			await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
-			delete queueMessagesEndpoints[userId];
-		} catch (e) {
-			console.error("Error updating queue message : ", e);
+		if (queueMessagesEndpoints[userId]) {
+			try {
+				const guild = client.guilds.cache.get(process.env.GUILD_ID);
+				const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+				const user = await resolveUser(client, userId);
+				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
+				const updatedEmbed = new EmbedBuilder()
+					.setTitle("Tic Tac Toe")
+					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setColor(0xed4245)
+					.setTimestamp(new Date());
+				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+				delete queueMessagesEndpoints[userId];
+			} catch (e) {
+				console.error("Error updating queue message : ", e);
+			}
 		}
 	}
 
 	index = connect4Queue.indexOf(userId);
 	if (index > -1) {
 		connect4Queue.splice(index, 1);
-		try {
-			const guild = client.guilds.cache.get(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
-			const user = await resolveUser(client, userId);
-			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
-			const updatedEmbed = new EmbedBuilder()
-				.setTitle("Puissance 4")
-				.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
-				.setColor(0xed4245)
-				.setTimestamp(new Date());
-			await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
-			delete queueMessagesEndpoints[userId];
-		} catch (e) {
-			console.error("Error updating queue message : ", e);
+		if (queueMessagesEndpoints[userId]) {
+			try {
+				const guild = client.guilds.cache.get(process.env.GUILD_ID);
+				const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+				const user = await resolveUser(client, userId);
+				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
+				const updatedEmbed = new EmbedBuilder()
+					.setTitle("Puissance 4")
+					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setColor(0xed4245)
+					.setTimestamp(new Date());
+				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+				delete queueMessagesEndpoints[userId];
+			} catch (e) {
+				console.error("Error updating queue message : ", e);
+			}
 		}
 	}
 
 	index = snakeQueue.indexOf(userId);
 	if (index > -1) {
 		snakeQueue.splice(index, 1);
-		try {
-			const guild = client.guilds.cache.get(process.env.GUILD_ID);
-			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
-			const user = await resolveUser(client, userId);
-			const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
-			const updatedEmbed = new EmbedBuilder()
-				.setTitle("Snake 1v1")
-				.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
-				.setColor(0xed4245)
-				.setTimestamp(new Date());
-			await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
-			delete queueMessagesEndpoints[userId];
-		} catch (e) {
-			console.error("Error updating queue message : ", e);
+		if (queueMessagesEndpoints[userId]) {
+			try {
+				const guild = client.guilds.cache.get(process.env.GUILD_ID);
+				const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
+				const user = await resolveUser(client, userId);
+				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
+				const updatedEmbed = new EmbedBuilder()
+					.setTitle("Snake 1v1")
+					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setColor(0xed4245)
+					.setTimestamp(new Date());
+				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
+				delete queueMessagesEndpoints[userId];
+			} catch (e) {
+				console.error("Error updating queue message : ", e);
+			}
 		}
 	}
 
@@ -545,6 +552,9 @@ function getGameAssets(gameType) {
 
 async function postQueueToDiscord(client, playerId, title, url) {
 	try {
+		const dbUser = await userService.getUser(playerId);
+		if (!dbUser?.isAkhy) return;
+
 		const generalChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const user = await resolveUser(client, playerId);
 		const embed = new EmbedBuilder()
