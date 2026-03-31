@@ -4,12 +4,12 @@ export async function getUserElo(id) {
 	return prisma.elo.findUnique({ where: { id } });
 }
 
-export async function insertElo(id, elo) {
-	return prisma.elo.create({ data: { id, elo } });
+export async function insertElo(id, elo = 1500, rd = 350.0, volatility = 0.06) {
+	return prisma.elo.create({ data: { id, elo, rd, volatility, gamesPlayed: 0 } });
 }
 
-export async function updateElo(id, elo) {
-	return prisma.elo.update({ where: { id }, data: { elo } });
+export async function updateElo(id, { elo, rd, volatility, gamesPlayed }) {
+	return prisma.elo.update({ where: { id }, data: { elo, rd, volatility, gamesPlayed } });
 }
 
 export async function getUsersByElo() {
@@ -17,7 +17,20 @@ export async function getUsersByElo() {
 		include: { elo: true },
 		orderBy: { elo: { elo: "desc" } },
 	});
-	return users.filter((u) => u.elo).map((u) => ({ ...u, elo: u.elo?.elo ?? null }));
+	return users
+		.filter((u) => u.elo)
+		.map((u) => ({
+			...u,
+			elo: u.elo?.elo ?? null,
+			rd: u.elo?.rd ?? null,
+			gamesPlayed: u.elo?.gamesPlayed ?? 0,
+			isPlacement: (u.elo?.gamesPlayed ?? 0) < 5,
+		}))
+		.sort((a, b) => {
+			// Ranked players first, then placement players
+			if (a.isPlacement !== b.isPlacement) return a.isPlacement ? 1 : -1;
+			return (b.elo ?? 0) - (a.elo ?? 0);
+		});
 }
 
 function toGame(game) {

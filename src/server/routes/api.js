@@ -640,7 +640,12 @@ export function apiRoutes(client, io) {
 	router.get("/user/:id/elo", async (req, res) => {
 		try {
 			const eloData = await gameService.getUserElo(req.params.id);
-			res.json({ elo: eloData?.elo || null });
+			res.json({
+				elo: eloData?.elo || null,
+				rd: eloData?.rd || null,
+				gamesPlayed: eloData?.gamesPlayed ?? 0,
+				isPlacement: (eloData?.gamesPlayed ?? 0) < 5,
+			});
 		} catch (e) {
 			res.status(500).json({ error: "Failed to fetch Elo data." });
 		}
@@ -653,7 +658,7 @@ export function apiRoutes(client, io) {
 				.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
 				.filter((game) => game.p2 !== null)
 				.map((game) => (game.p1 === req.params.id ? game.p1NewElo : game.p2NewElo));
-			eloHistory.splice(0, 0, 1000);
+			eloHistory.splice(0, 0, 1500);
 			res.json({ eloGraph: eloHistory });
 		} catch (e) {
 			res.status(500).json({ error: "Failed to generate Elo graph." });

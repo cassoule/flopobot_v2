@@ -139,6 +139,10 @@ model Game {
   p2Elo     Int?    @map("p2_elo")
   p1NewElo  Int?    @map("p1_new_elo")
   p2NewElo  Int?    @map("p2_new_elo")
+  p1Rd      Float?  @map("p1_rd")
+  p2Rd      Float?  @map("p2_rd")
+  p1NewRd   Float?  @map("p1_new_rd")
+  p2NewRd   Float?  @map("p2_new_rd")
   type      String?
   timestamp DateTime? @default(now()) @map("timestamp")
 
@@ -149,8 +153,11 @@ model Game {
 }
 
 model Elo {
-  id  String @id
-  elo Int
+  id          String @id
+  elo         Int
+  rd          Float  @default(350.0)
+  volatility  Float  @default(0.06)
+  gamesPlayed Int    @default(0) @map("games_played")
 
   user User @relation(fields: [id], references: [id])
 
