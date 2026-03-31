@@ -1,6 +1,7 @@
 import prisma from "../prisma/client.js";
 
 export async function insertLog(data) {
+	console.log(data);
 	return prisma.log.create({ data });
 }
 
