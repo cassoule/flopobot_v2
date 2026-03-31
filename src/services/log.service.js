@@ -1,8 +1,19 @@
 import prisma from "../prisma/client.js";
 
+function printLog(log) {
+	const timestamp = log.createdAt.toISOString();
+	return `[${timestamp}][${log.action}] @${log.userId} balance: ${log.userNewAmount} (${log.coinsAmount >= 0 ? "+" : ""}${log.coinsAmount})`;
+}
+
 export async function insertLog(data) {
-	console.log(data);
-	return prisma.log.create({ data });
+	try {
+		const log = await prisma.log.create({ data });
+		console.log(printLog(log));
+		return 0;
+	} catch (error) {		
+		console.error("Error inserting log:", error);
+		return 1;
+	}
 }
 
 export async function getLogs() {
@@ -21,15 +32,17 @@ export async function pruneOldLogs() {
 	);
 	for (const row of usersWithExcess) {
 		const userId = row.user_id;
-		await prisma.$executeRawUnsafe(
-			`DELETE FROM logs WHERE id IN (
-				SELECT id FROM (
-					SELECT id, ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
-					FROM logs WHERE user_id = ?
-				) WHERE rn > ?
-			)`,
-			userId,
-			limit,
-		);
+		const logsToKeep = await prisma.log.findMany({
+			where: { userId },
+			orderBy: { createdAt: "desc" },
+			take: limit,
+			select: { id: true },
+		});
+		await prisma.log.deleteMany({
+			where: {
+				userId,
+				id: { notIn: logsToKeep.map((l) => l.id) },
+			},
+		});
 	}
 }

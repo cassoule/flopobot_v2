@@ -68,35 +68,35 @@ export async function getAkhys(client) {
 		);
 
 		// 2. Fetch Valorant Skins
-		const [fetchedSkins, fetchedTiers] = await Promise.all([getValorantSkins(), getSkinTiers()]);
+		// const [fetchedSkins, fetchedTiers] = await Promise.all([getValorantSkins(), getSkinTiers()]);
 
-		// Clear and rebuild the in-memory skin cache
-		skins.length = 0;
-		fetchedSkins.forEach((skin) => skins.push(skin));
+		// // Clear and rebuild the in-memory skin cache
+		// skins.length = 0;
+		// fetchedSkins.forEach((skin) => skins.push(skin));
 
-		const skinsToInsert = fetchedSkins
-			.filter((skin) => skin.contentTierUuid)
-			.map((skin) => {
-				const tier = fetchedTiers.find((t) => t.uuid === skin.contentTierUuid) || {};
-				const basePrice = calculateBasePrice(skin, tier.rank);
-				return {
-					uuid: skin.uuid,
-					displayName: skin.displayName,
-					contentTierUuid: skin.contentTierUuid,
-					displayIcon: skin.displayIcon,
-					userId: null,
-					tierRank: tier.rank != null ? String(tier.rank) : null,
-					tierColor: tier.highlightColor?.slice(0, 6) || "F2F3F3",
-					tierText: formatTierText(tier.rank, skin.displayName),
-					basePrice: basePrice.toFixed(0),
-					maxPrice: parseInt(calculateMaxPrice(basePrice, skin).toFixed(0)),
-				};
-			});
+		// const skinsToInsert = fetchedSkins
+		// 	.filter((skin) => skin.contentTierUuid)
+		// 	.map((skin) => {
+		// 		const tier = fetchedTiers.find((t) => t.uuid === skin.contentTierUuid) || {};
+		// 		const basePrice = calculateBasePrice(skin, tier.rank);
+		// 		return {
+		// 			uuid: skin.uuid,
+		// 			displayName: skin.displayName,
+		// 			contentTierUuid: skin.contentTierUuid,
+		// 			displayIcon: skin.displayIcon,
+		// 			userId: null,
+		// 			tierRank: tier.rank != null ? String(tier.rank) : null,
+		// 			tierColor: tier.highlightColor?.slice(0, 6) || "F2F3F3",
+		// 			tierText: formatTierText(tier.rank, skin.displayName),
+		// 			basePrice: basePrice.toFixed(0),
+		// 			maxPrice: parseInt(calculateMaxPrice(basePrice, skin).toFixed(0)),
+		// 		};
+		// 	});
 
-		if (skinsToInsert.length > 0) {
-			await skinService.insertManySkins(skinsToInsert);
-		}
-		console.log(`[Sync] Fetched and synced ${skinsToInsert.length} Valorant skins.`);
+		// if (skinsToInsert.length > 0) {
+		// 	await skinService.insertManySkins(skinsToInsert);
+		// }
+		// console.log(`[Sync] Fetched and synced ${skinsToInsert.length} Valorant skins.`);
 	} catch (err) {
 		console.error("Error during initial data sync (getAkhys):", err);
 	}
