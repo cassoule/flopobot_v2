@@ -15,10 +15,11 @@ export async function getUserLogs(userId) {
 export async function pruneOldLogs() {
 	const limit = parseInt(process.env.LOGS_BY_USER);
 	const usersWithExcess = await prisma.$queryRawUnsafe(
-		`SELECT user_id as userId FROM logs GROUP BY user_id HAVING COUNT(*) > ?`,
+		`SELECT user_id FROM logs GROUP BY user_id HAVING COUNT(*) > ?`,
 		limit,
 	);
-	for (const { userId } of usersWithExcess) {
+	for (const row of usersWithExcess) {
+		const userId = row.user_id;
 		await prisma.$executeRawUnsafe(
 			`DELETE FROM logs WHERE id IN (
 				SELECT id FROM (
