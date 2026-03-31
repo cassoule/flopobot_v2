@@ -549,9 +549,9 @@ export function isChampionsSkin(skinName) {
 }
 
 export async function resolveUser(client, userId) {
-	return client.users.cache.get(userId) || await client.users.fetch(userId);
+	return client.users.cache.get(userId) || (await client.users.fetch(userId));
 }
 
 export async function resolveMember(guild, userId) {
-	return guild.members.cache.get(userId) || await guild.members.fetch(userId);
+	return guild.members.cache.get(userId) || (await guild.members.fetch(userId));
 }

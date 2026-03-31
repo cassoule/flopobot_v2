@@ -53,7 +53,9 @@ export function buildPriceIndex() {
 	const indexedCount = Object.keys(csSkinsPriceIndex).length;
 	const totalSkins = Object.keys(csSkinsData).length;
 	const coverage = totalSkins > 0 ? ((indexedCount / totalSkins) * 100).toFixed(1) : 0;
-	console.log(`[Skinport] Price index built: ${indexedCount} skins indexed, ${totalSkins} total skins (${coverage}% coverage)`);
+	console.log(
+		`[Skinport] Price index built: ${indexedCount} skins indexed, ${totalSkins} total skins (${coverage}% coverage)`,
+	);
 }
 
 export function buildWeaponRarityPriceMap() {

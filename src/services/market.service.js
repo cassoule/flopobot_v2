@@ -14,7 +14,17 @@ export async function getMarketOfferById(id) {
 		where: { id },
 		include: {
 			skin: { select: { displayName: true, displayIcon: true } },
-			csSkin: { select: { displayName: true, imageUrl: true, rarity: true, wearState: true, float: true, isStattrak: true, isSouvenir: true } },
+			csSkin: {
+				select: {
+					displayName: true,
+					imageUrl: true,
+					rarity: true,
+					wearState: true,
+					float: true,
+					isStattrak: true,
+					isSouvenir: true,
+				},
+			},
 			seller: { select: { username: true, globalName: true } },
 			buyer: { select: { username: true, globalName: true } },
 		},

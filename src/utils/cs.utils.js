@@ -13,11 +13,11 @@ const SOUVENIR_FALLBACK_MULTIPLIER = 6;
 
 const WEAR_STATE_ORDER = [StateFactoryNew, StateMinimalWear, StateFieldTested, StateWellWorn, StateBattleScarred];
 const WEAR_STATE_RANGES = {
-	[StateFactoryNew]:    { min: 0.00, max: 0.07 },
-	[StateMinimalWear]:   { min: 0.07, max: 0.15 },
-	[StateFieldTested]:   { min: 0.15, max: 0.38 },
-	[StateWellWorn]:      { min: 0.38, max: 0.45 },
-	[StateBattleScarred]: { min: 0.45, max: 1.00 },
+	[StateFactoryNew]: { min: 0.0, max: 0.07 },
+	[StateMinimalWear]: { min: 0.07, max: 0.15 },
+	[StateFieldTested]: { min: 0.15, max: 0.38 },
+	[StateWellWorn]: { min: 0.38, max: 0.45 },
+	[StateBattleScarred]: { min: 0.45, max: 1.0 },
 };
 
 export const RarityToColor = {
@@ -33,21 +33,21 @@ export const RarityToColor = {
 
 // Last-resort fallback price ranges in EUR (used only when Skinport has no data)
 const basePriceRanges = {
-	"Consumer Grade": { min: 0.03, max: 0.10 },
-	"Industrial Grade": { min: 0.05, max: 0.30 },
-	"Mil-Spec Grade": { min: 0.10, max: 1.50 },
-	"Restricted": { min: 1.00, max: 10.00 },
-	"Classified": { min: 5.00, max: 40.00 },
-	"Covert": { min: 25.00, max: 150.00 },
-	"Extraordinary": { min: 100.00, max: 800.00 },
+	"Consumer Grade": { min: 0.03, max: 0.1 },
+	"Industrial Grade": { min: 0.05, max: 0.3 },
+	"Mil-Spec Grade": { min: 0.1, max: 1.5 },
+	Restricted: { min: 1.0, max: 10.0 },
+	Classified: { min: 5.0, max: 40.0 },
+	Covert: { min: 25.0, max: 150.0 },
+	Extraordinary: { min: 100.0, max: 800.0 },
 };
 
 export const TRADE_UP_MAP = {
 	"Consumer Grade": "Industrial Grade",
 	"Industrial Grade": "Mil-Spec Grade",
 	"Mil-Spec Grade": "Restricted",
-	"Restricted": "Classified",
-	"Classified": "Covert",
+	Restricted: "Classified",
+	Classified: "Covert",
 };
 
 export function randomSkinRarity() {
@@ -209,12 +209,13 @@ export function getWearState(wear) {
 export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 	const skinNames = Object.keys(csSkinsData);
 	const selectedRarity = forcedRarity || randomSkinRarity();
-	const filteredSkinNames = skinNames.filter(name => csSkinsData[name].rarity.name === selectedRarity);
+	const filteredSkinNames = skinNames.filter((name) => csSkinsData[name].rarity.name === selectedRarity);
 	const randomIndex = Math.floor(Math.random() * filteredSkinNames.length);
 
 	const skinName = filteredSkinNames[randomIndex];
 	const skinData = csSkinsData[skinName];
-	const float = (u_float !== null && u_float !== undefined) ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
+	const float =
+		u_float !== null && u_float !== undefined ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
 	const wearState = getWearState(float);
 	const skinIsStattrak = rollStattrak(skinData.stattrak);
 	const skinIsSouvenir = rollSouvenir(skinData.souvenir);

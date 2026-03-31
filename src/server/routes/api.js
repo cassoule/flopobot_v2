@@ -15,7 +15,15 @@ import * as csSkinService from "../../services/csSkin.service.js";
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
 
 // --- Utility and API Imports ---
-import { formatTime, isMeleeSkin, isVCTSkin, isChampionsSkin, getVCTRegion, resolveUser, resolveMember } from "../../utils/index.js";
+import {
+	formatTime,
+	isMeleeSkin,
+	isVCTSkin,
+	isChampionsSkin,
+	getVCTRegion,
+	resolveUser,
+	resolveMember,
+} from "../../utils/index.js";
 import { DiscordRequest } from "../../api/discord.js";
 
 // --- Discord.js Builder Imports ---
@@ -39,7 +47,7 @@ export function apiRoutes(client, io) {
 	// --- Server Health & Basic Data ---
 
 	router.get("/download-db", (req, res) => {
-    	res.download("/db/flopobot.db");
+		res.download("/db/flopobot.db");
 	});
 
 	router.get("/users", async (req, res) => {

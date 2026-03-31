@@ -111,9 +111,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 		if (discordUserSeller && userSeller?.isAkhy) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Début des enchères")
-				.setDescription(
-					`Les enchères sur ton offre pour le skin **${skinName}** viennent de commencer !`,
-				)
+				.setDescription(`Les enchères sur ton offre pour le skin **${skinName}** viennent de commencer !`)
 				.setColor(0x5865f2)
 				.addFields(
 					{
@@ -149,9 +147,7 @@ export async function handleMarketOfferOpening(offerId, client) {
 		const guildChannel = client.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Début des enchères")
-			.setDescription(
-				`Les enchères sur l'offre pour le skin **${skinName}** viennent de commencer !`,
-			)
+			.setDescription(`Les enchères sur l'offre pour le skin **${skinName}** viennent de commencer !`)
 			.setColor(0x5865f2)
 			.addFields(
 				{
@@ -184,9 +180,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 		if (discordUserSeller && userSeller?.isAkhy) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Fin des enchères")
-				.setDescription(
-					`Les enchères sur ton offre pour le skin **${skinName}** viennent de se terminer !`,
-				)
+				.setDescription(`Les enchères sur ton offre pour le skin **${skinName}** viennent de se terminer !`)
 				.setColor(0x5865f2)
 				.setTimestamp();
 			if (skinIcon) embed.setThumbnail(skinIcon);
@@ -230,9 +224,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 		const guildChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
 		const embed = new EmbedBuilder()
 			.setTitle("🔔 Fin des enchères")
-			.setDescription(
-				`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`,
-			)
+			.setDescription(`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`)
 			.setColor(0x5865f2)
 			.setTimestamp();
 		if (skinIcon) embed.setThumbnail(skinIcon);
@@ -254,9 +246,7 @@ export async function handleMarketOfferClosing(offerId, client) {
 			if (discordUserBidder && userBidder?.isAkhy) {
 				const bidderEmbed = new EmbedBuilder()
 					.setTitle("🔔 Fin des enchères")
-					.setDescription(
-						`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`,
-					)
+					.setDescription(`Les enchères sur l'offre pour le skin **${skinName}** viennent de se terminer !`)
 					.setColor(0x5865f2)
 					.setTimestamp();
 				if (skinIcon) bidderEmbed.setThumbnail(skinIcon);
@@ -289,9 +279,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 		if (discordUserSeller && userSeller?.isAkhy) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Nouvelle enchère")
-				.setDescription(
-					`Il y a eu une nouvelle enchère sur ton offre pour le skin **${skinName}**.`,
-				)
+				.setDescription(`Il y a eu une nouvelle enchère sur ton offre pour le skin **${skinName}**.`)
 				.setColor(0x5865f2)
 				.addFields(
 					{
@@ -329,9 +317,7 @@ export async function handleNewMarketOfferBid(offerId, bidId, client) {
 		if (discordUserNewBidder && userNewBidder?.isAkhy) {
 			const embed = new EmbedBuilder()
 				.setTitle("🔔 Nouvelle enchère")
-				.setDescription(
-					`Ton enchère sur l'offre pour le skin **${skinName}** a bien été placée!`,
-				)
+				.setDescription(`Ton enchère sur l'offre pour le skin **${skinName}** a bien été placée!`)
 				.setColor(0x5865f2)
 				.addFields({
 					name: "💰 Montant de l'enchère",
