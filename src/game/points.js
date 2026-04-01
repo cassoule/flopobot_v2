@@ -2,9 +2,11 @@ import * as userService from "../services/user.service.js";
 import * as skinService from "../services/skin.service.js";
 import * as logService from "../services/log.service.js";
 import * as solitaireService from "../services/solitaire.service.js";
-import { activeSlowmodes, activeSolitaireGames, messagesTimestamps, skins } from "./state.js";
+import * as sudokuService from "../services/sudoku.service.js";
+import { activeSlowmodes, activeSolitaireGames, activeSudokuGames, messagesTimestamps, skins } from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
-import { emitSolitaireUpdate } from "../server/socket.js";
+import { generatePuzzle } from "./sudoku.js";
+import { emitSolitaireUpdate, emitSudokuUpdate } from "../server/socket.js";
 
 /**
  * Handles awarding points (coins) to users for their message activity.
@@ -229,5 +231,65 @@ export async function initTodaysSOTD() {
 		console.log(`Today's SOTD is ready with a new seed.`);
 	} catch (e) {
 		console.error(`Error saving new SOTD to database:`, e);
+	}
+}
+
+/**
+ * Initializes the Sudoku of the Day.
+ * Awards previous day's winners and generates a new daily puzzle.
+ */
+export async function initTodaysSudokuOTD() {
+	console.log(`Initializing new Sudoku of the Day...`);
+
+	// 1. Award previous day's top 3
+	const rankings = await sudokuService.getAllSudokuOTDStats();
+	if (rankings.length > 0) {
+		const places = [
+			{ index: 0, reward: 2500, action: "SUDOKU_SOTD_FIRST_PLACE" },
+			{ index: 1, reward: 1500, action: "SUDOKU_SOTD_SECOND_PLACE" },
+			{ index: 2, reward: 750, action: "SUDOKU_SOTD_THIRD_PLACE" },
+		];
+
+		for (const { index, reward, action } of places) {
+			if (!rankings[index]) continue;
+			const playerId = rankings[index].userId;
+			const player = await userService.getUser(playerId);
+			if (!player) continue;
+
+			const newCoinTotal = player.coins + reward;
+			await userService.updateUserCoins(playerId, newCoinTotal);
+			await logService.insertLog({
+				id: `${playerId}-sudoku-sotd-${action.toLowerCase()}-${Date.now()}`,
+				targetUserId: null,
+				userId: playerId,
+				action,
+				coinsAmount: reward,
+				userNewAmount: newCoinTotal,
+			});
+			console.log(
+				`${player.globalName || player.username} got ${action.replace("SUDOKU_SOTD_", "").toLowerCase().replace("_", " ")} in the previous Sudoku SOTD and received ${reward} coins.`,
+			);
+		}
+	}
+
+	// 2. Generate a new puzzle
+	const { puzzle, solution, difficulty } = generatePuzzle("medium");
+
+	// 3. Clear old stats and save new puzzle
+	try {
+		await sudokuService.clearSudokuOTDStats();
+		await sudokuService.deleteSudokuOTD();
+		await sudokuService.insertSudokuOTD({ puzzle, solution, difficulty });
+
+		for (const [userId, gameData] of Object.entries(activeSudokuGames)) {
+			if (gameData.isSOTD) {
+				delete activeSudokuGames[userId];
+				emitSudokuUpdate(userId);
+			}
+		}
+
+		console.log(`Today's Sudoku OTD is ready.`);
+	} catch (e) {
+		console.error(`Error saving new Sudoku OTD to database:`, e);
 	}
 }

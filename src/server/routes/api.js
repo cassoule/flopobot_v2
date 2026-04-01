@@ -193,7 +193,7 @@ export function apiRoutes(client, io) {
 
 	router.post("/open-cs-case", requireAuth, async (req, res) => {
 		const userId = req.userId;
-		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 300;
+		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 250;
 
 		const commandUser = await userService.getUser(userId);
 		if (!commandUser) return res.status(404).json({ error: "User not found." });

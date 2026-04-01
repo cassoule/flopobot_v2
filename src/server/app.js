@@ -8,6 +8,7 @@ import { client } from "../bot/client.js";
 import { apiRoutes } from "./routes/api.js";
 import { pokerRoutes } from "./routes/poker.js";
 import { solitaireRoutes } from "./routes/solitaire.js";
+import { sudokuRoutes } from "./routes/sudoku.js";
 import { getSocketIo } from "./socket.js";
 import { blackjackRoutes } from "./routes/blackjack.js";
 import { marketRoutes } from "./routes/market.js";
@@ -96,6 +97,9 @@ app.use("/api/poker", pokerRoutes(client, io));
 
 // Solitaire-specific routes
 app.use("/api/solitaire", solitaireRoutes(client, io));
+
+// Sudoku-specific routes
+app.use("/api/sudoku", sudokuRoutes(client, io));
 
 // Blackjack-specific routes
 app.use("/api/blackjack", blackjackRoutes(client, io));

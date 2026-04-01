@@ -31,6 +31,7 @@ model User {
   gamesAsP1     Game[]        @relation("Player1")
   gamesAsP2     Game[]        @relation("Player2")
   sotdStats     SotdStat[]
+  sudokuStats   SudokuStat[]
   transactions  Transaction[]
 
   @@map("users")
@@ -186,6 +187,25 @@ model SotdStat {
   user User @relation(fields: [userId], references: [id])
 
   @@map("sotd_stats")
+}
+
+model SudokuOtd {
+  id         Int     @id
+  puzzle     String
+  solution   String
+  difficulty String?
+
+  @@map("sudoku_otd")
+}
+
+model SudokuStat {
+  id     String @id
+  userId String @map("user_id")
+  time   Int?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("sudoku_stats")
 }
 
 model Transaction {

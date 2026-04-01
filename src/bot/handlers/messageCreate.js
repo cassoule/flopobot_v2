@@ -11,7 +11,13 @@ import {
 	stripMentionsOfBot,
 } from "../../utils/ai.js";
 import { calculateBasePrice, calculateMaxPrice, formatTime, getAkhys, resolveMember } from "../../utils/index.js";
-import { channelPointsHandler, initTodaysSOTD, randomSkinPrice, slowmodesHandler } from "../../game/points.js";
+import {
+	channelPointsHandler,
+	initTodaysSOTD,
+	randomSkinPrice,
+	slowmodesHandler,
+	initTodaysSudokuOTD,
+} from "../../game/points.js";
 import { activePolls, activeSlowmodes, requestTimestamps, skins, maintenance } from "../../game/state.js";
 import { activateMaintenance, deactivateMaintenance, startMaintenanceNotifications } from "../../server/socket.js";
 import prisma from "../../prisma/client.js";
@@ -194,9 +200,13 @@ async function handleAdminCommands(message) {
 	const [command, ...args] = message.content.split(" ");
 
 	switch (command) {
-		case `${prefix}:sotd`:
+		case `${prefix}:init-solitaire`:
 			initTodaysSOTD();
 			message.reply("New Solitaire of the Day initialized.");
+			break;
+		case `${prefix}:init-sudoku`:
+			initTodaysSudokuOTD();
+			message.reply("New Sudoku of the Day initialized.");
 			break;
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");
