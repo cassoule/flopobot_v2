@@ -17,6 +17,9 @@ export let activeSnakeGames = {};
 // Stores active Solitaire games, keyed by user ID.
 export let activeSolitaireGames = {};
 
+// Stores active Sudoku games, keyed by user ID.
+export let activeSudokuGames = {};
+
 // Stores active Poker rooms, keyed by a unique room ID (uuidv4).
 export let pokerRooms = {};
 

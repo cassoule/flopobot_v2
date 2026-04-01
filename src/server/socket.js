@@ -658,6 +658,8 @@ export const emitToast = (payload) => io.emit("blackjack:toast", payload);
 
 export const emitSolitaireUpdate = (userId, moves) => io.emit("solitaire:update", { userId, moves });
 
+export const emitSudokuUpdate = (userId) => io.emit("sudoku:update", { userId });
+
 export const emitMarketUpdate = () => io.emit("market:update");
 
 // --- Maintenance Mode Helpers ---
