@@ -614,14 +614,16 @@ export function apiRoutes(client, io) {
 		try {
 			const avatarUrls = {};
 			const users = await userService.getAllUsers();
-			await Promise.all(users.map(async (user) => {
-				try {
-					const discordUser = await resolveUser(client, user.id);
-					avatarUrls[user.id] = discordUser.displayAvatarURL({ format: "png", size: 256 });
-				} catch (error) {
-					avatarUrls[user.id] = null;
-				}
-			}));
+			await Promise.all(
+				users.map(async (user) => {
+					try {
+						const discordUser = await resolveUser(client, user.id);
+						avatarUrls[user.id] = discordUser.displayAvatarURL({ format: "png", size: 256 });
+					} catch (error) {
+						avatarUrls[user.id] = null;
+					}
+				}),
+			);
 			res.json({ avatars: avatarUrls });
 		} catch (error) {
 			res.status(404).json({ error: "One or more users not found or failed to fetch avatars." });
@@ -659,13 +661,15 @@ export function apiRoutes(client, io) {
 		try {
 			const sparklines = {};
 			const users = await userService.getAllUsers();
-			await Promise.all(users.map(async (user) => {
-				try {	
-    				sparklines[user.id] = await logService.getUserLogs(user.id);
-				} catch (error) {
-					sparklines[user.id] = [];
-				}
-			}));
+			await Promise.all(
+				users.map(async (user) => {
+					try {
+						sparklines[user.id] = await logService.getUserLogs(user.id);
+					} catch (error) {
+						sparklines[user.id] = [];
+					}
+				}),
+			);
 			res.json({ sparklines });
 		} catch (error) {
 			res.status(404).json({ error: "One or more users not found or failed to fetch sparklines." });
@@ -690,19 +694,21 @@ export function apiRoutes(client, io) {
 		try {
 			const elos = {};
 			const users = await userService.getAllUsers();
-			await Promise.all(users.map(async (user) => {
-				try {	
-					const eloData = await gameService.getUserElo(user.id);
-    				elos[user.id] = {
-						elo: eloData?.elo || null,
-						rd: eloData?.rd || null,
-						gamesPlayed: eloData?.gamesPlayed ?? 0,
-						isPlacement: (eloData?.gamesPlayed ?? 0) < 5,
-					};
-				} catch (error) {
-					elos[user.id] = null;
-				}
-			}));
+			await Promise.all(
+				users.map(async (user) => {
+					try {
+						const eloData = await gameService.getUserElo(user.id);
+						elos[user.id] = {
+							elo: eloData?.elo || null,
+							rd: eloData?.rd || null,
+							gamesPlayed: eloData?.gamesPlayed ?? 0,
+							isPlacement: (eloData?.gamesPlayed ?? 0) < 5,
+						};
+					} catch (error) {
+						elos[user.id] = null;
+					}
+				}),
+			);
 			res.json({ elos });
 		} catch (error) {
 			res.status(404).json({ error: "One or more users not found or failed to fetch elos." });
@@ -727,19 +733,21 @@ export function apiRoutes(client, io) {
 		try {
 			const eloGraphs = {};
 			const users = await userService.getAllUsers();
-			await Promise.all(users.map(async (user) => {
-				try {	
-    				const games = await gameService.getUserGames(user.id);
-					const eloHistory = games
-						.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
-						.filter((game) => game.p2 !== null)
-						.map((game) => (game.p1 === user.id ? game.p1NewElo : game.p2NewElo));
-					eloHistory.splice(0, 0, 1500);
-					eloGraphs[user.id] = eloHistory;
-				} catch (error) {
-					eloGraphs[user.id] = [];
-				}
-			}));
+			await Promise.all(
+				users.map(async (user) => {
+					try {
+						const games = await gameService.getUserGames(user.id);
+						const eloHistory = games
+							.filter((g) => g.type !== "POKER_ROUND" && g.type !== "SOTD")
+							.filter((game) => game.p2 !== null)
+							.map((game) => (game.p1 === user.id ? game.p1NewElo : game.p2NewElo));
+						eloHistory.splice(0, 0, 1500);
+						eloGraphs[user.id] = eloHistory;
+					} catch (error) {
+						eloGraphs[user.id] = [];
+					}
+				}),
+			);
 			res.json({ eloGraphs });
 		} catch (error) {
 			res.status(404).json({ error: "One or more users not found or failed to fetch elo graphs." });
