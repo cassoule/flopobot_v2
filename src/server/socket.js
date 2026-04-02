@@ -344,13 +344,13 @@ async function createGame(client, gameType) {
 		lobby = {
 			p1: {
 				id: p1Id,
-				name: p1.globalName,
+				name: p1.username,
 				val: "X",
 				avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }),
 			},
 			p2: {
 				id: p2Id,
-				name: p2.globalName,
+				name: p2.username,
 				val: "O",
 				avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }),
 			},
@@ -364,13 +364,13 @@ async function createGame(client, gameType) {
 		lobby = {
 			p1: {
 				id: p1Id,
-				name: p1.globalName,
+				name: p1.username,
 				val: "R",
 				avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }),
 			},
 			p2: {
 				id: p2Id,
-				name: p2.globalName,
+				name: p2.username,
 				val: "Y",
 				avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }),
 			},
@@ -386,7 +386,7 @@ async function createGame(client, gameType) {
 			gameKey: gameKey,
 			p1: {
 				id: p1Id,
-				name: p1.globalName,
+				name: p1.username,
 				avatar: p1.displayAvatarURL({ dynamic: true, size: 256 }),
 				snake: [],
 				food: null,
@@ -396,7 +396,7 @@ async function createGame(client, gameType) {
 			},
 			p2: {
 				id: p2Id,
-				name: p2.globalName,
+				name: p2.username,
 				avatar: p2.displayAvatarURL({ dynamic: true, size: 256 }),
 				snake: [],
 				food: null,
@@ -451,7 +451,7 @@ async function refreshQueuesForUser(userId, client) {
 				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 				const updatedEmbed = new EmbedBuilder()
 					.setTitle("Tic Tac Toe")
-					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setDescription(`**${user.username || user.globalName}** a quitté la file d'attente.`)
 					.setColor(0xed4245)
 					.setTimestamp(new Date());
 				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
@@ -473,7 +473,7 @@ async function refreshQueuesForUser(userId, client) {
 				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 				const updatedEmbed = new EmbedBuilder()
 					.setTitle("Puissance 4")
-					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setDescription(`**${user.username || user.globalName}** a quitté la file d'attente.`)
 					.setColor(0xed4245)
 					.setTimestamp(new Date());
 				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
@@ -495,7 +495,7 @@ async function refreshQueuesForUser(userId, client) {
 				const queueMsg = await generalChannel.messages.fetch(queueMessagesEndpoints[userId]);
 				const updatedEmbed = new EmbedBuilder()
 					.setTitle("Snake 1v1")
-					.setDescription(`**${user.globalName || user.username}** a quitté la file d'attente.`)
+					.setDescription(`**${user.username || user.globalName}** a quitté la file d'attente.`)
 					.setColor(0xed4245)
 					.setTimestamp(new Date());
 				await queueMsg.edit({ embeds: [updatedEmbed], components: [] });
@@ -516,7 +516,7 @@ async function emitQueueUpdate(client, gameType) {
 	const names = await Promise.all(
 		queue.map(async (id) => {
 			const user = await resolveUser(client, id).catch(() => null);
-			return user?.globalName || user?.username;
+			return user?.username || user?.globalName;
 		}),
 	);
 	io.emit(`${gameType}queue`, {
@@ -559,7 +559,7 @@ async function postQueueToDiscord(client, playerId, title, url) {
 		const user = await resolveUser(client, playerId);
 		const embed = new EmbedBuilder()
 			.setTitle(title)
-			.setDescription(`**${user.globalName || user.username}** est dans la file d'attente.`)
+			.setDescription(`**${user.username || user.globalName}** est dans la file d'attente.`)
 			.setColor("#5865F2")
 			.setTimestamp(new Date());
 		const row = new ActionRowBuilder().addComponents(
