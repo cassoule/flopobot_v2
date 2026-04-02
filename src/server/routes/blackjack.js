@@ -132,6 +132,7 @@ export function blackjackRoutes(io) {
 
 		room.players[userId] = {
 			id: userId,
+			username: user.username,
 			globalName: user.globalName || user.username,
 			avatar: user.displayAvatarURL({ dynamic: true, size: 256 }),
 			bank,
@@ -184,7 +185,7 @@ export function blackjackRoutes(io) {
 		emitUpdate("player-joined", snapshot(room));
 		emitPlayerUpdate({
 			id: userId,
-			msg: `${user?.globalName || user?.username} a rejoint la table de Blackjack.`,
+			msg: `${user?.username || user?.globalName} a rejoint la table de Blackjack.`,
 			timestamp: Date.now(),
 		});
 		return res.status(200).json({ message: "joined" });
@@ -230,7 +231,7 @@ export function blackjackRoutes(io) {
 			const user = await resolveUser(client, userId);
 			emitPlayerUpdate({
 				id: userId,
-				msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`,
+				msg: `${user?.username || user?.globalName} a quitté la table de Blackjack.`,
 				timestamp: Date.now(),
 			});
 			return res.status(200).json({ message: "left" });
@@ -371,7 +372,7 @@ export function blackjackRoutes(io) {
 				const user = await resolveUser(client, userId);
 				emitPlayerUpdate({
 					id: userId,
-					msg: `${user?.globalName || user?.username} a quitté la table de Blackjack.`,
+					msg: `${user?.username || user?.globalName} a quitté la table de Blackjack.`,
 					timestamp: Date.now(),
 				});
 			}

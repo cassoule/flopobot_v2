@@ -119,6 +119,7 @@ export function publicPlayerView(player) {
 	// Hide hole cards until dealer reveal is fine for dealer only; player cards are visible.
 	return {
 		id: player.id,
+		username: player.username,
 		globalName: player.globalName,
 		avatar: player.avatar,
 		bank: player.bank,
