@@ -1,13 +1,21 @@
 import prisma from "../prisma/client.js";
 import { socketEmit } from "../server/socket.js";
+import { getAllSOTDStats } from "./solitaire.service.js";
+import { getAllSudokuOTDStats } from "./sudoku.service.js";
+import { getUserGames } from "./game.service.js";
 
 export async function getUser(id) {
 	const user = await prisma.user.findUnique({
 		where: { id },
 		include: { elo: true },
 	});
+	const games = await getUserGames(id);
+	const wins = games.filter(
+		(g) => (g.p1 === id && g.p1Score > g.p2Score) || (g.p2 === id && g.p2Score > g.p1Score),
+	).length;
+	const winRate = games.length > 0 ? (wins / games.length) * 100 : 0;
 	if (!user) return null;
-	return { ...user, elo: user.elo?.elo ?? null };
+	return { ...user, elo: user.elo?.elo ?? null, winRate: winRate.toFixed(2) };
 }
 
 export async function getAllUsers() {
@@ -15,7 +23,15 @@ export async function getAllUsers() {
 		include: { elo: true },
 		orderBy: { coins: "desc" },
 	});
-	return users.map((u) => ({ ...u, elo: u.elo?.elo ?? null }));
+	const solitaireOTDRankings = await getAllSOTDStats();
+	const sudokuOTDRankings = await getAllSudokuOTDStats();
+
+	return users.map((u) => ({
+		...u,
+		elo: u.elo?.elo ?? null,
+		solitaireOTDRank: solitaireOTDRankings.findIndex((s) => s.userId === u.id) + 1 || null,
+		sudokuOTDRank: sudokuOTDRankings.findIndex((s) => s.userId === u.id) + 1 || null,
+	}));
 }
 
 export async function getAllAkhys() {
