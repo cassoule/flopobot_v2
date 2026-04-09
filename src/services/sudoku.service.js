@@ -14,7 +14,7 @@ export async function deleteSudokuOTD() {
 
 export async function getAllSudokuOTDStats() {
 	return prisma.sudokuStat.findMany({
-		include: { user: { select: { username: true, globalName: true, avatarUrl: true } } },
+		include: { user: { select: { id: true, username: true, globalName: true, avatarUrl: true } } },
 		orderBy: [{ time: "asc" }],
 	});
 }
