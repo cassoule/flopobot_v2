@@ -9,13 +9,21 @@ export async function getUser(id) {
 		where: { id },
 		include: { elo: true },
 	});
+	const solitaireOTDRankings = await getAllSOTDStats();
+	const sudokuOTDRankings = await getAllSudokuOTDStats();
 	const games = await getUserGames(id);
 	const wins = games.filter(
 		(g) => (g.p1 === id && g.p1Score > g.p2Score) || (g.p2 === id && g.p2Score > g.p1Score),
 	).length;
 	const winRate = games.length > 0 ? (wins / games.length) * 100 : 0;
 	if (!user) return null;
-	return { ...user, elo: user.elo?.elo ?? null, winRate: winRate.toFixed(2) };
+	return {
+		...user,
+		elo: user.elo?.elo ?? null,
+		winRate: winRate.toFixed(2),
+		solitaireOTDRank: solitaireOTDRankings.findIndex((s) => s.userId === id) + 1 || null,
+		sudokuOTDRank: sudokuOTDRankings.findIndex((s) => s.userId === id) + 1 || null,
+	};
 }
 
 export async function getAllUsers() {
@@ -23,14 +31,10 @@ export async function getAllUsers() {
 		include: { elo: true },
 		orderBy: { coins: "desc" },
 	});
-	const solitaireOTDRankings = await getAllSOTDStats();
-	const sudokuOTDRankings = await getAllSudokuOTDStats();
 
 	return users.map((u) => ({
 		...u,
 		elo: u.elo?.elo ?? null,
-		solitaireOTDRank: solitaireOTDRankings.findIndex((s) => s.userId === u.id) + 1 || null,
-		sudokuOTDRank: sudokuOTDRankings.findIndex((s) => s.userId === u.id) + 1 || null,
 	}));
 }
 
