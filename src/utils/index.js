@@ -13,6 +13,9 @@ import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } fro
 import { emitMarketUpdate } from "../server/socket.js";
 import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
 import { client } from "../bot/client.js";
+import { fetchSuggestedPrices } from "../api/cs.js";
+import { buildPriceIndex } from "./cs.state.js";
+import { generatePrice } from "./cs.utils.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -206,6 +209,25 @@ export function setupCronJobs(client, io) {
 			}
 		} catch (e) {
 			console.error("[Cron] Error during daily avatar update:", e);
+		}
+		try {
+			console.log("[Cron] Refreshing Skinport prices for loadout update...");
+			await fetchSuggestedPrices();
+			buildPriceIndex();
+			const equippedSkins = await csSkinService.getAllEquippedSkins();
+			let updatedCount = 0;
+			for (const skin of equippedSkins) {
+				const newPrice = parseInt(
+					generatePrice(skin.marketHashName, skin.rarity, skin.float, skin.isStattrak, skin.isSouvenir),
+				);
+				if (!isNaN(newPrice) && newPrice !== skin.price) {
+					await csSkinService.updateLoadoutSkinPrice(skin.id, newPrice);
+					updatedCount++;
+				}
+			}
+			console.log(`[Cron] Updated prices for ${updatedCount}/${equippedSkins.length} loadout skins.`);
+		} catch (e) {
+			console.error("[Cron] Error updating loadout skin prices:", e);
 		}
 	});
 }

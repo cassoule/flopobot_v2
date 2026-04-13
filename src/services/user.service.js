@@ -93,3 +93,59 @@ export async function updateManyUsers(users) {
 		}),
 	);
 }
+
+// --- Featured Skins ---
+
+export async function getUserFeaturedSkins(userId) {
+	return prisma.userFeaturedSkin.findMany({
+		where: { userId },
+		orderBy: { position: "asc" },
+		include: { csSkin: true },
+	});
+}
+
+export async function setFeaturedSkin(userId, csSkinId, position) {
+	return prisma.userFeaturedSkin.upsert({
+		where: { userId_position: { userId, position } },
+		update: { csSkinId },
+		create: { userId, csSkinId, position },
+	});
+}
+
+export async function removeFeaturedSkin(userId, position) {
+	return prisma.userFeaturedSkin.deleteMany({ where: { userId, position } });
+}
+
+export async function getAllUsersFeaturedSkins() {
+	const rows = await prisma.userFeaturedSkin.findMany({
+		orderBy: { position: "asc" },
+		include: { csSkin: true },
+	});
+	const map = {};
+	for (const row of rows) {
+		if (!map[row.userId]) map[row.userId] = [];
+		map[row.userId].push({ position: row.position, csSkin: row.csSkin });
+	}
+	return map;
+}
+
+// --- Loadout Leaderboard ---
+
+export async function getLoadoutLeaderboard() {
+	const grouped = await prisma.csSkin.groupBy({
+		by: ["userId"],
+		where: { loadoutSlot: { not: null }, userId: { not: null } },
+		_sum: { price: true },
+		orderBy: { _sum: { price: "desc" } },
+	});
+
+	const users = await prisma.user.findMany({
+		where: { id: { in: grouped.map((g) => g.userId) } },
+		select: { id: true, username: true, globalName: true, avatarUrl: true, isAkhy: true },
+	});
+
+	const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+	return grouped
+		.filter((g) => userMap[g.userId])
+		.map((g) => ({ ...userMap[g.userId], loadoutValue: g._sum.price ?? 0 }));
+}

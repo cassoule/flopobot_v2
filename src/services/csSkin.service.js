@@ -1,4 +1,5 @@
 import prisma from "../prisma/client.js";
+import { getLoadoutSlot } from "../utils/cs.utils.js";
 
 export async function getCsSkin(id) {
 	return prisma.csSkin.findUnique({ where: { id } });
@@ -6,8 +7,71 @@ export async function getCsSkin(id) {
 
 export async function getUserCsInventory(userId) {
 	return prisma.csSkin.findMany({
-		where: { userId },
+		where: { userId, loadoutSlot: null },
 		orderBy: { price: "desc" },
+	});
+}
+
+export async function getUserLoadout(userId) {
+	const skins = await prisma.csSkin.findMany({
+		where: { userId, loadoutSlot: { not: null } },
+		orderBy: { price: "desc" },
+	});
+
+	// Self-heal: fix loadoutSlot values set by the old buggy code
+	// (e.g., "★ Sport Gloves" → "gloves", "★ Karambit" → "knife")
+	const toFix = skins.filter((s) => getLoadoutSlot(s) !== s.loadoutSlot);
+	if (toFix.length > 0) {
+		await prisma.$transaction(
+			toFix.map((s) =>
+				prisma.csSkin.update({ where: { id: s.id }, data: { loadoutSlot: getLoadoutSlot(s) } }),
+			),
+		);
+		for (const s of toFix) s.loadoutSlot = getLoadoutSlot(s);
+	}
+
+	return skins;
+}
+
+export async function equipSkin(userId, skinId, slot) {
+	// Find all equipped skins for this user that map to the same logical slot
+	// (handles both the current format and legacy formats like "★ Sport Gloves")
+	const allEquipped = await prisma.csSkin.findMany({
+		where: { userId, loadoutSlot: { not: null } },
+		select: { id: true, marketHashName: true, loadoutSlot: true },
+	});
+	const conflicting = allEquipped.filter((s) => s.id !== skinId && getLoadoutSlot(s) === slot);
+
+	return prisma.$transaction([
+		// Clear all conflicting skins (whether they have old or new slot format)
+		...conflicting.map((s) =>
+			prisma.csSkin.update({ where: { id: s.id }, data: { loadoutSlot: null, loadoutPriceUpdatedAt: null } }),
+		),
+		// Equip the target skin
+		prisma.csSkin.update({
+			where: { id: skinId },
+			data: { loadoutSlot: slot },
+		}),
+	]);
+}
+
+export async function unequipSkin(skinId, userId) {
+	return prisma.csSkin.update({
+		where: { id: skinId, userId },
+		data: { loadoutSlot: null, loadoutPriceUpdatedAt: null },
+	});
+}
+
+export async function getAllEquippedSkins() {
+	return prisma.csSkin.findMany({
+		where: { loadoutSlot: { not: null } },
+	});
+}
+
+export async function updateLoadoutSkinPrice(skinId, price) {
+	return prisma.csSkin.update({
+		where: { id: skinId },
+		data: { price, loadoutPriceUpdatedAt: new Date() },
 	});
 }
 

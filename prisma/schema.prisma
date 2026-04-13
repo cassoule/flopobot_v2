@@ -25,6 +25,7 @@ model User {
   csSkins       CsSkin[]      @relation("CsSkins")
   sellerOffers  MarketOffer[] @relation("Seller")
   buyerOffers   MarketOffer[] @relation("Buyer")
+  featuredSkins UserFeaturedSkin[] @relation("FeaturedSkins")
   bids          Bid[]
   logs          Log[]         @relation("UserLogs")
   targetLogs    Log[]         @relation("TargetUserLogs")
@@ -59,23 +60,27 @@ model Skin {
 }
 
 model CsSkin {
-  id             String   @id @default(uuid())
-  marketHashName String   @map("market_hash_name")
-  displayName    String?
-  imageUrl       String?  @map("image_url")
-  rarity         String?
-  rarityColor    String?  @map("rarity_color")
-  weaponType     String?  @map("weapon_type")
-  float          Float?
-  wearState      String?  @map("wear_state")
-  isStattrak     Boolean  @default(false) @map("is_stattrak")
-  isSouvenir     Boolean  @default(false) @map("is_souvenir")
-  price          Int?
-  userId         String?  @map("user_id")
+  id                    String    @id @default(uuid())
+  marketHashName        String    @map("market_hash_name")
+  displayName           String?
+  imageUrl              String?   @map("image_url")
+  rarity                String?
+  rarityColor           String?   @map("rarity_color")
+  weaponType            String?   @map("weapon_type")
+  float                 Float?
+  wearState             String?   @map("wear_state")
+  isStattrak            Boolean   @default(false) @map("is_stattrak")
+  isSouvenir            Boolean   @default(false) @map("is_souvenir")
+  price                 Int?
+  userId                String?   @map("user_id")
+  loadoutSlot           String?   @map("loadout_slot")
+  loadoutPriceUpdatedAt DateTime? @map("loadout_price_updated_at")
 
-  owner        User?         @relation("CsSkins", fields: [userId], references: [id])
-  marketOffers MarketOffer[] @relation("CsSkinOffers")
+  owner        User?             @relation("CsSkins", fields: [userId], references: [id])
+  marketOffers MarketOffer[]     @relation("CsSkinOffers")
+  featuredBy   UserFeaturedSkin? @relation("FeaturedBy")
 
+  @@unique([userId, loadoutSlot])
   @@map("cs_skins")
 }
 
@@ -206,6 +211,19 @@ model SudokuStat {
   user User @relation(fields: [userId], references: [id])
 
   @@map("sudoku_stats")
+}
+
+model UserFeaturedSkin {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  csSkinId String @unique @map("cs_skin_id")
+  position Int
+
+  user   User   @relation("FeaturedSkins", fields: [userId], references: [id])
+  csSkin CsSkin @relation("FeaturedBy", fields: [csSkinId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, position])
+  @@map("user_featured_skins")
 }
 
 model Transaction {

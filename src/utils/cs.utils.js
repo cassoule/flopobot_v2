@@ -230,3 +230,20 @@ export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 		price: generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
 	};
 }
+
+/**
+ * Derives the loadout slot name for a CS skin.
+ * Knives → "knife", Gloves → "gloves", others → weapon name from marketHashName.
+ */
+export function getLoadoutSlot(skin) {
+	const name = skin.marketHashName || "";
+	const lower = name.toLowerCase();
+	// Gloves: name contains "gloves", "wraps", or "hand wrap"
+	if (lower.includes("gloves") || lower.includes("wraps") || lower.includes("hand wrap")) return "gloves";
+	// Knives: name starts with the rare-item star (★) — knives and gloves both use it, gloves already handled above
+	if (name.startsWith("★")) return "knife";
+	// Regular weapons: extract the weapon name before " | "
+	const sep = name.indexOf(" | ");
+	if (sep !== -1) return name.slice(0, sep);
+	return name;
+}

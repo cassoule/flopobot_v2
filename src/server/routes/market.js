@@ -82,6 +82,8 @@ export function marketRoutes(client, io) {
 				const csSkin = await csSkinService.getCsSkin(cs_skin_id);
 				if (!csSkin) return res.status(404).send({ error: "CS skin not found" });
 				if (csSkin.userId !== seller.id) return res.status(403).send({ error: "You do not own this skin" });
+				if (csSkin.loadoutSlot !== null)
+					return res.status(403).send({ error: "Retirez d'abord ce skin de votre équipement." });
 				skinRef = { csSkinId: csSkin.id };
 			} else if (skin_uuid) {
 				const skin = await skinService.getSkin(skin_uuid);
