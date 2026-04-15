@@ -15,6 +15,7 @@ import { marketRoutes } from "./routes/market.js";
 import { monkeRoutes } from "./routes/monke.js";
 import { authRoutes } from "./routes/auth.js";
 import { maintenance } from "../game/state.js";
+import { sicboRoutes } from "./routes/sicbo.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -106,6 +107,9 @@ app.use("/api/blackjack", blackjackRoutes(client, io));
 
 // Market-specific routes
 app.use("/api/market-place", marketRoutes(client, io));
+
+// SicBo routes
+app.use("/api/sicbo", sicboRoutes(client, io));
 
 // erinyes-specific routes
 // app.use("/api/erinyes", erinyesRoutes(client, io));
