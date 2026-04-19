@@ -17,6 +17,10 @@ export let activeSnakeGames = {};
 // Stores active Solitaire games, keyed by user ID.
 export let activeSolitaireGames = {};
 
+// Stores user IDs who have voted to reset the current Solitaire of the Day.
+// Cleared on reset and on daily SOTD regeneration.
+export let sotdResetVotes = new Set();
+
 // Stores active Sudoku games, keyed by user ID.
 export let activeSudokuGames = {};
 
