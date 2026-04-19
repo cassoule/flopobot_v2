@@ -45,11 +45,6 @@ const router = express.Router();
  */
 export function apiRoutes(client, io) {
 	// --- Server Health & Basic Data ---
-
-	router.get("/download-db", (req, res) => {
-		res.download("/db/flopobot.db");
-	});
-
 	router.get("/users", async (req, res) => {
 		try {
 			const users = await userService.getAllUsers();
