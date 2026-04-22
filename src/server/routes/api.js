@@ -32,7 +32,7 @@ import { emitDataUpdated, socketEmit, onGameOver } from "../socket.js";
 import { handleCaseOpening } from "../../utils/marketNotifs.js";
 import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getRandomSkinWithRandomSpecs, RarityToColor, TRADE_UP_MAP, getLoadoutSlot } from "../../utils/cs.utils.js";
+import { getRandomSkinWithRandomSpecs, RarityToColor, TRADE_UP_MAP } from "../../utils/cs.utils.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -1702,6 +1702,10 @@ export function apiRoutes(client, io) {
 
 	router.post("/cs-skin/:id/equip", requireAuth, async (req, res) => {
 		const userId = req.userId;
+		const { slot } = req.body || {};
+		if (!slot || typeof slot !== "string") {
+			return res.status(400).json({ error: "slot is required." });
+		}
 		try {
 			const skin = await csSkinService.getCsSkin(req.params.id);
 			if (!skin) return res.status(404).json({ error: "CS skin not found." });
@@ -1712,11 +1716,11 @@ export function apiRoutes(client, io) {
 			if (activeOffers.length > 0) {
 				return res.status(403).json({ error: "Retirez d'abord ce skin du FlopoMarket." });
 			}
-			const slot = getLoadoutSlot(skin);
 			await csSkinService.equipSkin(userId, skin.id, slot);
 			const updated = await csSkinService.getCsSkin(skin.id);
 			res.json({ skin: updated });
 		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
 			console.error("Error equipping skin:", e);
 			res.status(500).json({ error: "Failed to equip skin." });
 		}
@@ -1729,15 +1733,66 @@ export function apiRoutes(client, io) {
 			if (!skin) return res.status(404).json({ error: "CS skin not found." });
 			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
 			if (skin.loadoutSlot === null) return res.status(400).json({ error: "Ce skin n'est pas équipé." });
-			// Remove from featured skins if present
+			// Lock check is inside unequipSkin; run it before touching featured so a locked
+			// skin doesn't lose its featured slot for a failed unequip.
+			await csSkinService.unequipSkin(skin.id, userId);
 			const featured = await userService.getUserFeaturedSkins(userId);
 			const featuredEntry = featured.find((f) => f.csSkinId === skin.id);
 			if (featuredEntry) await userService.removeFeaturedSkin(userId, featuredEntry.position);
-			await csSkinService.unequipSkin(skin.id, userId);
 			res.json({ success: true });
 		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
 			console.error("Error unequipping skin:", e);
 			res.status(500).json({ error: "Failed to unequip skin." });
+		}
+	});
+
+	router.post("/cs-skin/:id/unlock", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			const { skin: updated, cost, newCoins } = await csSkinService.unlockLoadoutSkin(skin.id, userId);
+			await logService.insertLog({
+				id: `${userId}-${Date.now()}`,
+				userId,
+				action: "CS_LOADOUT_UNLOCK",
+				targetUserId: null,
+				coinsAmount: -cost,
+				userNewAmount: newCoins,
+			});
+			await socketEmit("data-updated", { table: "users", action: "update", userId, newCoins });
+			res.json({ skin: updated, cost });
+		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+			console.error("Error unlocking skin:", e);
+			res.status(500).json({ error: "Failed to unlock skin." });
+		}
+	});
+
+	router.get("/cs-skin/:id/unlock-cost", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			const cost = csSkinService.computeUnlockCost(skin);
+			res.json({ cost });
+		} catch (e) {
+			console.error("Error computing unlock cost:", e);
+			res.status(500).json({ error: "Failed to compute unlock cost." });
+		}
+	});
+
+	router.get("/cs-skin/:id/price-history", async (req, res) => {
+		try {
+			const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 30);
+			const history = await csSkinService.getSkinPriceHistory(req.params.id, days);
+			res.json({ history });
+		} catch (e) {
+			console.error("Error fetching price history:", e);
+			res.status(500).json({ error: "Failed to fetch price history." });
 		}
 	});
 

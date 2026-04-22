@@ -133,6 +133,21 @@ function lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir) {
 	return null;
 }
 
+// FNV-1a 32-bit hash — deterministic, tiny, dependency-free.
+function hashString(s) {
+	let h = 2166136261 >>> 0;
+	for (let i = 0; i < s.length; i++) {
+		h ^= s.charCodeAt(i);
+		h = Math.imul(h, 16777619);
+	}
+	return h >>> 0;
+}
+
+/**
+ * Returns the median base-variant Skinport price of every sibling skin sharing the
+ * same weapon + rarity. Deterministic (no RNG), and robust against high-variance
+ * buckets like ★ Karambit Covert where individual siblings span ~10×.
+ */
 function findSimilarSkinPrice(skinName, rarity, wearState) {
 	const skinData = csSkinsData[skinName];
 	const weapon = skinData?.weapon?.name;
@@ -141,23 +156,29 @@ function findSimilarSkinPrice(skinName, rarity, wearState) {
 	const candidates = weaponRarityPriceMap[weapon]?.[rarity];
 	if (!candidates || candidates.length === 0) return null;
 
-	// Pick a random candidate that has a price for this wear state
-	const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-	for (const candidate of shuffled) {
+	const prices = [];
+	for (const candidate of candidates) {
 		if (candidate === skinName) continue;
 		const entry = csSkinsPriceIndex[candidate];
 		if (!entry) continue;
-		// Try base variant first
-		const price = getSkinportPrice(entry["base"]?.[wearState]);
-		if (price !== null) return price;
-		// Try any wear state
-		for (const ws of WEAR_STATE_ORDER) {
-			const wsPrice = getSkinportPrice(entry["base"]?.[ws]);
-			if (wsPrice !== null) return wsPrice;
+		// Prefer exact wear; fall back to the nearest available wear on base variant.
+		let p = getSkinportPrice(entry["base"]?.[wearState]);
+		if (p === null) {
+			for (const ws of WEAR_STATE_ORDER) {
+				const wsPrice = getSkinportPrice(entry["base"]?.[ws]);
+				if (wsPrice !== null) {
+					p = wsPrice;
+					break;
+				}
+			}
 		}
+		if (p !== null) prices.push(p);
 	}
+	if (prices.length === 0) return null;
 
-	return null;
+	prices.sort((a, b) => a - b);
+	const mid = prices.length >> 1;
+	return prices.length % 2 === 0 ? (prices[mid - 1] + prices[mid]) / 2 : prices[mid];
 }
 
 export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
@@ -170,9 +191,12 @@ export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
 	}
 
 	if (eurPrice === null) {
-		// 5. Last resort: rarity-based random range (already in EUR-ish scale)
+		// 5. Last resort: rarity-based range, seeded by a hash of the skin identity
+		// so the same skin always gets the same price across refreshes.
 		const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
-		eurPrice = ranges.min + Math.random() * (ranges.max - ranges.min);
+		const seed = hashString(`${skinName}|${wearState}|${isStattrak ? 1 : 0}|${isSouvenir ? 1 : 0}`);
+		const ratio = (seed % 10000) / 10000;
+		eurPrice = ranges.min + ratio * (ranges.max - ranges.min);
 	}
 
 	let finalPrice = Math.round(eurPrice * EUR_TO_FLOPOS);
@@ -229,21 +253,4 @@ export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 		float,
 		price: generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
 	};
-}
-
-/**
- * Derives the loadout slot name for a CS skin.
- * Knives → "knife", Gloves → "gloves", others → weapon name from marketHashName.
- */
-export function getLoadoutSlot(skin) {
-	const name = skin.marketHashName || "";
-	const lower = name.toLowerCase();
-	// Gloves: name contains "gloves", "wraps", or "hand wrap"
-	if (lower.includes("gloves") || lower.includes("wraps") || lower.includes("hand wrap")) return "gloves";
-	// Knives: name starts with the rare-item star (★) — knives and gloves both use it, gloves already handled above
-	if (name.startsWith("★")) return "knife";
-	// Regular weapons: extract the weapon name before " | "
-	const sep = name.indexOf(" | ");
-	if (sep !== -1) return name.slice(0, sep);
-	return name;
 }

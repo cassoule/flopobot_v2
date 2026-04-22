@@ -75,13 +75,29 @@ model CsSkin {
   userId                String?   @map("user_id")
   loadoutSlot           String?   @map("loadout_slot")
   loadoutPriceUpdatedAt DateTime? @map("loadout_price_updated_at")
+  loadoutEquippedAt     DateTime? @map("loadout_equipped_at")
+  loadoutEquippedPrice  Int?      @map("loadout_equipped_price")
 
-  owner        User?             @relation("CsSkins", fields: [userId], references: [id])
-  marketOffers MarketOffer[]     @relation("CsSkinOffers")
-  featuredBy   UserFeaturedSkin? @relation("FeaturedBy")
+  owner        User?                  @relation("CsSkins", fields: [userId], references: [id])
+  marketOffers MarketOffer[]          @relation("CsSkinOffers")
+  featuredBy   UserFeaturedSkin?      @relation("FeaturedBy")
+  priceHistory CsSkinPriceHistory[]   @relation("CsSkinPriceHistory")
 
   @@unique([userId, loadoutSlot])
   @@map("cs_skins")
+}
+
+model CsSkinPriceHistory {
+  id        Int      @id @default(autoincrement())
+  csSkinId  String   @map("cs_skin_id")
+  price     Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  csSkin CsSkin @relation("CsSkinPriceHistory", fields: [csSkinId], references: [id], onDelete: Cascade)
+
+  @@index([csSkinId, createdAt])
+  @@index([createdAt])
+  @@map("cs_skin_price_history")
 }
 
 model MarketOffer {
@@ -224,6 +240,21 @@ model UserFeaturedSkin {
 
   @@unique([userId, position])
   @@map("user_featured_skins")
+}
+
+model CsPriceSnapshot {
+  id             Int      @id @default(autoincrement())
+  marketHashName String   @map("market_hash_name")
+  suggestedPrice Float?   @map("suggested_price")
+  minPrice       Float?   @map("min_price")
+  maxPrice       Float?   @map("max_price")
+  meanPrice      Float?   @map("mean_price")
+  medianPrice    Float?   @map("median_price")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([marketHashName, createdAt])
+  @@index([createdAt])
+  @@map("cs_price_snapshots")
 }
 
 model Transaction {
