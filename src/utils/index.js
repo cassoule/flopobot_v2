@@ -9,10 +9,15 @@ import * as userService from "../services/user.service.js";
 import * as skinService from "../services/skin.service.js";
 import * as marketService from "../services/market.service.js";
 import * as csSkinService from "../services/csSkin.service.js";
+import * as csPriceService from "../services/csPrice.service.js";
 import { activeInventories, activePredis, activeSearchs, pokerRooms, skins } from "../game/state.js";
 import { emitMarketUpdate } from "../server/socket.js";
 import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
 import { client } from "../bot/client.js";
+import { fetchSuggestedPrices } from "../api/cs.js";
+import { buildPriceIndex } from "./cs.state.js";
+import { generatePrice } from "./cs.utils.js";
+import prisma from "../prisma/client.js";
 
 export async function InstallGlobalCommands(appId, commands) {
 	// API endpoint to overwrite global commands
@@ -102,6 +107,73 @@ export async function getAkhys(client) {
 	}
 }
 
+// --- One-off Loadout Migration ---
+
+/**
+ * Wipes any equipped skin whose loadoutSlot is not in the new dual-side
+ * vocabulary (anything that doesn't start with "t_" or "ct_"). Also deletes
+ * featured-skin entries that point to now-unequipped skins, since featured
+ * requires an equipped skin. Idempotent: subsequent runs find nothing to wipe.
+ */
+export async function migrateLegacyLoadouts() {
+	const result = await prisma.csSkin.updateMany({
+		where: {
+			AND: [
+				{ loadoutSlot: { not: null } },
+				{ NOT: { loadoutSlot: { startsWith: "t_" } } },
+				{ NOT: { loadoutSlot: { startsWith: "ct_" } } },
+			],
+		},
+		data: {
+			loadoutSlot: null,
+			loadoutPriceUpdatedAt: null,
+			loadoutEquippedAt: null,
+			loadoutEquippedPrice: null,
+		},
+	});
+	if (result.count > 0) {
+		console.log(`[Migration] Wiped ${result.count} legacy loadout slots.`);
+		// Clear featured entries for skins that are no longer equipped
+		const orphaned = await prisma.userFeaturedSkin.findMany({
+			where: { csSkin: { loadoutSlot: null } },
+			select: { id: true },
+		});
+		if (orphaned.length > 0) {
+			await prisma.userFeaturedSkin.deleteMany({
+				where: { id: { in: orphaned.map((f) => f.id) } },
+			});
+			console.log(`[Migration] Removed ${orphaned.length} featured entries tied to legacy loadouts.`);
+		}
+	}
+	return result.count;
+}
+
+// --- Loadout Skin Price Refresh ---
+
+/**
+ * Recomputes the Flopo price for every equipped (loadout) skin from the
+ * latest Skinport data, persists the update, and records a history entry
+ * per skin so we can chart price evolution over time.
+ */
+export async function refreshLoadoutSkinPrices() {
+	const equippedSkins = await csSkinService.getAllEquippedSkins();
+	let updatedCount = 0;
+	const historyEntries = [];
+	for (const skin of equippedSkins) {
+		const newPrice = parseInt(
+			generatePrice(skin.marketHashName, skin.rarity, skin.float, skin.isStattrak, skin.isSouvenir),
+		);
+		if (isNaN(newPrice)) continue;
+		if (newPrice !== skin.price) {
+			await csSkinService.updateLoadoutSkinPrice(skin.id, newPrice);
+			updatedCount++;
+		}
+		historyEntries.push({ csSkinId: skin.id, price: newPrice });
+	}
+	await csSkinService.insertManySkinPriceHistory(historyEntries);
+	return { updatedCount, total: equippedSkins.length, historyCount: historyEntries.length };
+}
+
 // --- Cron Jobs / Scheduled Tasks ---
 
 /**
@@ -113,6 +185,29 @@ export function setupCronJobs(client, io) {
 	// Every 5 minutes: Update market offers
 	cron.schedule("* * * * *", () => {
 		handleMarketOffersUpdate();
+	});
+
+	// Hourly: Refresh Skinport prices, persist a snapshot, and recompute
+	// loadout skin prices (with a history entry per equipped skin).
+	cron.schedule("0 * * * *", async () => {
+		try {
+			const items = await fetchSuggestedPrices();
+			if (items) {
+				const inserted = await csPriceService.insertSnapshots(items);
+				console.log(`[Cron] Skinport snapshot: ${inserted} rows inserted, ${items.length} items fetched.`);
+			}
+			buildPriceIndex();
+			try {
+				const { updatedCount, total, historyCount } = await refreshLoadoutSkinPrices();
+				console.log(
+					`[Cron] Loadout refresh: ${updatedCount}/${total} prices changed, ${historyCount} history entries.`,
+				);
+			} catch (e) {
+				console.error("[Cron] Error refreshing loadout skin prices:", e);
+			}
+		} catch (e) {
+			console.error("[Cron] Error during hourly Skinport refresh:", e);
+		}
 	});
 
 	// Every 10 minutes: Clean up expired interactive sessions
@@ -187,6 +282,18 @@ export function setupCronJobs(client, io) {
 			}
 		} catch (e) {
 			console.error("[Cron] Error during Market Offers clean up:", e);
+		}
+		try {
+			const pruned = await csPriceService.pruneOldSnapshots(30);
+			if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS price snapshots older than 30 days.`);
+		} catch (e) {
+			console.error("[Cron] Error pruning CS price snapshots:", e);
+		}
+		try {
+			const pruned = await csSkinService.pruneOldSkinPriceHistory(30);
+			if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS skin price history entries older than 30 days.`);
+		} catch (e) {
+			console.error("[Cron] Error pruning CS skin price history:", e);
 		}
 	});
 

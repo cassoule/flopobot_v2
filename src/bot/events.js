@@ -1,7 +1,8 @@
 import { handleMessageCreate } from "./handlers/messageCreate.js";
-import { getAkhys } from "../utils/index.js";
+import { getAkhys, refreshLoadoutSkinPrices, migrateLegacyLoadouts } from "../utils/index.js";
 import { fetchSuggestedPrices, fetchSkinsData } from "../api/cs.js";
-import { buildPriceIndex, buildWeaponRarityPriceMap } from "../utils/cs.state.js";
+import { buildPriceIndex, buildWeaponRarityPriceMap, csSkinsPrices } from "../utils/cs.state.js";
+import * as csPriceService from "../services/csPrice.service.js";
 
 /**
  * Initializes and attaches all necessary event listeners to the Discord client.
@@ -20,10 +21,30 @@ export function initializeEvents(client, io) {
 		await getAkhys(client);
 		console.log("[Startup] Setting up scheduled tasks...");
 		//setupCronJobs(client, io);
-		await fetchSuggestedPrices();
+		const cached = await csPriceService.getLatestSnapshotsMap();
+		Object.assign(csSkinsPrices, cached);
+		console.log(`[Startup] Preloaded ${Object.keys(cached).length} Skinport prices from DB.`);
+		const items = await fetchSuggestedPrices();
+		if (items) {
+			const inserted = await csPriceService.insertSnapshots(items);
+			console.log(`[Startup] Inserted ${inserted} Skinport snapshots from live fetch.`);
+		}
 		await fetchSkinsData();
 		buildPriceIndex();
 		buildWeaponRarityPriceMap();
+		try {
+			await migrateLegacyLoadouts();
+		} catch (e) {
+			console.error("[Startup] Error migrating legacy loadouts:", e);
+		}
+		try {
+			const { updatedCount, total, historyCount } = await refreshLoadoutSkinPrices();
+			console.log(
+				`[Startup] Loadout refresh: ${updatedCount}/${total} prices changed, ${historyCount} history entries.`,
+			);
+		} catch (e) {
+			console.error("[Startup] Error refreshing loadout skin prices:", e);
+		}
 		console.log("--- FlopoBOT is fully operational ---");
 	});
 
