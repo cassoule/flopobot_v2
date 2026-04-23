@@ -1,6 +1,5 @@
 import * as userService from "../services/user.service.js";
 import * as logService from "../services/log.service.js";
-import { emitToast } from "../server/socket.js";
 import { client } from "../bot/client.js";
 import { EmbedBuilder } from "discord.js";
 
@@ -150,6 +149,30 @@ const SICBO = {
 		payout: 50,
 		checkWin: (dice) => dice[0] + dice[1] + dice[2] === 17,
 	},
+	single_1: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(1),
+	},
+	single_2: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(2),
+	},
+	single_3: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(3),
+	},
+	single_4: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(4),
+	},
+	single_5: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(5),
+	},
+	single_6: {
+		payout: 1,
+		checkWin: (dice) => dice.includes(6),
+	},
 };
 
 /**
@@ -159,6 +182,7 @@ const SICBO = {
 export function rollDice() {
 	return [Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1];
 }
+
 /**
  * Creates a new room object with default settings.
  * @returns {object} The room object.
@@ -167,7 +191,6 @@ export function createSicboRoom({
 	minBet = 10,
 	maxBet = 10000,
 	fakeMoney = false,
-
 	phaseDurations = {
 		bettingMs: 20000,
 		rollingMs: 6000,
@@ -251,6 +274,7 @@ export function placeBet(room, playerId, betType, amount) {
 /**
  * Settles all bets, updates user balances and logs results.
  * @param {object} room - The room to settle.
+ * @returns {object} The results mapped by player ID.
  */
 export async function settleAll(room) {
 	room.status = "payout";
@@ -330,4 +354,6 @@ export async function settleAll(room) {
 			console.log(`[${Date.now()}]`, e);
 		}
 	}
+
+	return allRes;
 }

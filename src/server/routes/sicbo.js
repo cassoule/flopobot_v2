@@ -1,18 +1,13 @@
 import express from "express";
 import { createSicboRoom, rollDice, resetForNewRound, placeBet, settleAll } from "../../game/sicbo.js";
-
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import { client } from "../../bot/client.js";
-import { emitToast, emitUpdate, emitPlayerUpdate } from "../socket.js";
+import { emitSicboUpdate, emitSicboToast } from "../socket.js";
 import { EmbedBuilder } from "discord.js";
 import { requireAuth } from "../middleware/auth.js";
 import { resolveUser } from "../../utils/index.js";
 
-
-/**
- * Sets up the Sic Bo Express router and game logic loop.
- */
 export function sicboRoutes(io) {
 	const router = express.Router();
 
@@ -101,7 +96,7 @@ export function sicboRoutes(io) {
 			console.error(`[SicBo] JOIN ERROR - Discord message failed for User ${userId}:`, e);
 		}
 
-		emitUpdate("sicbo-player-joined", snapshot(room));
+		emitSicboUpdate("sicbo-player-joined", snapshot(room));
 		return res.status(200).json({ message: "joined" });
 	});
 
@@ -118,7 +113,7 @@ export function sicboRoutes(io) {
 			return res.status(200).json({ message: "will-leave-after-round" });
 		} else {
 			delete room.players[userId];
-			emitUpdate("sicbo-player-left", snapshot(room));
+			emitSicboUpdate("sicbo-player-left", snapshot(room));
 
 			try {
 				const guild = client.guilds.cache.get(process.env.GUILD_ID);
@@ -186,8 +181,8 @@ export function sicboRoutes(io) {
 
 			placeBet(room, userId, betType, bet);
 
-			emitToast({ type: "player-bet", userId, amount: bet, betType });
-			emitUpdate("sicbo-bet-placed", snapshot(room));
+			emitSicboToast({ type: "player-bet", userId, amount: bet, betType });
+			emitSicboUpdate("sicbo-bet-placed", snapshot(room));
 
 			return res.status(200).json({ message: "bet-accepted" });
 		} catch (e) {
@@ -204,7 +199,7 @@ export function sicboRoutes(io) {
 
 			if (!hasBets) {
 				room.phase_ends_at = now + room.settings.phaseDurations.bettingMs;
-				emitUpdate("sicbo-update", snapshot(room));
+				emitSicboUpdate("sicbo-update", snapshot(room));
 				return;
 			}
 
@@ -213,12 +208,12 @@ export function sicboRoutes(io) {
 			console.log(`[SicBo] Les dés sont jetés : ${room.dice.join(" - ")}`);
 
 			room.phase_ends_at = now + room.settings.phaseDurations.rollingMs;
-			emitUpdate("sicbo-rolling", snapshot(room));
+			emitSicboUpdate("sicbo-rolling", snapshot(room));
 			return;
 		}
 
 		if (room.status === "rolling" && now >= room.phase_ends_at) {
-			await settleAll(room);
+			const allRes = await settleAll(room);
 
 			room.history.unshift([...room.dice]);
 			if (room.history.length > 10) room.history.pop();
@@ -226,7 +221,7 @@ export function sicboRoutes(io) {
 			room.status = "payout";
 			room.phase_ends_at = now + room.settings.phaseDurations.payoutMs;
 
-			emitUpdate("sicbo-payout", snapshot(room));
+			emitSicboUpdate("sicbo-payout", { room: snapshot(room), allRes });
 			return;
 		}
 
@@ -238,7 +233,7 @@ export function sicboRoutes(io) {
 			resetForNewRound(room);
 			room.phase_ends_at = Date.now() + room.settings.phaseDurations.bettingMs;
 
-			emitUpdate("sicbo-new-round", snapshot(room));
+			emitSicboUpdate("sicbo-new-round", snapshot(room));
 		}
 	}, 100);
 
