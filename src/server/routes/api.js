@@ -197,9 +197,11 @@ export function apiRoutes(client, io) {
 		try {
 			const randomSkin = await getRandomSkinWithRandomSpecs();
 
+			const baseDisplayName = randomSkin.data.name || randomSkin.name;
+			const versionedDisplayName = randomSkin.version ? `${baseDisplayName} ${randomSkin.version}` : baseDisplayName;
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: randomSkin.name,
-				displayName: randomSkin.data.name || randomSkin.name,
+				displayName: versionedDisplayName,
 				imageUrl: randomSkin.data.image || null,
 				rarity: randomSkin.data.rarity.name,
 				rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
@@ -210,6 +212,7 @@ export function apiRoutes(client, io) {
 				isSouvenir: randomSkin.isSouvenir,
 				price: parseInt(randomSkin.price),
 				userId: userId,
+				version: randomSkin.version,
 			});
 
 			await logService.insertLog({
@@ -236,8 +239,9 @@ export function apiRoutes(client, io) {
 					});
 				} else {
 					const decoy = await getRandomSkinWithRandomSpecs();
+					const decoyBase = decoy.data.name || decoy.name;
 					rouletteSkins.push({
-						displayName: decoy.data.name || decoy.name,
+						displayName: decoy.version ? `${decoyBase} ${decoy.version}` : decoyBase,
 						imageUrl: decoy.data.image || null,
 						rarity: decoy.data.rarity.name,
 						rarityColor: RarityToColor[decoy.data.rarity.name]?.toString(16) || null,
@@ -291,9 +295,10 @@ export function apiRoutes(client, io) {
 
 			// Generate a new skin at the next rarity tier
 			const newSkin = await getRandomSkinWithRandomSpecs(null, nextRarity);
+			const newSkinBase = newSkin.data.name || newSkin.name;
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: newSkin.name,
-				displayName: newSkin.data.name || newSkin.name,
+				displayName: newSkin.version ? `${newSkinBase} ${newSkin.version}` : newSkinBase,
 				imageUrl: newSkin.data.image || null,
 				rarity: newSkin.data.rarity.name,
 				rarityColor: RarityToColor[newSkin.data.rarity.name]?.toString(16) || null,
@@ -304,6 +309,7 @@ export function apiRoutes(client, io) {
 				isSouvenir: newSkin.isSouvenir,
 				price: parseInt(newSkin.price),
 				userId: userId,
+				version: newSkin.version,
 			});
 
 			await logService.insertLog({

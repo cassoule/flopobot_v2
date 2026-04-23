@@ -77,6 +77,7 @@ model CsSkin {
   loadoutPriceUpdatedAt DateTime? @map("loadout_price_updated_at")
   loadoutEquippedAt     DateTime? @map("loadout_equipped_at")
   loadoutEquippedPrice  Int?      @map("loadout_equipped_price")
+  version               String?
 
   owner        User?                  @relation("CsSkins", fields: [userId], references: [id])
   marketOffers MarketOffer[]          @relation("CsSkinOffers")
@@ -245,6 +246,7 @@ model UserFeaturedSkin {
 model CsPriceSnapshot {
   id             Int      @id @default(autoincrement())
   marketHashName String   @map("market_hash_name")
+  version        String?
   suggestedPrice Float?   @map("suggested_price")
   minPrice       Float?   @map("min_price")
   maxPrice       Float?   @map("max_price")
@@ -252,7 +254,7 @@ model CsPriceSnapshot {
   medianPrice    Float?   @map("median_price")
   createdAt      DateTime @default(now()) @map("created_at")
 
-  @@index([marketHashName, createdAt])
+  @@index([marketHashName, version, createdAt])
   @@index([createdAt])
   @@map("cs_price_snapshots")
 }

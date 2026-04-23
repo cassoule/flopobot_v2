@@ -294,23 +294,15 @@ async function handleAdminCommands(message) {
 					return;
 				} else if (filteredData.length <= 10) {
 					const skinList = filteredData
-						.map(
-							(skin) =>
-								`${skin.market_hash_name} - ${
-									csSkinsPrices[skin.market_hash_name]
-										? "Sug " +
-											csSkinsPrices[skin.market_hash_name].suggested_price +
-											" | Min " +
-											csSkinsPrices[skin.market_hash_name].min_price +
-											" | Max " +
-											csSkinsPrices[skin.market_hash_name].max_price +
-											" | Avg " +
-											csSkinsPrices[skin.market_hash_name].mean_price +
-											" | Med " +
-											csSkinsPrices[skin.market_hash_name].median_price
-										: "N/A"
-								}`,
-						)
+						.map((skin) => {
+							const byVersion = csSkinsPrices[skin.market_hash_name];
+							if (!byVersion) return `${skin.market_hash_name} - N/A`;
+							const lines = Object.entries(byVersion).map(([versionKey, p]) => {
+								const label = versionKey ? ` [${versionKey}]` : "";
+								return `${skin.market_hash_name}${label} - Sug ${p.suggested_price} | Min ${p.min_price} | Max ${p.max_price} | Avg ${p.mean_price} | Med ${p.median_price}`;
+							});
+							return lines.join("\n");
+						})
 						.join("\n");
 					message.reply(`Skins matching "${searchTerm}":\n${skinList}`);
 				} else {

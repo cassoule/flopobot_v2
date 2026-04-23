@@ -1,4 +1,4 @@
-import { csSkinsData, csSkinsPriceIndex, weaponRarityPriceMap } from "./cs.state.js";
+import { csSkinsData, csSkinsPriceIndex, csSkinsVersionMap, weaponRarityPriceMap } from "./cs.state.js";
 
 const StateFactoryNew = "Factory New";
 const StateMinimalWear = "Minimal Wear";
@@ -97,19 +97,43 @@ function getAdjacentWearStates(wearState) {
 	return adjacent;
 }
 
-function lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir) {
+// Reads from the version-bucketed price index:
+// csSkinsPriceIndex[baseName][variant][wearState][versionKey]  — versionKey "" for non-phased skins.
+function getVersionedPrice(wearMap, wearState, versionKey) {
+	const versionMap = wearMap?.[wearState];
+	if (!versionMap) return null;
+	// Prefer the exact version; fall back to the no-version bucket (e.g. Phase N missing but
+	// the family has a no-version entry) — then to any other version to keep us in-family.
+	if (versionMap[versionKey] !== undefined) {
+		const p = getSkinportPrice(versionMap[versionKey]);
+		if (p !== null) return p;
+	}
+	if (versionKey && versionMap[""] !== undefined) {
+		const p = getSkinportPrice(versionMap[""]);
+		if (p !== null) return p;
+	}
+	for (const [vk, data] of Object.entries(versionMap)) {
+		if (vk === versionKey) continue;
+		const p = getSkinportPrice(data);
+		if (p !== null) return p;
+	}
+	return null;
+}
+
+function lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir, version) {
 	const skinEntry = csSkinsPriceIndex[skinName];
 	if (!skinEntry) return null;
 
 	const variant = isSouvenir ? "souvenir" : isStattrak ? "stattrak" : "base";
+	const versionKey = version || "";
 
-	// 1. Exact match: correct variant + wear state
-	let price = getSkinportPrice(skinEntry[variant]?.[wearState]);
+	// 1. Exact match: correct variant + wear state + version
+	let price = getVersionedPrice(skinEntry[variant], wearState, versionKey);
 	if (price !== null) return price;
 
 	// 2. Drop variant: use base price × multiplier
 	if (variant !== "base") {
-		const basePrice = getSkinportPrice(skinEntry["base"]?.[wearState]);
+		const basePrice = getVersionedPrice(skinEntry["base"], wearState, versionKey);
 		if (basePrice !== null) {
 			const multiplier = isSouvenir ? SOUVENIR_FALLBACK_MULTIPLIER : STATTRAK_FALLBACK_MULTIPLIER;
 			return basePrice * multiplier;
@@ -118,11 +142,11 @@ function lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir) {
 
 	// 3. Adjacent wear state (same variant, then base with multiplier)
 	for (const adjWear of getAdjacentWearStates(wearState)) {
-		const adjPrice = getSkinportPrice(skinEntry[variant]?.[adjWear]);
+		const adjPrice = getVersionedPrice(skinEntry[variant], adjWear, versionKey);
 		if (adjPrice !== null) return adjPrice;
 
 		if (variant !== "base") {
-			const adjBase = getSkinportPrice(skinEntry["base"]?.[adjWear]);
+			const adjBase = getVersionedPrice(skinEntry["base"], adjWear, versionKey);
 			if (adjBase !== null) {
 				const multiplier = isSouvenir ? SOUVENIR_FALLBACK_MULTIPLIER : STATTRAK_FALLBACK_MULTIPLIER;
 				return adjBase * multiplier;
@@ -156,18 +180,19 @@ function findSimilarSkinPrice(skinName, rarity, wearState) {
 	const candidates = weaponRarityPriceMap[weapon]?.[rarity];
 	if (!candidates || candidates.length === 0) return null;
 
+	// For phased families, fall back to the median across the same-family siblings of the
+	// same weapon+rarity bucket — same logic as before, just using the new nested shape.
 	const prices = [];
 	for (const candidate of candidates) {
 		if (candidate === skinName) continue;
 		const entry = csSkinsPriceIndex[candidate];
 		if (!entry) continue;
-		// Prefer exact wear; fall back to the nearest available wear on base variant.
-		let p = getSkinportPrice(entry["base"]?.[wearState]);
+		let p = getVersionedPrice(entry["base"], wearState, "");
 		if (p === null) {
 			for (const ws of WEAR_STATE_ORDER) {
-				const wsPrice = getSkinportPrice(entry["base"]?.[ws]);
-				if (wsPrice !== null) {
-					p = wsPrice;
+				const alt = getVersionedPrice(entry["base"], ws, "");
+				if (alt !== null) {
+					p = alt;
 					break;
 				}
 			}
@@ -181,9 +206,9 @@ function findSimilarSkinPrice(skinName, rarity, wearState) {
 	return prices.length % 2 === 0 ? (prices[mid - 1] + prices[mid]) / 2 : prices[mid];
 }
 
-export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
+export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir, version = null) {
 	const wearState = getWearState(float);
-	let eurPrice = lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir);
+	let eurPrice = lookupSkinportEurPrice(skinName, wearState, isStattrak, isSouvenir, version);
 
 	if (eurPrice === null) {
 		// 4. Similar skin: same weapon + same rarity
@@ -194,7 +219,7 @@ export function generatePrice(skinName, rarity, float, isStattrak, isSouvenir) {
 		// 5. Last resort: rarity-based range, seeded by a hash of the skin identity
 		// so the same skin always gets the same price across refreshes.
 		const ranges = basePriceRanges[rarity] || basePriceRanges["Industrial Grade"];
-		const seed = hashString(`${skinName}|${wearState}|${isStattrak ? 1 : 0}|${isSouvenir ? 1 : 0}`);
+		const seed = hashString(`${skinName}|${version || ""}|${wearState}|${isStattrak ? 1 : 0}|${isSouvenir ? 1 : 0}`);
 		const ratio = (seed % 10000) / 10000;
 		eurPrice = ranges.min + ratio * (ranges.max - ranges.min);
 	}
@@ -238,6 +263,13 @@ export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 
 	const skinName = filteredSkinNames[randomIndex];
 	const skinData = csSkinsData[skinName];
+
+	// Phased/gem families (Gamma Doppler Phase 1-4, Doppler Ruby, etc.) share one market_hash_name
+	// on Skinport — the variant is reported via a separate `version` field. Roll one uniformly so
+	// the draw mirrors CS2's real behavior and the price reflects the specific variant.
+	const versions = csSkinsVersionMap[skinName];
+	const version = versions && versions.length > 0 ? versions[Math.floor(Math.random() * versions.length)] : null;
+
 	const float =
 		u_float !== null && u_float !== undefined ? u_float : getRandomFloatInRange(skinData.min_float, skinData.max_float);
 	const wearState = getWearState(float);
@@ -247,10 +279,11 @@ export async function getRandomSkinWithRandomSpecs(u_float, forcedRarity) {
 	return {
 		name: skinName,
 		data: skinData,
+		version,
 		isStattrak: skinIsStattrak,
 		isSouvenir: skinIsSouvenir,
 		wearState,
 		float,
-		price: generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir),
+		price: generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, version),
 	};
 }

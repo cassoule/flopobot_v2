@@ -5,6 +5,7 @@ export async function insertSnapshots(items) {
 		.filter((s) => s.market_hash_name)
 		.map((s) => ({
 			marketHashName: s.market_hash_name,
+			version: s.version || null,
 			suggestedPrice: s.suggested_price,
 			minPrice: s.min_price,
 			maxPrice: s.max_price,
@@ -16,22 +17,36 @@ export async function insertSnapshots(items) {
 	return result.count;
 }
 
+// Returns a nested map: marketHashName → { [version || ""]: priceData }.
+// Grouping on (market_hash_name, version) preserves phased/gem variants that share a hash.
+// Uses SQLite's NULL-safe `IS` operator so the (market_hash_name, version, created_at) index
+// can be used directly — COALESCE(version, '') would wrap the column and defeat the index,
+// causing the query to hang on large snapshot tables.
 export async function getLatestSnapshotsMap() {
-	const rows = await prisma.$queryRaw`
-		SELECT s.market_hash_name, s.suggested_price, s.min_price,
-		       s.max_price, s.mean_price, s.median_price
-		FROM cs_price_snapshots s
-		INNER JOIN (
-			SELECT market_hash_name, MAX(created_at) AS max_created
-			FROM cs_price_snapshots
-			GROUP BY market_hash_name
-		) latest
-			ON s.market_hash_name = latest.market_hash_name
-			AND s.created_at = latest.max_created
-	`;
+	let rows;
+	try {
+		rows = await prisma.$queryRaw`
+			SELECT s.market_hash_name, s.version, s.suggested_price, s.min_price,
+			       s.max_price, s.mean_price, s.median_price
+			FROM cs_price_snapshots s
+			INNER JOIN (
+				SELECT market_hash_name, version, MAX(created_at) AS max_created
+				FROM cs_price_snapshots
+				GROUP BY market_hash_name, version
+			) latest
+				ON s.market_hash_name = latest.market_hash_name
+				AND s.version IS latest.version
+				AND s.created_at = latest.max_created
+		`;
+	} catch (e) {
+		console.error("Error fetching latest snapshots from DB:", e);
+		return {};
+	}
+	console.log(rows.length, "latest snapshots loaded from DB");
 	const map = {};
 	for (const r of rows) {
-		map[r.market_hash_name] = {
+		if (!map[r.market_hash_name]) map[r.market_hash_name] = {};
+		map[r.market_hash_name][r.version || ""] = {
 			suggested_price: r.suggested_price,
 			min_price: r.min_price,
 			max_price: r.max_price,

@@ -1,7 +1,7 @@
 import { handleMessageCreate } from "./handlers/messageCreate.js";
-import { getAkhys, refreshLoadoutSkinPrices, migrateLegacyLoadouts } from "../utils/index.js";
+import { getAkhys, refreshLoadoutSkinPrices, migrateLegacyLoadouts, backfillCsSkinVersions } from "../utils/index.js";
 import { fetchSuggestedPrices, fetchSkinsData } from "../api/cs.js";
-import { buildPriceIndex, buildWeaponRarityPriceMap, csSkinsPrices } from "../utils/cs.state.js";
+import { buildPriceIndex, buildVersionMap, buildWeaponRarityPriceMap, csSkinsPrices } from "../utils/cs.state.js";
 import * as csPriceService from "../services/csPrice.service.js";
 
 /**
@@ -32,10 +32,16 @@ export function initializeEvents(client, io) {
 		await fetchSkinsData();
 		buildPriceIndex();
 		buildWeaponRarityPriceMap();
+		buildVersionMap();
 		try {
 			await migrateLegacyLoadouts();
 		} catch (e) {
 			console.error("[Startup] Error migrating legacy loadouts:", e);
+		}
+		try {
+			await backfillCsSkinVersions();
+		} catch (e) {
+			console.error("[Startup] Error backfilling CsSkin versions:", e);
 		}
 		try {
 			const { updatedCount, total, historyCount } = await refreshLoadoutSkinPrices();
