@@ -15,7 +15,7 @@ import { emitMarketUpdate } from "../server/socket.js";
 import { handleMarketOfferClosing, handleMarketOfferOpening } from "./marketNotifs.js";
 import { client } from "../bot/client.js";
 import { fetchSuggestedPrices } from "../api/cs.js";
-import { buildPriceIndex } from "./cs.state.js";
+import { buildPriceIndex, buildVersionMap, csSkinsVersionMap } from "./cs.state.js";
 import { generatePrice } from "./cs.utils.js";
 import prisma from "../prisma/client.js";
 
@@ -148,6 +148,59 @@ export async function migrateLegacyLoadouts() {
 	return result.count;
 }
 
+/**
+ * One-off retrofit: rolls a random version (Phase N / Emerald / Ruby / Sapphire / Black Pearl)
+ * for any existing CsSkin whose market_hash_name is a phased family but whose `version` is null.
+ * Also rewrites market_hash_name + display_name to include the rolled suffix and recomputes price.
+ * Requires `buildVersionMap()` to have run beforehand.
+ */
+export async function backfillCsSkinVersions() {
+	const families = Object.keys(csSkinsVersionMap);
+	if (families.length === 0) return 0;
+
+	const rows = await prisma.csSkin.findMany({
+		where: { version: null, marketHashName: { in: families } },
+		select: {
+			id: true,
+			marketHashName: true,
+			displayName: true,
+			float: true,
+			rarity: true,
+			isStattrak: true,
+			isSouvenir: true,
+		},
+	});
+	if (rows.length === 0) return 0;
+
+	let updated = 0;
+	for (const row of rows) {
+		const versions = csSkinsVersionMap[row.marketHashName];
+		if (!versions || versions.length === 0) continue;
+		const version = versions[Math.floor(Math.random() * versions.length)];
+		// Skinport uses the SAME market_hash_name across phases (variant lives in the `version` field),
+		// so keep marketHashName untouched and only annotate display_name + stamp the version column.
+		const newDisplayName = row.displayName ? `${row.displayName} ${version}` : `${row.marketHashName} ${version}`;
+		const newPrice = parseInt(
+			generatePrice(row.marketHashName, row.rarity, row.float, row.isStattrak, row.isSouvenir, version),
+		);
+		try {
+			await prisma.csSkin.update({
+				where: { id: row.id },
+				data: {
+					displayName: newDisplayName,
+					version,
+					price: Number.isFinite(newPrice) ? newPrice : undefined,
+				},
+			});
+			updated++;
+		} catch (e) {
+			console.error(`[Migration] Failed to backfill version for skin ${row.id}:`, e);
+		}
+	}
+	if (updated > 0) console.log(`[Migration] Rolled versions for ${updated} pre-existing phased skins.`);
+	return updated;
+}
+
 // --- Loadout Skin Price Refresh ---
 
 /**
@@ -161,7 +214,7 @@ export async function refreshLoadoutSkinPrices() {
 	const historyEntries = [];
 	for (const skin of equippedSkins) {
 		const newPrice = parseInt(
-			generatePrice(skin.marketHashName, skin.rarity, skin.float, skin.isStattrak, skin.isSouvenir),
+			generatePrice(skin.marketHashName, skin.rarity, skin.float, skin.isStattrak, skin.isSouvenir, skin.version),
 		);
 		if (isNaN(newPrice)) continue;
 		if (newPrice !== skin.price) {
@@ -197,6 +250,7 @@ export function setupCronJobs(client, io) {
 				console.log(`[Cron] Skinport snapshot: ${inserted} rows inserted, ${items.length} items fetched.`);
 			}
 			buildPriceIndex();
+			buildVersionMap();
 			try {
 				const { updatedCount, total, historyCount } = await refreshLoadoutSkinPrices();
 				console.log(
