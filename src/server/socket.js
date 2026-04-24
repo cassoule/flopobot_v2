@@ -662,6 +662,15 @@ export const emitSudokuUpdate = (userId) => io.emit("sudoku:update", { userId })
 
 export const emitMarketUpdate = () => io.emit("market:update");
 
+// --- Sic Bo emissions ---
+export const emitSicboUpdate = (eventName, roomSnapshot) => {
+	io.emit(eventName, roomSnapshot);
+};
+
+export const emitSicboToast = (payload) => {
+	io.emit("sicbo:toast", payload);
+};
+
 // --- Maintenance Mode Helpers ---
 
 export function activateMaintenance(scheduledEnd = null) {
