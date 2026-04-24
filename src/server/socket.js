@@ -671,7 +671,6 @@ export const emitSicboToast = (payload) => {
 	io.emit("sicbo:toast", payload);
 };
 
-
 // --- Maintenance Mode Helpers ---
 
 export function activateMaintenance(scheduledEnd = null) {

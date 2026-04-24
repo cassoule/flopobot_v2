@@ -321,9 +321,7 @@ export async function settleAll(room) {
 						userNewAmount: newBalance,
 					});
 					p.bank = newBalance;
-				} catch (e) {
-					console.log(`[${Date.now()}]`, e);
-				}
+				} catch (e) {}
 			}
 		}
 
@@ -350,9 +348,7 @@ export async function settleAll(room) {
 					.setTimestamp(new Date());
 				await msg.edit({ embeds: [updatedEmbed], components: [] });
 			}
-		} catch (e) {
-			console.log(`[${Date.now()}]`, e);
-		}
+		} catch (e) {}
 	}
 
 	return allRes;

@@ -12,7 +12,6 @@ export function sicboRoutes(io) {
 	const router = express.Router();
 
 	const room = createSicboRoom();
-	console.log(`[SicBo] Room initialized with ID: ${room.id}`);
 
 	function snapshot(r) {
 		return {
@@ -89,12 +88,8 @@ export function sicboRoutes(io) {
 
 				const msg = await generalChannel.send({ embeds: [embed] });
 				room.players[userId].msgId = msg.id;
-			} else {
-				console.log(`[SicBo] JOIN WARNING - Discord channel not found for User ${userId}`);
 			}
-		} catch (e) {
-			console.error(`[SicBo] JOIN ERROR - Discord message failed for User ${userId}:`, e);
-		}
+		} catch (e) {}
 
 		emitSicboUpdate("sicbo-player-joined", snapshot(room));
 		return res.status(200).json({ message: "joined" });
@@ -140,9 +135,7 @@ export function sicboRoutes(io) {
 
 					await msg.edit({ embeds: [updatedEmbed], components: [] });
 				}
-			} catch (e) {
-				console.error(`[SicBo] LEAVE ERROR - Discord message update failed for User ${userId}:`, e);
-			}
+			} catch (e) {}
 
 			return res.status(200).json({ message: "left" });
 		}
@@ -186,7 +179,6 @@ export function sicboRoutes(io) {
 
 			return res.status(200).json({ message: "bet-accepted" });
 		} catch (e) {
-			console.error(`[SicBo] BET ERROR - User ${userId}:`, e.message);
 			return res.status(400).json({ message: e.message });
 		}
 	});
@@ -205,7 +197,6 @@ export function sicboRoutes(io) {
 
 			room.status = "rolling";
 			room.dice = rollDice();
-			console.log(`[SicBo] Les dés sont jetés : ${room.dice.join(" - ")}`);
 
 			room.phase_ends_at = now + room.settings.phaseDurations.rollingMs;
 			emitSicboUpdate("sicbo-rolling", snapshot(room));
