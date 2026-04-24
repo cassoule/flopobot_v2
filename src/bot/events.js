@@ -2,6 +2,7 @@ import { handleMessageCreate } from "./handlers/messageCreate.js";
 import { getAkhys } from "../utils/index.js";
 import { fetchSuggestedPrices, fetchSkinsData } from "../api/cs.js";
 import { buildPriceIndex, buildWeaponRarityPriceMap } from "../utils/cs.state.js";
+import { buildCaseRegistry } from "../utils/cs.cases.js";
 
 /**
  * Initializes and attaches all necessary event listeners to the Discord client.
@@ -24,6 +25,7 @@ export function initializeEvents(client, io) {
 		await fetchSkinsData();
 		buildPriceIndex();
 		buildWeaponRarityPriceMap();
+		buildCaseRegistry();
 		console.log("--- FlopoBOT is fully operational ---");
 	});
 
