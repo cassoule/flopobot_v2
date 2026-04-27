@@ -12,6 +12,7 @@ export function sicboRoutes(io) {
 	const router = express.Router();
 
 	const room = createSicboRoom();
+	let isProcessing = false;
 
 	function snapshot(r) {
 		return {
@@ -197,22 +198,28 @@ export function sicboRoutes(io) {
 
 			room.status = "rolling";
 			room.dice = rollDice();
-
 			room.phase_ends_at = now + room.settings.phaseDurations.rollingMs;
 			emitSicboUpdate("sicbo-rolling", snapshot(room));
 			return;
 		}
 
 		if (room.status === "rolling" && now >= room.phase_ends_at) {
-			const allRes = await settleAll(room);
+			if (isProcessing) return;
+			isProcessing = true;
 
-			room.history.unshift([...room.dice]);
-			if (room.history.length > 10) room.history.pop();
+			try {
+				const allRes = await settleAll(room);
 
-			room.status = "payout";
-			room.phase_ends_at = now + room.settings.phaseDurations.payoutMs;
+				room.history.unshift([...room.dice]);
+				if (room.history.length > 10) room.history.pop();
 
-			emitSicboUpdate("sicbo-payout", { room: snapshot(room), allRes });
+				room.status = "payout";
+				room.phase_ends_at = now + room.settings.phaseDurations.payoutMs;
+
+				emitSicboUpdate("sicbo-payout", { room: snapshot(room), allRes });
+			} finally {
+				isProcessing = false;
+			}
 			return;
 		}
 
