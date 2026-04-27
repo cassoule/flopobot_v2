@@ -277,7 +277,6 @@ export function placeBet(room, playerId, betType, amount) {
  * @returns {object} The results mapped by player ID.
  */
 export async function settleAll(room) {
-	room.status = "payout";
 	const allRes = {};
 
 	for (const p of Object.values(room.players)) {
@@ -321,7 +320,9 @@ export async function settleAll(room) {
 						userNewAmount: newBalance,
 					});
 					p.bank = newBalance;
-				} catch (e) {}
+				} catch (e) {
+					console.log(`[${Date.now()}]`, e);
+				}
 			}
 		}
 
@@ -348,7 +349,9 @@ export async function settleAll(room) {
 					.setTimestamp(new Date());
 				await msg.edit({ embeds: [updatedEmbed], components: [] });
 			}
-		} catch (e) {}
+		} catch (e) {
+			console.log(`[${Date.now()}]`, e);
+		}
 	}
 
 	return allRes;
