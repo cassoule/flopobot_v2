@@ -18,12 +18,15 @@ import {
 } from "../../game/solitaire.js";
 
 // --- Game State & Database Imports ---
-import { activeSolitaireGames } from "../../game/state.js";
+import { activeSolitaireGames, sotdResetVotes } from "../../game/state.js";
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import * as solitaireService from "../../services/solitaire.service.js";
 import { socketEmit } from "../socket.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, optionalAuth } from "../middleware/auth.js";
+import { initTodaysSOTD } from "../../game/points.js";
+
+const SOTD_RESET_VOTES_THRESHOLD = parseInt(process.env.SOTD_RESET_VOTES_THRESHOLD) || 3;
 
 // Create a new router instance
 const router = express.Router();
@@ -119,6 +122,57 @@ export function solitaireRoutes(client, io) {
 	});
 
 	// --- Game State & Action Endpoints ---
+
+	router.get("/sotd/reset-votes", optionalAuth, async (req, res) => {
+		try {
+			const rankings = await solitaireService.getAllSOTDStats();
+			res.json({
+				count: sotdResetVotes.size,
+				threshold: SOTD_RESET_VOTES_THRESHOLD,
+				hasVoted: req.userId ? sotdResetVotes.has(req.userId) : false,
+				locked: rankings.length > 0,
+			});
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch SOTD reset votes." });
+		}
+	});
+
+	router.post("/sotd/reset-vote", requireAuth, async (req, res) => {
+		const userId = req.userId;
+
+		const rankings = await solitaireService.getAllSOTDStats();
+		if (rankings.length > 0) {
+			return res.status(400).json({ error: "Reset voting is locked: a player already completed today's SOTD." });
+		}
+
+		sotdResetVotes.add(userId);
+
+		if (sotdResetVotes.size >= SOTD_RESET_VOTES_THRESHOLD) {
+			// initTodaysSOTD clears stats + sotdResetVotes and kicks active SOTD games.
+			// Since voting is locked once rankings is non-empty, the award branch inside
+			// initTodaysSOTD is a no-op here.
+			await initTodaysSOTD();
+			await socketEmit("sotd-reset", {});
+			await socketEmit("sotd-reset-vote-update", {
+				count: 0,
+				threshold: SOTD_RESET_VOTES_THRESHOLD,
+				locked: false,
+			});
+			return res.json({ success: true, reset: true, count: 0, threshold: SOTD_RESET_VOTES_THRESHOLD });
+		}
+
+		await socketEmit("sotd-reset-vote-update", {
+			count: sotdResetVotes.size,
+			threshold: SOTD_RESET_VOTES_THRESHOLD,
+			locked: false,
+		});
+		res.json({
+			success: true,
+			reset: false,
+			count: sotdResetVotes.size,
+			threshold: SOTD_RESET_VOTES_THRESHOLD,
+		});
+	});
 
 	router.get("/sotd/rankings", async (req, res) => {
 		try {

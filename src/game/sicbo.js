@@ -277,7 +277,6 @@ export function placeBet(room, playerId, betType, amount) {
  * @returns {object} The results mapped by player ID.
  */
 export async function settleAll(room) {
-	room.status = "payout";
 	const allRes = {};
 
 	for (const p of Object.values(room.players)) {

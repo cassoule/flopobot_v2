@@ -3,7 +3,14 @@ import * as skinService from "../services/skin.service.js";
 import * as logService from "../services/log.service.js";
 import * as solitaireService from "../services/solitaire.service.js";
 import * as sudokuService from "../services/sudoku.service.js";
-import { activeSlowmodes, activeSolitaireGames, activeSudokuGames, messagesTimestamps, skins } from "./state.js";
+import {
+	activeSlowmodes,
+	activeSolitaireGames,
+	activeSudokuGames,
+	messagesTimestamps,
+	skins,
+	sotdResetVotes,
+} from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { generatePuzzle } from "./sudoku.js";
 import { emitSolitaireUpdate, emitSudokuUpdate } from "../server/socket.js";
@@ -227,6 +234,8 @@ export async function initTodaysSOTD() {
 				emitSolitaireUpdate(userId);
 			}
 		}
+
+		sotdResetVotes.clear();
 
 		console.log(`Today's SOTD is ready with a new seed.`);
 	} catch (e) {

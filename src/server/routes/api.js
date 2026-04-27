@@ -46,11 +46,6 @@ const router = express.Router();
  */
 export function apiRoutes(client, io) {
 	// --- Server Health & Basic Data ---
-
-	router.get("/download-db", (req, res) => {
-		res.download("/db/flopobot.db");
-	});
-
 	router.get("/users", async (req, res) => {
 		try {
 			const users = await userService.getAllUsers();
@@ -116,82 +111,6 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/open-case", requireAuth, async (req, res) => {
-		const userId = req.userId;
-		const { caseType } = req.body;
-
-		let caseTypeVal;
-		switch (caseType) {
-			case "standard":
-				caseTypeVal = 500;
-				break;
-			case "premium":
-				caseTypeVal = 750;
-				break;
-			case "ultra":
-				caseTypeVal = 1500;
-				break;
-			case "esport":
-				caseTypeVal = 100;
-				break;
-			default:
-				return res.status(400).json({ error: "Invalid case type." });
-		}
-		const commandUser = await userService.getUser(userId);
-		if (!commandUser) return res.status(404).json({ error: "User not found." });
-		const valoPrice = caseTypeVal;
-		if (commandUser.coins < valoPrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
-
-		try {
-			const selectedSkins = await drawCaseContent(caseType);
-
-			const result = await drawCaseSkin(selectedSkins);
-
-			// --- Update Database ---
-			await logService.insertLog({
-				id: `${userId}-${Date.now()}`,
-				userId: userId,
-				action: "VALO_CASE_OPEN",
-				targetUserId: null,
-				coinsAmount: -valoPrice,
-				userNewAmount: commandUser.coins - valoPrice,
-			});
-			await userService.updateUserCoins(userId, commandUser.coins - valoPrice);
-			await skinService.updateSkin({
-				uuid: result.randomSkinData.uuid,
-				userId: userId,
-				currentLvl: result.randomLevel,
-				currentChroma: result.randomChroma,
-				currentPrice: result.finalPrice,
-			});
-
-			console.log(
-				`${commandUser.username} opened a ${caseType} Valorant case and received skin ${result.randomSelectedSkinUuid}`,
-			);
-			const updatedSkin = await skinService.getSkin(result.randomSkinData.uuid);
-			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
-
-			const contentSkins = selectedSkins.map((item) => {
-				return {
-					...item,
-					isMelee: isMeleeSkin(item.displayName),
-					isVCT: isVCTSkin(item.displayName),
-					isChampions: isChampionsSkin(item.displayName),
-					vctRegion: getVCTRegion(item.displayName),
-				};
-			});
-			res.json({
-				selectedSkins: contentSkins,
-				randomSelectedSkinUuid: result.randomSelectedSkinUuid,
-				randomSelectedSkinIndex: result.randomSelectedSkinIndex,
-				updatedSkin,
-			});
-		} catch (error) {
-			console.error("Error fetching skins:", error);
-			res.status(500).json({ error: "Failed to fetch skins." });
-		}
-	});
-
 	router.post("/open-cs-case", requireAuth, async (req, res) => {
 		const userId = req.userId;
 		const { caseId } = req.body || {};
@@ -211,9 +130,11 @@ export function apiRoutes(client, io) {
 			const randomSkin = await rollSkin();
 			if (!randomSkin) return res.status(500).json({ error: "Failed to roll a skin from this case." });
 
+			const baseDisplayName = randomSkin.data.name || randomSkin.name;
+			const versionedDisplayName = randomSkin.version ? `${baseDisplayName} ${randomSkin.version}` : baseDisplayName;
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: randomSkin.name,
-				displayName: randomSkin.data.name || randomSkin.name,
+				displayName: versionedDisplayName,
 				imageUrl: randomSkin.data.image || null,
 				rarity: randomSkin.data.rarity.name,
 				rarityColor: RarityToColor[randomSkin.data.rarity.name]?.toString(16) || null,
@@ -224,6 +145,7 @@ export function apiRoutes(client, io) {
 				isSouvenir: randomSkin.isSouvenir,
 				price: parseInt(randomSkin.price),
 				userId: userId,
+				version: randomSkin.version,
 			});
 
 			await logService.insertLog({
@@ -252,7 +174,7 @@ export function apiRoutes(client, io) {
 					const decoy = await rollSkin();
 					if (!decoy) continue;
 					rouletteSkins.push({
-						displayName: decoy.data.name || decoy.name,
+						displayName: decoy.version ? `${decoyBase} ${decoy.version}` : decoyBase,
 						imageUrl: decoy.data.image || null,
 						rarity: decoy.data.rarity.name,
 						rarityColor: RarityToColor[decoy.data.rarity.name]?.toString(16) || null,
@@ -292,6 +214,11 @@ export function apiRoutes(client, io) {
 			for (const skin of skins) {
 				if (!skin) return res.status(404).json({ error: "One or more skins not found." });
 				if (skin.userId !== userId) return res.status(403).json({ error: "You don't own all of these skins." });
+				if (skin.loadoutSlot !== null) {
+					return res
+						.status(403)
+						.json({ error: "Un ou plusieurs skins sont équipés. Retirez-les d'abord de votre équipement." });
+				}
 			}
 
 			// Validate all skins are the same rarity
@@ -311,9 +238,10 @@ export function apiRoutes(client, io) {
 
 			// Generate a new skin at the next rarity tier
 			const newSkin = await getRandomSkinWithRandomSpecs(null, nextRarity);
+			const newSkinBase = newSkin.data.name || newSkin.name;
 			const created = await csSkinService.insertCsSkin({
 				marketHashName: newSkin.name,
-				displayName: newSkin.data.name || newSkin.name,
+				displayName: newSkin.version ? `${newSkinBase} ${newSkin.version}` : newSkinBase,
 				imageUrl: newSkin.data.image || null,
 				rarity: newSkin.data.rarity.name,
 				rarityColor: RarityToColor[newSkin.data.rarity.name]?.toString(16) || null,
@@ -324,6 +252,7 @@ export function apiRoutes(client, io) {
 				isSouvenir: newSkin.isSouvenir,
 				price: parseInt(newSkin.price),
 				userId: userId,
+				version: newSkin.version,
 			});
 
 			await logService.insertLog({
@@ -450,6 +379,9 @@ export function apiRoutes(client, io) {
 			const skin = await csSkinService.getCsSkin(req.params.id);
 			if (!skin) return res.status(404).json({ error: "CS skin not found." });
 			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			if (skin.loadoutSlot !== null) {
+				return res.status(403).json({ error: "Retirez d'abord ce skin de votre équipement." });
+			}
 
 			const marketOffers = await marketService.getMarketOffersByCsSkin(skin.id);
 			const activeOffers = marketOffers.filter((offer) => offer.status === "pending" || offer.status === "open");
@@ -1704,6 +1636,177 @@ export function apiRoutes(client, io) {
 
 		// Return 200 for unhandled event types (Stripe requires this)
 		res.status(200).json({ received: true });
+	});
+
+	// --- Loadout Routes ---
+
+	router.get("/user/:id/loadout", async (req, res) => {
+		try {
+			const loadout = await csSkinService.getUserLoadout(req.params.id);
+			res.json({ loadout });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch loadout." });
+		}
+	});
+
+	router.post("/cs-skin/:id/equip", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { slot } = req.body || {};
+		if (!slot || typeof slot !== "string") {
+			return res.status(400).json({ error: "slot is required." });
+		}
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			const activeOffers = (await marketService.getMarketOffersByCsSkin(skin.id)).filter(
+				(o) => o.status === "pending" || o.status === "open",
+			);
+			if (activeOffers.length > 0) {
+				return res.status(403).json({ error: "Retirez d'abord ce skin du FlopoMarket." });
+			}
+			await csSkinService.equipSkin(userId, skin.id, slot);
+			const updated = await csSkinService.getCsSkin(skin.id);
+			res.json({ skin: updated });
+		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+			console.error("Error equipping skin:", e);
+			res.status(500).json({ error: "Failed to equip skin." });
+		}
+	});
+
+	router.post("/cs-skin/:id/unequip", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			if (skin.loadoutSlot === null) return res.status(400).json({ error: "Ce skin n'est pas équipé." });
+			// Lock check is inside unequipSkin; run it before touching featured so a locked
+			// skin doesn't lose its featured slot for a failed unequip.
+			await csSkinService.unequipSkin(skin.id, userId);
+			const featured = await userService.getUserFeaturedSkins(userId);
+			const featuredEntry = featured.find((f) => f.csSkinId === skin.id);
+			if (featuredEntry) await userService.removeFeaturedSkin(userId, featuredEntry.position);
+			res.json({ success: true });
+		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+			console.error("Error unequipping skin:", e);
+			res.status(500).json({ error: "Failed to unequip skin." });
+		}
+	});
+
+	router.post("/cs-skin/:id/unlock", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			const { skin: updated, cost, newCoins } = await csSkinService.unlockLoadoutSkin(skin.id, userId);
+			await logService.insertLog({
+				id: `${userId}-${Date.now()}`,
+				userId,
+				action: "CS_LOADOUT_UNLOCK",
+				targetUserId: null,
+				coinsAmount: -cost,
+				userNewAmount: newCoins,
+			});
+			await socketEmit("data-updated", { table: "users", action: "update", userId, newCoins });
+			res.json({ skin: updated, cost });
+		} catch (e) {
+			if (e.statusCode) return res.status(e.statusCode).json({ error: e.message });
+			console.error("Error unlocking skin:", e);
+			res.status(500).json({ error: "Failed to unlock skin." });
+		}
+	});
+
+	router.get("/cs-skin/:id/unlock-cost", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		try {
+			const skin = await csSkinService.getCsSkin(req.params.id);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			const cost = csSkinService.computeUnlockCost(skin);
+			res.json({ cost });
+		} catch (e) {
+			console.error("Error computing unlock cost:", e);
+			res.status(500).json({ error: "Failed to compute unlock cost." });
+		}
+	});
+
+	router.get("/cs-skin/:id/price-history", async (req, res) => {
+		try {
+			const days = Math.min(Math.max(parseInt(req.query.days) || 7, 1), 30);
+			const history = await csSkinService.getSkinPriceHistory(req.params.id, days);
+			res.json({ history });
+		} catch (e) {
+			console.error("Error fetching price history:", e);
+			res.status(500).json({ error: "Failed to fetch price history." });
+		}
+	});
+
+	// --- Featured Skins Routes ---
+
+	router.get("/user/:id/featured-skins", async (req, res) => {
+		try {
+			const featuredSkins = await userService.getUserFeaturedSkins(req.params.id);
+			res.json({ featuredSkins });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch featured skins." });
+		}
+	});
+
+	router.post("/user/featured-skins", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { csSkinId, position } = req.body;
+		if (!csSkinId || ![1, 2, 3].includes(position)) {
+			return res.status(400).json({ error: "csSkinId and position (1-3) are required." });
+		}
+		try {
+			const skin = await csSkinService.getCsSkin(csSkinId);
+			if (!skin) return res.status(404).json({ error: "CS skin not found." });
+			if (skin.userId !== userId) return res.status(403).json({ error: "User does not own this skin." });
+			if (skin.loadoutSlot === null) {
+				return res.status(400).json({ error: "Ce skin doit être équipé pour être mis en avant." });
+			}
+			await userService.setFeaturedSkin(userId, csSkinId, position);
+			res.json({ success: true });
+		} catch (e) {
+			console.error("Error setting featured skin:", e);
+			res.status(500).json({ error: "Failed to set featured skin." });
+		}
+	});
+
+	router.delete("/user/featured-skins/:position", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const position = parseInt(req.params.position);
+		if (![1, 2, 3].includes(position)) return res.status(400).json({ error: "Position must be 1, 2, or 3." });
+		try {
+			await userService.removeFeaturedSkin(userId, position);
+			res.json({ success: true });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to remove featured skin." });
+		}
+	});
+
+	router.get("/users/featured-skins", async (req, res) => {
+		try {
+			const map = await userService.getAllUsersFeaturedSkins();
+			res.json(map);
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch featured skins." });
+		}
+	});
+
+	// --- Loadout Leaderboard ---
+
+	router.get("/leaderboard/loadout-value", async (req, res) => {
+		try {
+			const leaderboard = await userService.getLoadoutLeaderboard();
+			res.json({ leaderboard });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch loadout leaderboard." });
+		}
 	});
 
 	return router;

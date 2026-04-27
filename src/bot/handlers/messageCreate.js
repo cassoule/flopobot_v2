@@ -302,23 +302,15 @@ async function handleAdminCommands(message) {
 					return;
 				} else if (filteredData.length <= 10) {
 					const skinList = filteredData
-						.map(
-							(skin) =>
-								`${skin.market_hash_name} - ${
-									csSkinsPrices[skin.market_hash_name]
-										? "Sug " +
-											csSkinsPrices[skin.market_hash_name].suggested_price +
-											" | Min " +
-											csSkinsPrices[skin.market_hash_name].min_price +
-											" | Max " +
-											csSkinsPrices[skin.market_hash_name].max_price +
-											" | Avg " +
-											csSkinsPrices[skin.market_hash_name].mean_price +
-											" | Med " +
-											csSkinsPrices[skin.market_hash_name].median_price
-										: "N/A"
-								}`,
-						)
+						.map((skin) => {
+							const byVersion = csSkinsPrices[skin.market_hash_name];
+							if (!byVersion) return `${skin.market_hash_name} - N/A`;
+							const lines = Object.entries(byVersion).map(([versionKey, p]) => {
+								const label = versionKey ? ` [${versionKey}]` : "";
+								return `${skin.market_hash_name}${label} - Sug ${p.suggested_price} | Min ${p.min_price} | Max ${p.max_price} | Avg ${p.mean_price} | Med ${p.median_price}`;
+							});
+							return lines.join("\n");
+						})
 						.join("\n");
 					message.reply(`Skins matching "${searchTerm}":\n${skinList}`);
 				} else {
@@ -329,6 +321,196 @@ async function handleAdminCommands(message) {
 				message.reply(`Error searching CS:GO skins: ${e.message}`);
 			}
 			break;
+		case `${prefix}:cs-cases`: {
+			try {
+				const cases = getAllCases();
+				if (cases.length === 0) {
+					message.reply("No cases registered. Has skin data been fetched yet?");
+					return;
+				}
+				const lines = cases.map(
+					(c) =>
+						`${c.name.padEnd(16)} (${c.id.padEnd(14)}) — ${String(c.price).padStart(4)} FC, ` +
+						`EV ${c.ev.toFixed(0).padStart(4)} FC (${((c.ev / c.price) * 100).toFixed(1)}%), ` +
+						`overflow ${Math.round(c.overflow * 100)}%`,
+				);
+				message.reply(`**${cases.length} curated cases:**\n\`\`\`\n${lines.join("\n")}\n\`\`\``);
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error listing cases: ${e.message}`);
+			}
+			break;
+		}
+		case `${prefix}:cs-case`: {
+			try {
+				const query = args.join(" ").trim();
+				if (!query) {
+					message.reply("Usage: `cs-case <case name or id>`");
+					return;
+				}
+				const matched = getCaseById(query) || findCaseByName(query);
+				if (!matched) {
+					message.reply(`No case found matching "${query}".`);
+					return;
+				}
+				const contents = getCaseContents(matched.id);
+
+				const sections = Object.entries(contents.skinsByRarity)
+					.sort(([a], [b]) => a.localeCompare(b))
+					.map(
+						([rarity, { bands, skins }]) =>
+							`=== ${rarity} [bands ${bands.join(",")}] (${skins.length}) ===\n${[...skins].sort().join("\n")}`,
+					);
+				const totalSkins = Object.values(contents.skinsByRarity).reduce((s, v) => s + v.skins.length, 0);
+				const header = [
+					`Case: ${contents.name}`,
+					`ID: ${contents.id}`,
+					`Price: ${contents.price} FC   EV: ${contents.ev.toFixed(1)} FC (${((contents.ev / contents.price) * 100).toFixed(1)}%)`,
+					`Overflow: ${Math.round(contents.overflow * 100)}%   Skins: ${totalSkins}`,
+				].join("\n");
+				const body = `${header}\n\n${sections.join("\n\n")}`;
+
+				const buffer = Buffer.from(body, "utf-8");
+				const attachment = new AttachmentBuilder(buffer, { name: `${contents.id}.txt` });
+				message.reply({
+					content: `**${contents.name}** — ${totalSkins} skins, EV ${contents.ev.toFixed(0)}/${contents.price} FC`,
+					files: [attachment],
+				});
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error reading case: ${e.message}`);
+			}
+			break;
+		}
+		case `${prefix}:cs-orphans`: {
+			try {
+				const orphans = findOrphanSkins();
+				if (orphans.length === 0) {
+					message.reply("No orphan skins — every skin belongs to at least one case.");
+					return;
+				}
+				const byRarity = {};
+				for (const o of orphans) {
+					byRarity[o.rarity] = (byRarity[o.rarity] || 0) + 1;
+				}
+				const summary = Object.entries(byRarity)
+					.sort(([, a], [, b]) => b - a)
+					.map(([r, n]) => `${r}: ${n}`)
+					.join("\n");
+				const list = orphans.map((o) => `[${o.rarity}] ${o.name}`).join("\n");
+				const buffer = Buffer.from(list, "utf-8");
+				const attachment = new AttachmentBuilder(buffer, { name: "cs-orphans.txt" });
+				message.reply({
+					content: `**${orphans.length} skins not in any case.**\n\`\`\`${summary}\`\`\``,
+					files: [attachment],
+				});
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error finding orphans: ${e.message}`);
+			}
+			break;
+		}
+		case `${prefix}:cs-simulate`: {
+			try {
+				if (args.length === 0) {
+					message.reply("Usage: `cs-simulate <case name or id> [count=1000]`");
+					return;
+				}
+				const lastArg = args[args.length - 1];
+				const parsedCount = parseInt(lastArg, 10);
+				const hasCount = !isNaN(parsedCount) && String(parsedCount) === lastArg;
+				const count = hasCount ? Math.min(Math.max(parsedCount, 1), 100000) : 1000;
+				const queryParts = hasCount ? args.slice(0, -1) : args;
+				const query = queryParts.join(" ").trim();
+
+				const matched = getCaseById(query) || findCaseByName(query);
+				if (!matched) {
+					message.reply(`No case found matching "${query}".`);
+					return;
+				}
+
+				const prices = [];
+				const rarityCounts = {};
+				let stattrakCount = 0;
+				let souvenirCount = 0;
+				let overflowCount = 0;
+				let best = null;
+
+				for (let i = 0; i < count; i++) {
+					const skin = await openCase(matched.id);
+					if (!skin) continue;
+					const price = parseInt(skin.price, 10) || 0;
+					prices.push(price);
+					rarityCounts[skin.rarity] = (rarityCounts[skin.rarity] || 0) + 1;
+					if (skin.isStattrak) stattrakCount++;
+					if (skin.isSouvenir) souvenirCount++;
+					if (skin.fromOverflow) overflowCount++;
+					if (!best || price > best.price) {
+						best = {
+							name: skin.name,
+							price,
+							rarity: skin.rarity,
+							wearState: skin.wearState,
+							isStattrak: skin.isStattrak,
+							isSouvenir: skin.isSouvenir,
+						};
+					}
+				}
+
+				if (prices.length === 0) {
+					message.reply("Simulation produced no skins (empty crate?).");
+					return;
+				}
+
+				const sorted = [...prices].sort((a, b) => a - b);
+				const sum = prices.reduce((a, b) => a + b, 0);
+				const avg = sum / prices.length;
+				const median =
+					sorted.length % 2 === 0
+						? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+						: sorted[Math.floor(sorted.length / 2)];
+				const min = sorted[0];
+				const max = sorted[sorted.length - 1];
+				const casePrice = matched.price;
+				const profit = avg - casePrice;
+
+				const rarityBreakdown = Object.entries(rarityCounts)
+					.sort(([, a], [, b]) => b - a)
+					.map(([r, n]) => `${r}: ${n} (${((n / prices.length) * 100).toFixed(2)}%)`)
+					.join("\n");
+
+				const bestLine = best
+					? `${best.isStattrak ? "StatTrak™ " : ""}${best.isSouvenir ? "Souvenir " : ""}${best.name} (${best.wearState}) — ${best.price} FC`
+					: "n/a";
+
+				const report = [
+					`**Simulation: ${matched.name}** (${prices.length} opens)`,
+					"```",
+					`Case cost:   ${casePrice} FC`,
+					`Analytic EV: ${matched.ev.toFixed(1)} FC (${((matched.ev / casePrice) * 100).toFixed(1)}% of price)`,
+					"",
+					`Average:  ${avg.toFixed(1)} FC  →  ${profit >= 0 ? "+" : ""}${profit.toFixed(1)} FC/open`,
+					`Median:   ${median} FC`,
+					`Min:      ${min} FC`,
+					`Max:      ${max} FC`,
+					`StatTrak: ${stattrakCount} (${((stattrakCount / prices.length) * 100).toFixed(2)}%)`,
+					`Souvenir: ${souvenirCount} (${((souvenirCount / prices.length) * 100).toFixed(2)}%)`,
+					`Overflow hits: ${overflowCount} (${((overflowCount / prices.length) * 100).toFixed(3)}%)`,
+					"",
+					"Rarity distribution:",
+					rarityBreakdown,
+					"",
+					`Best drop: ${bestLine}`,
+					"```",
+				].join("\n");
+
+				message.reply(report);
+			} catch (e) {
+				console.log(e);
+				message.reply(`Error simulating case: ${e.message}`);
+			}
+			break;
+		}
 		case `${prefix}:cs-cases`: {
 			try {
 				const cases = getAllCases();
