@@ -152,14 +152,9 @@ export function buildCaseRegistry() {
 
 	console.log(`[CS Cases] ${Object.keys(caseRegistry).length} cases built:`);
 	for (const c of Object.values(caseRegistry)) {
-		const oddsLabel = c.rarityOdds ? "custom" : "canonical";
-		const oddsSummary = caseOdds(c)
-			.map((o) => `${o.rarity.split(" ")[0].slice(0, 5)}=${(o.weight * 100).toFixed(2)}%`)
-			.join(" ");
 		console.log(
 			`  - ${c.name.padEnd(15)} ${String(c.price).padStart(4)} FC: ` +
-				`EV ${c.ev.toFixed(0).padStart(5)} (${((c.ev / c.price) * 100).toFixed(1).padStart(5)}%) ` +
-				`| odds ${oddsLabel} | ${oddsSummary}`,
+				`EV ${c.ev.toFixed(0).padStart(5)} (${((c.ev / c.price) * 100).toFixed(1).padStart(5)}%) `
 		);
 	}
 
