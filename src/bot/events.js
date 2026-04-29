@@ -3,6 +3,7 @@ import { getAkhys, refreshLoadoutSkinPrices, migrateLegacyLoadouts, backfillCsSk
 import { fetchSuggestedPrices, fetchSkinsData } from "../api/cs.js";
 import { buildPriceIndex, buildVersionMap, buildWeaponRarityPriceMap, csSkinsPrices } from "../utils/cs.state.js";
 import * as csPriceService from "../services/csPrice.service.js";
+import { buildCaseRegistry } from "../utils/cs.cases.js";
 
 /**
  * Initializes and attaches all necessary event listeners to the Discord client.
@@ -51,6 +52,7 @@ export function initializeEvents(client, io) {
 		} catch (e) {
 			console.error("[Startup] Error refreshing loadout skin prices:", e);
 		}
+		buildCaseRegistry();
 		console.log("--- FlopoBOT is fully operational ---");
 	});
 

@@ -33,6 +33,7 @@ import { handleCaseOpening } from "../../utils/marketNotifs.js";
 import { drawCaseContent, drawCaseSkin, getSkinUpgradeProbs } from "../../utils/caseOpening.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getRandomSkinWithRandomSpecs, RarityToColor, TRADE_UP_MAP } from "../../utils/cs.utils.js";
+import { getAllCases, getCaseById, getCaseContents, openCase } from "../../utils/cs.cases.js";
 
 // Create a new router instance
 const router = express.Router();
@@ -110,92 +111,24 @@ export function apiRoutes(client, io) {
 		}
 	});
 
-	router.post("/open-case", requireAuth, async (req, res) => {
-		const userId = req.userId;
-		const { caseType } = req.body;
-
-		let caseTypeVal;
-		switch (caseType) {
-			case "standard":
-				caseTypeVal = 500;
-				break;
-			case "premium":
-				caseTypeVal = 750;
-				break;
-			case "ultra":
-				caseTypeVal = 1500;
-				break;
-			case "esport":
-				caseTypeVal = 100;
-				break;
-			default:
-				return res.status(400).json({ error: "Invalid case type." });
-		}
-		const commandUser = await userService.getUser(userId);
-		if (!commandUser) return res.status(404).json({ error: "User not found." });
-		const valoPrice = caseTypeVal;
-		if (commandUser.coins < valoPrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
-
-		try {
-			const selectedSkins = await drawCaseContent(caseType);
-
-			const result = await drawCaseSkin(selectedSkins);
-
-			// --- Update Database ---
-			await logService.insertLog({
-				id: `${userId}-${Date.now()}`,
-				userId: userId,
-				action: "VALO_CASE_OPEN",
-				targetUserId: null,
-				coinsAmount: -valoPrice,
-				userNewAmount: commandUser.coins - valoPrice,
-			});
-			await userService.updateUserCoins(userId, commandUser.coins - valoPrice);
-			await skinService.updateSkin({
-				uuid: result.randomSkinData.uuid,
-				userId: userId,
-				currentLvl: result.randomLevel,
-				currentChroma: result.randomChroma,
-				currentPrice: result.finalPrice,
-			});
-
-			console.log(
-				`${commandUser.username} opened a ${caseType} Valorant case and received skin ${result.randomSelectedSkinUuid}`,
-			);
-			const updatedSkin = await skinService.getSkin(result.randomSkinData.uuid);
-			await handleCaseOpening(caseType, userId, result.randomSelectedSkinUuid, client);
-
-			const contentSkins = selectedSkins.map((item) => {
-				return {
-					...item,
-					isMelee: isMeleeSkin(item.displayName),
-					isVCT: isVCTSkin(item.displayName),
-					isChampions: isChampionsSkin(item.displayName),
-					vctRegion: getVCTRegion(item.displayName),
-				};
-			});
-			res.json({
-				selectedSkins: contentSkins,
-				randomSelectedSkinUuid: result.randomSelectedSkinUuid,
-				randomSelectedSkinIndex: result.randomSelectedSkinIndex,
-				updatedSkin,
-			});
-		} catch (error) {
-			console.error("Error fetching skins:", error);
-			res.status(500).json({ error: "Failed to fetch skins." });
-		}
-	});
-
 	router.post("/open-cs-case", requireAuth, async (req, res) => {
 		const userId = req.userId;
-		const casePrice = parseInt(process.env.CS_CASE_PRICE) || 250;
+		const { caseId } = req.body || {};
+
+		const curatedCase = caseId ? getCaseById(caseId) : null;
+		if (caseId && !curatedCase) return res.status(404).json({ error: "Unknown case." });
+
+		const casePrice = curatedCase?.price ?? parseInt(process.env.CS_CASE_PRICE) ?? 250;
 
 		const commandUser = await userService.getUser(userId);
 		if (!commandUser) return res.status(404).json({ error: "User not found." });
 		if (commandUser.coins < casePrice) return res.status(403).json({ error: "Not enough FlopoCoins." });
 
+		const rollSkin = async () => (caseId ? openCase(caseId) : getRandomSkinWithRandomSpecs());
+
 		try {
-			const randomSkin = await getRandomSkinWithRandomSpecs();
+			const randomSkin = await rollSkin();
+			if (!randomSkin) return res.status(500).json({ error: "Failed to roll a skin from this case." });
 
 			const baseDisplayName = randomSkin.data.name || randomSkin.name;
 			const versionedDisplayName = randomSkin.version ? `${baseDisplayName} ${randomSkin.version}` : baseDisplayName;
@@ -238,7 +171,8 @@ export function apiRoutes(client, io) {
 						rarityColor: created.rarityColor,
 					});
 				} else {
-					const decoy = await getRandomSkinWithRandomSpecs();
+					const decoy = await rollSkin();
+					if (!decoy) continue;
 					const decoyBase = decoy.data.name || decoy.name;
 					rouletteSkins.push({
 						displayName: decoy.version ? `${decoyBase} ${decoy.version}` : decoyBase,
@@ -254,6 +188,16 @@ export function apiRoutes(client, io) {
 			console.error("Error opening CS case:", error);
 			res.status(500).json({ error: "Failed to open CS case." });
 		}
+	});
+
+	router.get("/cs-cases", (req, res) => {
+		res.json(getAllCases());
+	});
+
+	router.get("/cs-cases/:id", (req, res) => {
+		const contents = getCaseContents(req.params.id);
+		if (!contents) return res.status(404).json({ error: "Unknown case." });
+		res.json(contents);
 	});
 
 	router.post("/trade-up", requireAuth, async (req, res) => {
