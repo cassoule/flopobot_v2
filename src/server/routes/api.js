@@ -173,6 +173,7 @@ export function apiRoutes(client, io) {
 				} else {
 					const decoy = await rollSkin();
 					if (!decoy) continue;
+					const decoyBase = decoy.data.name || decoy.name;
 					rouletteSkins.push({
 						displayName: decoy.version ? `${decoyBase} ${decoy.version}` : decoyBase,
 						imageUrl: decoy.data.image || null,
