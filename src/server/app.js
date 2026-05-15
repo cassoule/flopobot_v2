@@ -16,6 +16,7 @@ import { monkeRoutes } from "./routes/monke.js";
 import { authRoutes } from "./routes/auth.js";
 import { maintenance } from "../game/state.js";
 import { sicboRoutes } from "./routes/sicbo.js";
+import { crashRoutes } from "./routes/crash.js"
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();
@@ -110,6 +111,9 @@ app.use("/api/market-place", marketRoutes(client, io));
 
 // SicBo routes
 app.use("/api/sicbo", sicboRoutes(client, io));
+
+// Crash routes
+app.use("/api/crash", crashRoutes(client, io));
 
 // erinyes-specific routes
 // app.use("/api/erinyes", erinyesRoutes(client, io));

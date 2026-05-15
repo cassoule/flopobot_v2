@@ -30,6 +30,7 @@ import { fetchSuggestedPrices, fetchSkinsData } from "../../api/cs.js";
 import { csSkinsData, csSkinsPrices } from "../../utils/cs.state.js";
 import { getRandomSkinWithRandomSpecs, RarityToColor } from "../../utils/cs.utils.js";
 import * as csSkinService from "../../services/csSkin.service.js";
+import { generateCrashPoint } from "../../game/crash.js";
 
 // Constants for the AI rate limiter
 const MAX_REQUESTS_PER_INTERVAL = parseInt(process.env.MAX_REQUESTS || "5");
@@ -315,6 +316,77 @@ async function handleAdminCommands(message) {
 			break;
 		case `${prefix}:maintenance`:
 			handleMaintenanceCommand(message, args);
+			break;
+		case `${prefix}:crash-simulate`:
+			try {
+				const numSimulations = parseInt(args[0]) || 10000; // 10 000 par défaut si non spécifié
+				if (numSimulations > 1000000) {
+					message.reply("Calme-toi, limite la simulation à 1 000 000 max pour ne pas freeze le bot.");
+					return;
+				}
+
+				const results = [];
+				let sum = 0;
+				let min = Infinity;
+				let max = 0;
+
+				// Catégories de distribution
+				const distribution = {
+					instant: 0, // 1.00x pile (Le House Edge pur)
+					low: 0,     // 1.01x à 1.99x
+					mid: 0,     // 2.00x à 9.99x
+					high: 0,    // 10.00x à 99.99x
+					moon: 0,    // 100.00x et plus
+				};
+
+				const startTime = Date.now();
+
+				// Boucle de simulation
+				for (let i = 0; i < numSimulations; i++) {
+					const point = generateCrashPoint(); // Ta fonction du jeu Crash
+					results.push(point);
+					sum += point;
+
+					if (point < min) min = point;
+					if (point > max) max = point;
+
+					if (point === 1.00) distribution.instant++;
+					else if (point < 2.00) distribution.low++;
+					else if (point < 10.00) distribution.mid++;
+					else if (point < 100.00) distribution.high++;
+					else distribution.moon++;
+				}
+
+				const executionTime = Date.now() - startTime;
+
+				// Calcul de la médiane
+				results.sort((a, b) => a - b);
+				const median = results[Math.floor(results.length / 2)];
+				const average = sum / numSimulations;
+
+				// Formatage de la réponse pour coller à ton style CS:GO
+				const replyText = `
+**Simulation: Crash Game (${numSimulations} rounds)**
+Execution time: ${executionTime}ms
+
+Average:  ${average.toFixed(2)}x
+Median:   ${median.toFixed(2)}x
+Min:      ${min.toFixed(2)}x
+Max:      ${max.toFixed(2)}x
+
+**Multiplier distribution:**
+Instant Crash (1.00x): ${distribution.instant} (${((distribution.instant / numSimulations) * 100).toFixed(2)}%)
+Low (1.01x - 1.99x): ${distribution.low} (${((distribution.low / numSimulations) * 100).toFixed(2)}%)
+Mid (2.00x - 9.99x): ${distribution.mid} (${((distribution.mid / numSimulations) * 100).toFixed(2)}%)
+High (10.00x - 99.99x): ${distribution.high} (${((distribution.high / numSimulations) * 100).toFixed(2)}%)
+Moon (100.00x+): ${distribution.moon} (${((distribution.moon / numSimulations) * 100).toFixed(2)}%)
+     `.trim();
+
+				message.reply(replyText);
+			} catch (e) {
+				console.error(e);
+				message.reply(`Error during crash simulation: ${e.message}`);
+			}
 			break;
 	}
 }
