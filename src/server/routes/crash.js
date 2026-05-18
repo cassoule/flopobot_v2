@@ -8,7 +8,6 @@ import { requireAuth } from "../middleware/auth.js";
 import { resolveUser } from "../../utils/index.js";
 import { createCrashRoom, placeBet, cashOut, settleAll, resetForNewRound } from "../../game/crash.js";
 
-// --- EXPRESS ROUTES & GAME LOOP ---
 
 export function crashRoutes(io) {
 	const router = express.Router();

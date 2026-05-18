@@ -157,7 +157,6 @@ export function cashOut(room, playerId, currentMultiplayer) {
 
 /**
  * Processes auto-cashouts for all players during the flight.
- * Needs to be called inside your game loop when room.status === "flying".
  * @param {object} room - The active room.
  * @returns {Array} List of players who just auto-cashed out.
  */
@@ -185,7 +184,7 @@ export async function settleAll(room) {
 
 	// Add the result to the room history
 	room.history.push(room.crashPoint);
-	if (room.history.length > 10) room.history.shift(); // Keep the last 10
+	if (room.history.length > 10) room.history.shift(); 
 
 	for (const p of Object.values(room.players)) {
 		if (!p.inRound) continue;
@@ -235,7 +234,6 @@ export async function settleAll(room) {
 			}
 		}
 
-		// Update the Discord Embed for this player
 		try {
 			const guild = client.guilds.cache.get(process.env.GUILD_ID);
 			const generalChannel = guild.channels.cache.get(process.env.BOT_CHANNEL_ID);
