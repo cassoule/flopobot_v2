@@ -184,7 +184,7 @@ export async function settleAll(room) {
 
 	// Add the result to the room history
 	room.history.push(room.crashPoint);
-	if (room.history.length > 10) room.history.shift(); 
+	if (room.history.length > 10) room.history.shift();
 
 	for (const p of Object.values(room.players)) {
 		if (!p.inRound) continue;
@@ -251,7 +251,8 @@ export async function settleAll(room) {
 							name: `Mises jouées`,
 							value: `**${p.totalBets}**`,
 							inline: true,
-						})
+						},
+					)
 					.setColor(p.totalDelta >= 0 ? 0x22a55b : 0xed4245)
 					.setTimestamp(new Date());
 				await msg.edit({ embeds: [updatedEmbed], components: [] });

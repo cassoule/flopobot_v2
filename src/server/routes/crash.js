@@ -8,7 +8,6 @@ import { requireAuth } from "../middleware/auth.js";
 import { resolveUser } from "../../utils/index.js";
 import { createCrashRoom, placeBet, cashOut, settleAll, resetForNewRound } from "../../game/crash.js";
 
-
 export function crashRoutes(io) {
 	const router = express.Router();
 	const room = createCrashRoom();
@@ -162,7 +161,6 @@ export function crashRoutes(io) {
 		const now = Date.now();
 
 		if (room.status === "betting" && now >= room.phase_ends_at) {
-
 			room.status = "flying";
 			room.flight_started_at = now;
 			room.currentMultiplier = 1.0;

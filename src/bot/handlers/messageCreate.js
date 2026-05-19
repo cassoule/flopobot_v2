@@ -333,10 +333,10 @@ async function handleAdminCommands(message) {
 				// Catégories de distribution
 				const distribution = {
 					instant: 0, // 1.00x pile (Le House Edge pur)
-					low: 0,     // 1.01x à 1.99x
-					mid: 0,     // 2.00x à 9.99x
-					high: 0,    // 10.00x à 99.99x
-					moon: 0,    // 100.00x et plus
+					low: 0, // 1.01x à 1.99x
+					mid: 0, // 2.00x à 9.99x
+					high: 0, // 10.00x à 99.99x
+					moon: 0, // 100.00x et plus
 				};
 
 				const startTime = Date.now();
@@ -350,10 +350,10 @@ async function handleAdminCommands(message) {
 					if (point < min) min = point;
 					if (point > max) max = point;
 
-					if (point === 1.00) distribution.instant++;
-					else if (point < 2.00) distribution.low++;
-					else if (point < 10.00) distribution.mid++;
-					else if (point < 100.00) distribution.high++;
+					if (point === 1.0) distribution.instant++;
+					else if (point < 2.0) distribution.low++;
+					else if (point < 10.0) distribution.mid++;
+					else if (point < 100.0) distribution.high++;
 					else distribution.moon++;
 				}
 

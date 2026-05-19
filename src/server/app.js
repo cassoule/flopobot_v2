@@ -16,7 +16,7 @@ import { monkeRoutes } from "./routes/monke.js";
 import { authRoutes } from "./routes/auth.js";
 import { maintenance } from "../game/state.js";
 import { sicboRoutes } from "./routes/sicbo.js";
-import { crashRoutes } from "./routes/crash.js"
+import { crashRoutes } from "./routes/crash.js";
 
 // --- EXPRESS APP INITIALIZATION ---
 const app = express();

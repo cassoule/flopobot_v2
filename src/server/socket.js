@@ -671,7 +671,6 @@ export const emitSicboToast = (payload) => {
 	io.emit("sicbo:toast", payload);
 };
 
-
 // --- Crash emissions ---
 export const emitCrashUpdate = (eventName, roomSnapshot) => {
 	io.emit(eventName, roomSnapshot);
