@@ -671,6 +671,15 @@ export const emitSicboToast = (payload) => {
 	io.emit("sicbo:toast", payload);
 };
 
+// --- Crash emissions ---
+export const emitCrashUpdate = (eventName, roomSnapshot) => {
+	io.emit(eventName, roomSnapshot);
+};
+
+export const emitCrashToast = (payload) => {
+	io.emit("crash:toast", payload);
+};
+
 // --- Maintenance Mode Helpers ---
 
 export function activateMaintenance(scheduledEnd = null) {
