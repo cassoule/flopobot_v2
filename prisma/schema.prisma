@@ -33,6 +33,7 @@ model User {
   gamesAsP2     Game[]        @relation("Player2")
   sotdStats     SotdStat[]
   sudokuStats   SudokuStat[]
+  motsFlechesStats MotsFlechesStat[]
   transactions  Transaction[]
 
   @@map("users")
@@ -228,6 +229,41 @@ model SudokuStat {
   user User @relation(fields: [userId], references: [id])
 
   @@map("sudoku_stats")
+}
+
+model MotsFlechesOtd {
+  id            Int      @id @default(autoincrement())
+  date         String   @unique
+  rows         Int
+  cols         Int
+  grid         String
+  slots        String
+  defCells     String   @map("def_cells")
+  definitions  String
+  wordCount    Int      @map("word_count")
+  seedString   String?  @map("seed_string")
+  generationMs Int?     @map("generation_ms")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  stats        MotsFlechesStat[]
+
+  @@map("mots_fleches_otd")
+}
+
+model MotsFlechesStat {
+  id          String   @id
+  otdId       Int      @map("otd_id")
+  userId      String   @map("user_id")
+  time        Int?
+  cluesSolved Int?     @map("clues_solved")
+  score       Int?
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  otd  MotsFlechesOtd @relation(fields: [otdId], references: [id])
+  user User           @relation(fields: [userId], references: [id])
+
+  @@unique([otdId, userId])
+  @@map("mots_fleches_stats")
 }
 
 model UserFeaturedSkin {
