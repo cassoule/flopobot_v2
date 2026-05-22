@@ -17,6 +17,7 @@ import {
 	randomSkinPrice,
 	slowmodesHandler,
 	initTodaysSudokuOTD,
+	initTodaysMotsFlechesOTD,
 } from "../../game/points.js";
 import { activePolls, activeSlowmodes, requestTimestamps, skins, maintenance } from "../../game/state.js";
 import { activateMaintenance, deactivateMaintenance, startMaintenanceNotifications } from "../../server/socket.js";
@@ -216,6 +217,10 @@ async function handleAdminCommands(message) {
 		case `${prefix}:init-sudoku`:
 			initTodaysSudokuOTD();
 			message.reply("New Sudoku of the Day initialized.");
+			break;
+		case `${prefix}:init-motsfleches`:
+			initTodaysMotsFlechesOTD();
+			message.reply("New Mots Fléchés of the Day initialized.");
 			break;
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");

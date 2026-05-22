@@ -312,16 +312,15 @@ export async function initTodaysSudokuOTD() {
  * Awards previous day's top 3 from the most recent past grid that has stats.
  */
 export async function initTodaysMotsFlechesOTD() {
-	const today = new Date().toISOString().slice(0, 10);
+	const today = new Date().toISOString();
 	console.log(`Initializing new Mots Fléchés OTD for ${today}...`);
 
-	const existing = await motsFlechesService.getMotsFlechesOTDByDate(today);
+	const existing = await motsFlechesService.getMotsFlechesOTDByDate(today.slice(0, 10));
 	if (existing) {
 		console.log(`Mots Fléchés OTD for ${today} already exists, skipping generation.`);
 		return;
 	}
 
-	// 1. Award previous day's top 3 (from the latest archived OTD before today that has stats)
 	try {
 		const latestPast = await (async () => {
 			const all = await motsFlechesService.listArchive(null, 7);
@@ -360,7 +359,6 @@ export async function initTodaysMotsFlechesOTD() {
 		console.error("Error awarding previous Mots Fléchés OTD winners:", e);
 	}
 
-	// 2. Generate today's grid (with retry on Gemini failure)
 	const words = getAllWords();
 	let result = null;
 	for (let attempt = 1; attempt <= 3; attempt++) {
@@ -378,11 +376,10 @@ export async function initTodaysMotsFlechesOTD() {
 		return;
 	}
 
-	// 3. Persist
 	try {
 		const defCellsObj = Object.fromEntries(result.defCells);
 		const inserted = await motsFlechesService.insertMotsFlechesOTD({
-			date: today,
+			date: today.slice(0, 10),
 			rows: result.grid.length,
 			cols: result.grid[0]?.length || 0,
 			grid: JSON.stringify(result.grid),
@@ -394,7 +391,6 @@ export async function initTodaysMotsFlechesOTD() {
 			generationMs: Math.round(result.generationTimeMs ?? 0),
 		});
 
-		// Boot any in-progress OTD games so clients reload
 		for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
 			if (gameData.isSOTD) {
 				delete activeMotsFlechesGames[userId];
