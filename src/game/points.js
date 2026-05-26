@@ -145,7 +145,6 @@ export async function randomSkinPrice() {
 export async function initTodaysSOTD() {
 	console.log(`Initializing new Solitaire of the Day...`);
 
-	// 1. Award previous day's winner
 	const rankings = await solitaireService.getAllSOTDStats();
 	if (rankings.length > 0) {
 		const winnerId = rankings[0].userId;
@@ -158,15 +157,19 @@ export async function initTodaysSOTD() {
 		if (winnerUser) {
 			const reward = 2500;
 			const newCoinTotal = winnerUser.coins + reward;
-			await userService.updateUserCoins(winnerId, newCoinTotal);
-			await logService.insertLog({
-				id: `${winnerId}-sotd-win-${Date.now()}`,
-				targetUserId: null,
-				userId: winnerId,
-				action: "SOTD_FIRST_PLACE",
-				coinsAmount: reward,
-				userNewAmount: newCoinTotal,
-			});
+			try {
+				await userService.updateUserCoins(winnerId, newCoinTotal);
+				await logService.insertLog({
+					id: `${winnerId}-sotd-win-${Date.now()}`,
+					targetUserId: null,
+					userId: winnerId,
+					action: "SOTD_FIRST_PLACE",
+					coinsAmount: reward,
+					userNewAmount: newCoinTotal,
+				});
+			} catch (e) {
+				console.error(`Error awarding SOTD winner:`, e);
+			}
 			console.log(
 				`${winnerUser.globalName || winnerUser.username} won the previous SOTD and received ${reward} coins.`,
 			);
@@ -174,15 +177,19 @@ export async function initTodaysSOTD() {
 		if (secondPlaceUser) {
 			const reward = 1500;
 			const newCoinTotal = secondPlaceUser.coins + reward;
-			await userService.updateUserCoins(secondPlaceId, newCoinTotal);
-			await logService.insertLog({
-				id: `${secondPlaceId}-sotd-second-${Date.now()}`,
-				targetUserId: null,
-				userId: secondPlaceId,
-				action: "SOTD_SECOND_PLACE",
-				coinsAmount: reward,
-				userNewAmount: newCoinTotal,
-			});
+			try {
+				await userService.updateUserCoins(secondPlaceId, newCoinTotal);
+				await logService.insertLog({
+					id: `${secondPlaceId}-sotd-second-${Date.now()}`,
+					targetUserId: null,
+					userId: secondPlaceId,
+					action: "SOTD_SECOND_PLACE",
+					coinsAmount: reward,
+					userNewAmount: newCoinTotal,
+				});
+			} catch (e) {
+				console.error(`Error awarding SOTD second place:`, e);
+			}
 			console.log(
 				`${secondPlaceUser.globalName || secondPlaceUser.username} got second place in the previous SOTD and received ${reward} coins.`,
 			);
@@ -190,22 +197,24 @@ export async function initTodaysSOTD() {
 		if (thirdPlaceUser) {
 			const reward = 750;
 			const newCoinTotal = thirdPlaceUser.coins + reward;
-			await userService.updateUserCoins(thirdPlaceId, newCoinTotal);
-			await logService.insertLog({
-				id: `${thirdPlaceId}-sotd-third-${Date.now()}`,
-				targetUserId: null,
-				userId: thirdPlaceId,
-				action: "SOTD_THIRD_PLACE",
-				coinsAmount: reward,
-				userNewAmount: newCoinTotal,
-			});
+			try {
+				await userService.updateUserCoins(thirdPlaceId, newCoinTotal);
+				await logService.insertLog({
+					id: `${thirdPlaceId}-sotd-third-${Date.now()}`,
+					targetUserId: null,
+					userId: thirdPlaceId,
+					action: "SOTD_THIRD_PLACE",
+					coinsAmount: reward,
+					userNewAmount: newCoinTotal,
+				});
+			} catch (e) {
+				console.error(`Error awarding SOTD third place:`, e);
+			}
 			console.log(
 				`${thirdPlaceUser.globalName || thirdPlaceUser.username} got third place in the previous SOTD and received ${reward} coins.`,
 			);
 		}
 	}
-
-	// 2. Generate a new seeded deck for today
 	const newRandomSeed = Date.now().toString(36) + Math.random().toString(36).substr(2);
 	let numericSeed = 0;
 	for (let i = 0; i < newRandomSeed.length; i++) {
@@ -217,7 +226,6 @@ export async function initTodaysSOTD() {
 	const shuffledDeck = seededShuffle(deck, rng);
 	const todaysSOTD = deal(shuffledDeck);
 
-	// 3. Clear old stats and save the new game state to the database
 	try {
 		await solitaireService.clearSOTDStats();
 		await solitaireService.deleteSOTD();
@@ -250,7 +258,6 @@ export async function initTodaysSOTD() {
 export async function initTodaysSudokuOTD() {
 	console.log(`Initializing new Sudoku of the Day...`);
 
-	// 1. Award previous day's top 3
 	const rankings = await sudokuService.getAllSudokuOTDStats();
 	if (rankings.length > 0) {
 		const places = [
@@ -266,25 +273,28 @@ export async function initTodaysSudokuOTD() {
 			if (!player) continue;
 
 			const newCoinTotal = player.coins + reward;
-			await userService.updateUserCoins(playerId, newCoinTotal);
-			await logService.insertLog({
-				id: `${playerId}-sudoku-sotd-${action.toLowerCase()}-${Date.now()}`,
-				targetUserId: null,
-				userId: playerId,
-				action,
-				coinsAmount: reward,
-				userNewAmount: newCoinTotal,
-			});
+			try {
+				await userService.updateUserCoins(playerId, newCoinTotal);
+				await logService.insertLog({
+					id: `${playerId}-sudoku-sotd-${action.toLowerCase()}-${Date.now()}`,
+					targetUserId: null,
+					userId: playerId,
+					action,
+					coinsAmount: reward,
+					userNewAmount: newCoinTotal,
+				});
+			} catch (e) {
+				console.error(`Error awarding Sudoku SOTD ${action.toLowerCase()}:`, e);
+			}
+
 			console.log(
 				`${player.globalName || player.username} got ${action.replace("SUDOKU_SOTD_", "").toLowerCase().replace("_", " ")} in the previous Sudoku SOTD and received ${reward} coins.`,
 			);
 		}
 	}
 
-	// 2. Generate a new puzzle
 	const { puzzle, solution, difficulty } = generatePuzzle("medium");
 
-	// 3. Clear old stats and save new puzzle
 	try {
 		await sudokuService.clearSudokuOTDStats();
 		await sudokuService.deleteSudokuOTD();
