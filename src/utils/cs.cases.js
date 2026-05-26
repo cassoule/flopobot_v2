@@ -154,7 +154,7 @@ export function buildCaseRegistry() {
 	for (const c of Object.values(caseRegistry)) {
 		console.log(
 			`  - ${c.name.padEnd(15)} ${String(c.price).padStart(4)} FC: ` +
-				`EV ${c.ev.toFixed(0).padStart(5)} (${((c.ev / c.price) * 100).toFixed(1).padStart(5)}%) `
+				`EV ${c.ev.toFixed(0).padStart(5)} (${((c.ev / c.price) * 100).toFixed(1).padStart(5)}%) `,
 		);
 	}
 
