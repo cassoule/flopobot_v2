@@ -8,29 +8,29 @@ datasource db {
 }
 
 model User {
-  id            String @id
+  id            String  @id
   username      String
   globalName    String? @map("global_name")
-  warned        Int    @default(0)
-  warns         Int    @default(0)
-  allTimeWarns  Int    @default(0)
-  totalRequests Int    @default(0)
-  coins         Int    @default(0)
-  dailyQueried  Int    @default(0)
+  warned        Int     @default(0)
+  warns         Int     @default(0)
+  allTimeWarns  Int     @default(0)
+  totalRequests Int     @default(0)
+  coins         Int     @default(0)
+  dailyQueried  Int     @default(0)
   avatarUrl     String?
-  isAkhy        Int    @default(0)
+  isAkhy        Int     @default(0)
 
   elo           Elo?
   skins         Skin[]
-  csSkins       CsSkin[]      @relation("CsSkins")
-  sellerOffers  MarketOffer[] @relation("Seller")
-  buyerOffers   MarketOffer[] @relation("Buyer")
+  csSkins       CsSkin[]           @relation("CsSkins")
+  sellerOffers  MarketOffer[]      @relation("Seller")
+  buyerOffers   MarketOffer[]      @relation("Buyer")
   featuredSkins UserFeaturedSkin[] @relation("FeaturedSkins")
   bids          Bid[]
-  logs          Log[]         @relation("UserLogs")
-  targetLogs    Log[]         @relation("TargetUserLogs")
-  gamesAsP1     Game[]        @relation("Player1")
-  gamesAsP2     Game[]        @relation("Player2")
+  logs          Log[]              @relation("UserLogs")
+  targetLogs    Log[]              @relation("TargetUserLogs")
+  gamesAsP1     Game[]             @relation("Player1")
+  gamesAsP2     Game[]             @relation("Player2")
   sotdStats     SotdStat[]
   sudokuStats   SudokuStat[]
   transactions  Transaction[]
@@ -79,10 +79,10 @@ model CsSkin {
   loadoutEquippedPrice  Int?      @map("loadout_equipped_price")
   version               String?
 
-  owner        User?                  @relation("CsSkins", fields: [userId], references: [id])
-  marketOffers MarketOffer[]          @relation("CsSkinOffers")
-  featuredBy   UserFeaturedSkin?      @relation("FeaturedBy")
-  priceHistory CsSkinPriceHistory[]   @relation("CsSkinPriceHistory")
+  owner        User?                @relation("CsSkins", fields: [userId], references: [id])
+  marketOffers MarketOffer[]        @relation("CsSkinOffers")
+  featuredBy   UserFeaturedSkin?    @relation("FeaturedBy")
+  priceHistory CsSkinPriceHistory[] @relation("CsSkinPriceHistory")
 
   @@unique([userId, loadoutSlot])
   @@map("cs_skins")
@@ -102,18 +102,18 @@ model CsSkinPriceHistory {
 }
 
 model MarketOffer {
-  id            String  @id
-  skinUuid      String? @map("skin_uuid")
-  csSkinId      String? @map("cs_skin_id")
-  sellerId      String  @map("seller_id")
-  startingPrice Int     @map("starting_price")
-  buyoutPrice   Int?    @map("buyout_price")
-  finalPrice    Int?    @map("final_price")
+  id            String    @id
+  skinUuid      String?   @map("skin_uuid")
+  csSkinId      String?   @map("cs_skin_id")
+  sellerId      String    @map("seller_id")
+  startingPrice Int       @map("starting_price")
+  buyoutPrice   Int?      @map("buyout_price")
+  finalPrice    Int?      @map("final_price")
   status        String
   postedAt      DateTime? @default(now()) @map("posted_at")
-  openingAt     DateTime @map("opening_at")
-  closingAt     DateTime @map("closing_at")
-  buyerId       String? @map("buyer_id")
+  openingAt     DateTime  @map("opening_at")
+  closingAt     DateTime  @map("closing_at")
+  buyerId       String?   @map("buyer_id")
 
   skin   Skin?   @relation(fields: [skinUuid], references: [uuid])
   csSkin CsSkin? @relation("CsSkinOffers", fields: [csSkinId], references: [id])
@@ -125,10 +125,10 @@ model MarketOffer {
 }
 
 model Bid {
-  id            String  @id
-  bidderId      String  @map("bidder_id")
-  marketOfferId String  @map("market_offer_id")
-  offerAmount   Int     @map("offer_amount")
+  id            String    @id
+  bidderId      String    @map("bidder_id")
+  marketOfferId String    @map("market_offer_id")
+  offerAmount   Int       @map("offer_amount")
   offeredAt     DateTime? @default(now()) @map("offered_at")
 
   bidder      User        @relation(fields: [bidderId], references: [id])
@@ -138,12 +138,12 @@ model Bid {
 }
 
 model Log {
-  id            String  @id
-  userId        String  @map("user_id")
+  id            String    @id
+  userId        String    @map("user_id")
   action        String?
-  targetUserId  String? @map("target_user_id")
-  coinsAmount   Int?    @map("coins_amount")
-  userNewAmount Int?    @map("user_new_amount")
+  targetUserId  String?   @map("target_user_id")
+  coinsAmount   Int?      @map("coins_amount")
+  userNewAmount Int?      @map("user_new_amount")
   createdAt     DateTime? @default(now()) @map("created_at")
 
   user       User  @relation("UserLogs", fields: [userId], references: [id])
@@ -153,19 +153,19 @@ model Log {
 }
 
 model Game {
-  id        String  @id
+  id        String    @id
   p1        String
   p2        String?
-  p1Score   Int?    @map("p1_score")
-  p2Score   Int?    @map("p2_score")
-  p1Elo     Int?    @map("p1_elo")
-  p2Elo     Int?    @map("p2_elo")
-  p1NewElo  Int?    @map("p1_new_elo")
-  p2NewElo  Int?    @map("p2_new_elo")
-  p1Rd      Float?  @map("p1_rd")
-  p2Rd      Float?  @map("p2_rd")
-  p1NewRd   Float?  @map("p1_new_rd")
-  p2NewRd   Float?  @map("p2_new_rd")
+  p1Score   Int?      @map("p1_score")
+  p2Score   Int?      @map("p2_score")
+  p1Elo     Int?      @map("p1_elo")
+  p2Elo     Int?      @map("p2_elo")
+  p1NewElo  Int?      @map("p1_new_elo")
+  p2NewElo  Int?      @map("p2_new_elo")
+  p1Rd      Float?    @map("p1_rd")
+  p2Rd      Float?    @map("p2_rd")
+  p1NewRd   Float?    @map("p1_new_rd")
+  p2NewRd   Float?    @map("p2_new_rd")
   type      String?
   timestamp DateTime? @default(now()) @map("timestamp")
 
@@ -260,15 +260,15 @@ model CsPriceSnapshot {
 }
 
 model Transaction {
-  id            String  @id
-  sessionId     String  @unique @map("session_id")
-  userId        String  @map("user_id")
-  coinsAmount   Int     @map("coins_amount")
-  amountCents   Int     @map("amount_cents")
-  currency      String  @default("eur")
-  customerEmail String? @map("customer_email")
-  customerName  String? @map("customer_name")
-  paymentStatus String  @map("payment_status")
+  id            String    @id
+  sessionId     String    @unique @map("session_id")
+  userId        String    @map("user_id")
+  coinsAmount   Int       @map("coins_amount")
+  amountCents   Int       @map("amount_cents")
+  currency      String    @default("eur")
+  customerEmail String?   @map("customer_email")
+  customerName  String?   @map("customer_name")
+  paymentStatus String    @map("payment_status")
   createdAt     DateTime? @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
