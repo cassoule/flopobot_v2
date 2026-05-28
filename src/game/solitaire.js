@@ -1,5 +1,4 @@
 // --- Constants for Deck Creation ---
-import { emitSolitaireUpdate } from "../server/socket.js";
 
 const SUITS = ["h", "d", "s", "c"]; // Hearts, Diamonds, Spades, Clubs
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"];
@@ -11,7 +10,7 @@ const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"];
  * @param {string} rank - e.g., 'A', 'K', '7'
  * @returns {number} The numeric value (Ace=1, King=13).
  */
-function getRankValue(rank) {
+export function getRankValue(rank) {
 	if (rank === "A") return 1;
 	if (rank === "T") return 10;
 	if (rank === "J") return 11;
@@ -25,7 +24,7 @@ function getRankValue(rank) {
  * @param {string} suit - e.g., 'h', 's'
  * @returns {string} 'red' or 'black'.
  */
-function getCardColor(suit) {
+export function getCardColor(suit) {
 	return suit === "h" || suit === "d" ? "red" : "black";
 }
 
@@ -294,72 +293,6 @@ export function draw3Cards(gameState) {
 export function checkWinCondition(gameState) {
 	const foundationCardCount = gameState.foundationPiles.reduce((acc, pile) => acc + pile.length, 0);
 	return foundationCardCount === 52;
-}
-
-/**
- * Checks if the game can be automatically solved (all tableau cards are face-up).
- * @param {Object} gameState - The current state of the game.
- * @returns {boolean} True if the game can be auto-solved.
- */
-export function checkAutoSolve(gameState) {
-	if (gameState.stockPile.length > 0 || gameState.wastePile.length > 0) return false;
-	for (const pile of gameState.tableauPiles) {
-		for (const card of pile) {
-			if (!card.faceUp) return false;
-		}
-	}
-	return true;
-}
-
-export function autoSolveMoves(userId, gameState) {
-	const moves = [];
-	const foundations = JSON.parse(JSON.stringify(gameState.foundationPiles));
-	const tableau = JSON.parse(JSON.stringify(gameState.tableauPiles));
-
-	function canMoveToFoundation(card) {
-		let foundationPile = foundations.find((pile) => pile[pile.length - 1]?.suit === card.suit);
-		if (!foundationPile) {
-			foundationPile = foundations.find((pile) => pile.length === 0);
-		}
-		if (foundationPile.length === 0) {
-			return card.rank === "A"; // Only Ace can be placed on empty foundation
-		} else {
-			const topCard = foundationPile[foundationPile.length - 1];
-			return card.suit === topCard.suit && getRankValue(card.rank) === getRankValue(topCard.rank) + 1;
-		}
-	}
-
-	let moved;
-	do {
-		moved = false;
-
-		for (let i = 0; i < tableau.length; i++) {
-			const column = tableau[i];
-			if (column.length === 0) continue;
-
-			const card = column[column.length - 1]; // Top card of the tableau column
-			let foundationIndex = foundations.findIndex((pile) => pile[pile.length - 1]?.suit === card.suit);
-			if (foundationIndex === -1) {
-				foundationIndex = foundations.findIndex((pile) => pile.length === 0);
-			}
-			if (canMoveToFoundation(card)) {
-				let moveData = {
-					destPileIndex: foundationIndex,
-					destPileType: "foundationPiles",
-					sourceCardIndex: column.length - 1,
-					sourcePileIndex: i,
-					sourcePileType: "tableauPiles",
-					userId: userId,
-				};
-				tableau[i].pop();
-				foundations[foundationIndex].push(card);
-				//moveCard(gameState, moveData)
-				moves.push(moveData);
-				moved = true;
-			}
-		}
-	} while (moved); //(foundations.reduce((acc, pile) => acc + pile.length, 0));
-	emitSolitaireUpdate(userId, moves);
 }
 
 /**

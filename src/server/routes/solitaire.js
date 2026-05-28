@@ -13,8 +13,8 @@ import {
 	seededShuffle,
 	undoMove,
 	draw3Cards,
-	checkAutoSolve,
-	autoSolveMoves,
+	getRankValue,
+	getCardColor,
 } from "../../game/solitaire.js";
 
 // --- Game State & Database Imports ---
@@ -25,11 +25,37 @@ import * as solitaireService from "../../services/solitaire.service.js";
 import { socketEmit } from "../socket.js";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
 import { initTodaysSOTD } from "../../game/points.js";
+import { randomUUID } from "crypto";
 
 const SOTD_RESET_VOTES_THRESHOLD = parseInt(process.env.SOTD_RESET_VOTES_THRESHOLD) || 3;
 
-// Create a new router instance
 const router = express.Router();
+
+// Stores guest wins waiting to be claimed after login
+const pendingSubmissions = {};
+// Stores active guest games, keyed by gameId
+const guestGames = {};
+
+/** Gets the active game by userId (logged in) or gameId (guest). */
+function getActiveGame(userId, gameId) {
+	if (userId && activeSolitaireGames[userId]) {
+		return activeSolitaireGames[userId];
+	}
+	if (!userId && gameId && guestGames[gameId]) {
+		return guestGames[gameId];
+	}
+	return null;
+}
+
+/** Deletes an active game. */
+function deleteActiveGame(userId, gameId) {
+	if (userId && activeSolitaireGames[userId]) {
+		delete activeSolitaireGames[userId];
+	}
+	if (!userId && gameId && guestGames[gameId]) {
+		delete guestGames[gameId];
+	}
+}
 
 /**
  * Factory function to create and configure the solitaire API routes.
@@ -40,12 +66,12 @@ const router = express.Router();
 export function solitaireRoutes(client, io) {
 	// --- Game Initialization Endpoints ---
 
-	router.post("/start", requireAuth, (req, res) => {
+	router.post("/start", optionalAuth, (req, res) => {
 		const userId = req.userId;
 		const { userSeed, hardMode } = req.body;
 
-		// If a game already exists for the user, return it instead of creating a new one.
-		if (activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
+		// Return existing game if user already has one
+		if (userId && activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
 			return res.json({
 				success: true,
 				gameState: activeSolitaireGames[userId],
@@ -54,10 +80,8 @@ export function solitaireRoutes(client, io) {
 
 		let deck, seed;
 		if (userSeed) {
-			// Use the provided seed to create a deterministic game
 			seed = userSeed;
 		} else {
-			// Create a random seed if none is provided
 			seed = Date.now().toString(36) + Math.random().toString(36).substr(2);
 		}
 
@@ -76,19 +100,24 @@ export function solitaireRoutes(client, io) {
 		gameState.moves = 0;
 		gameState.hist = [];
 		gameState.hardMode = hardMode ?? false;
-		gameState.autocompleting = false;
-		activeSolitaireGames[userId] = gameState;
+		gameState.startTime = Date.now();
+		gameState.endTime = null;
 
-		res.json({ success: true, gameState });
+		if (userId) {
+			activeSolitaireGames[userId] = gameState;
+			res.json({ success: true, gameState });
+		} else {
+			// Guest: store game with a generated gameId
+			const gameId = randomUUID();
+			guestGames[gameId] = gameState;
+			res.json({ success: true, gameState, gameId });
+		}
 	});
 
-	router.post("/start/sotd", requireAuth, async (req, res) => {
+	router.post("/start/sotd", optionalAuth, async (req, res) => {
 		const userId = req.userId;
-		/*if (!userId || !getUser.get(userId)) {
-			return res.status(404).json({ error: 'User not found.' });
-		}*/
 
-		if (activeSolitaireGames[userId]?.isSOTD) {
+		if (userId && activeSolitaireGames[userId]?.isSOTD) {
 			return res.json({
 				success: true,
 				gameState: activeSolitaireGames[userId],
@@ -114,11 +143,17 @@ export function solitaireRoutes(client, io) {
 			seed: sotd.seed,
 			hist: [],
 			hardMode: false,
-			autocompleting: false,
 		};
 
-		activeSolitaireGames[userId] = gameState;
-		res.json({ success: true, gameState });
+		if (userId) {
+			activeSolitaireGames[userId] = gameState;
+			res.json({ success: true, gameState });
+		} else {
+			// Guest SOTD: store game with a generated gameId
+			const gameId = randomUUID();
+			guestGames[gameId] = gameState;
+			res.json({ success: true, gameState, gameId });
+		}
 	});
 
 	// --- Game State & Action Endpoints ---
@@ -148,9 +183,6 @@ export function solitaireRoutes(client, io) {
 		sotdResetVotes.add(userId);
 
 		if (sotdResetVotes.size >= SOTD_RESET_VOTES_THRESHOLD) {
-			// initTodaysSOTD clears stats + sotdResetVotes and kicks active SOTD games.
-			// Since voting is locked once rankings is non-empty, the award branch inside
-			// initTodaysSOTD is a no-op here.
 			await initTodaysSOTD();
 			await socketEmit("sotd-reset", {});
 			await socketEmit("sotd-reset-vote-update", {
@@ -193,18 +225,17 @@ export function solitaireRoutes(client, io) {
 		}
 	});
 
-	router.post("/reset", requireAuth, (req, res) => {
+	router.post("/reset", optionalAuth, (req, res) => {
 		const userId = req.userId;
-		if (activeSolitaireGames[userId]) {
-			delete activeSolitaireGames[userId];
-		}
+		const { gameId } = req.body;
+		deleteActiveGame(userId, gameId);
 		res.json({ success: true, message: "Game reset." });
 	});
 
-	router.post("/move", requireAuth, async (req, res) => {
+	router.post("/move", optionalAuth, async (req, res) => {
 		const userId = req.userId;
-		const { ...moveData } = req.body;
-		const gameState = activeSolitaireGames[userId];
+		const { gameId, ...moveData } = req.body;
+		const gameState = getActiveGame(userId, gameId);
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });
 		if (gameState.isDone) return res.status(400).json({ error: "This game is already completed." });
@@ -213,28 +244,34 @@ export function solitaireRoutes(client, io) {
 			moveCard(gameState, moveData);
 			updateGameStats(gameState, "move", moveData);
 
-			if (!gameState.autocompleting) {
-				const canAutoSolve = checkAutoSolve(gameState);
-				if (canAutoSolve) {
-					gameState.autocompleting = true;
-					autoSolveMoves(userId, gameState);
-				}
-			}
-
 			const win = checkWinCondition(gameState);
 			if (win) {
 				gameState.isDone = true;
-				await handleWin(userId, gameState, io);
+				if (userId) {
+					await handleWin(userId, gameState, io);
+					res.json({ success: true, gameState, win });
+				} else {
+					// Guest player: store the win for later claim
+					const submissionToken = randomUUID();
+					pendingSubmissions[submissionToken] = {
+						gameState,
+						timeTaken: Date.now() - gameState.startTime,
+					};
+					deleteActiveGame(null, gameId);
+					res.json({ success: true, gameState, win, submissionToken });
+				}
+			} else {
+				res.json({ success: true, gameState, win });
 			}
-			res.json({ success: true, gameState, win });
 		} else {
 			res.status(400).json({ error: "Invalid move" });
 		}
 	});
 
-	router.post("/draw", requireAuth, (req, res) => {
+	router.post("/draw", optionalAuth, (req, res) => {
 		const userId = req.userId;
-		const gameState = activeSolitaireGames[userId];
+		const { gameId } = req.body;
+		const gameState = getActiveGame(userId, gameId);
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });
 		if (gameState.isDone) return res.status(400).json({ error: "This game is already completed." });
@@ -248,9 +285,10 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
-	router.post("/undo", requireAuth, (req, res) => {
+	router.post("/undo", optionalAuth, (req, res) => {
 		const userId = req.userId;
-		const gameState = activeSolitaireGames[userId];
+		const { gameId } = req.body;
+		const gameState = getActiveGame(userId, gameId);
 
 		if (!gameState) return res.status(404).json({ error: "Game not found." });
 		if (gameState.isDone) return res.status(400).json({ error: "This game is already completed." });
@@ -260,6 +298,23 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
+	// Endpoint to claim a pending submission after login
+	router.post("/claim-submission", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { submissionToken } = req.body;
+
+		if (!submissionToken || !pendingSubmissions[submissionToken]) {
+			return res.status(404).json({ error: "No pending submission found." });
+		}
+
+		const { gameState, timeTaken } = pendingSubmissions[submissionToken];
+		delete pendingSubmissions[submissionToken];
+
+		await handleWin(userId, gameState, io);
+
+		res.json({ success: true, time: timeTaken, moves: gameState.moves, score: gameState.score });
+	});
+
 	return router;
 }
 
@@ -267,19 +322,16 @@ export function solitaireRoutes(client, io) {
 
 /** Updates game stats like moves and score after an action. */
 function updateGameStats(gameState, actionType, moveData = {}) {
-	// if (!gameState.isSOTD) return; // Only track stats for SOTD
-
 	gameState.moves++;
 	if (actionType === "move") {
 		if (moveData.destPileType === "foundationPiles") {
-			gameState.score += 10; // Move card to foundation
+			gameState.score += 10;
 		}
 		if (moveData.sourcePileType === "foundationPiles") {
-			gameState.score -= 15; // Move card from foundation (penalty)
+			gameState.score -= 15;
 		}
 	}
 	if (actionType === "draw" && gameState.wastePile.length === 0) {
-		// Penalty for cycling through an empty stock pile
 		gameState.score -= 5;
 	}
 }
@@ -304,7 +356,7 @@ async function handleWin(userId, gameState, io) {
 		await socketEmit("data-updated", { table: "users" });
 	}
 
-	if (!gameState.isSOTD) return; // Only process SOTD wins here
+	if (!gameState.isSOTD) return;
 
 	gameState.endTime = Date.now();
 	const timeTaken = gameState.endTime - gameState.startTime;
@@ -312,7 +364,6 @@ async function handleWin(userId, gameState, io) {
 	const existingStats = await solitaireService.getUserSOTDStats(userId);
 
 	if (!existingStats) {
-		// First time completing the SOTD, grant bonus coins
 		const bonus = 1000;
 		const newCoins = currentUser.coins + bonus;
 		await userService.updateUserCoins(userId, newCoins);
@@ -327,7 +378,6 @@ async function handleWin(userId, gameState, io) {
 		await socketEmit("data-updated", { table: "users" });
 	}
 
-	// Save the score if it's better than the previous one
 	const isNewBest =
 		!existingStats ||
 		gameState.score > existingStats.score ||
@@ -347,5 +397,9 @@ async function handleWin(userId, gameState, io) {
 		});
 		await socketEmit("sotd-update");
 		console.log(`New SOTD high score for ${currentUser.globalName}: ${gameState.score} points.`);
+	}
+
+	if (activeSolitaireGames[userId]) {
+		delete activeSolitaireGames[userId];
 	}
 }

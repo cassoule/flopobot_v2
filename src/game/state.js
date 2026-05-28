@@ -21,8 +21,6 @@ export let activeSolitaireGames = {};
 // Cleared on reset and on daily SOTD regeneration.
 export let sotdResetVotes = new Set();
 
-// Stores active Sudoku games, keyed by user ID.
-export let activeSudokuGames = {};
 
 // Stores active Poker rooms, keyed by a unique room ID (uuidv4).
 export let pokerRooms = {};

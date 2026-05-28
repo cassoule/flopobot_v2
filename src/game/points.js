@@ -3,17 +3,11 @@ import * as skinService from "../services/skin.service.js";
 import * as logService from "../services/log.service.js";
 import * as solitaireService from "../services/solitaire.service.js";
 import * as sudokuService from "../services/sudoku.service.js";
-import {
-	activeSlowmodes,
-	activeSolitaireGames,
-	activeSudokuGames,
-	messagesTimestamps,
-	skins,
-	sotdResetVotes,
-} from "./state.js";
+import { activeSlowmodes, activeSolitaireGames, messagesTimestamps, skins, sotdResetVotes } from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { generatePuzzle } from "./sudoku.js";
 import { emitSolitaireUpdate, emitSudokuUpdate } from "../server/socket.js";
+import { clearAllSOTDGames } from "../server/routes/sudoku.js";
 
 /**
  * Handles awarding points (coins) to users for their message activity.
@@ -290,12 +284,7 @@ export async function initTodaysSudokuOTD() {
 		await sudokuService.deleteSudokuOTD();
 		await sudokuService.insertSudokuOTD({ puzzle, solution, difficulty });
 
-		for (const [userId, gameData] of Object.entries(activeSudokuGames)) {
-			if (gameData.isSOTD) {
-				delete activeSudokuGames[userId];
-				emitSudokuUpdate(userId);
-			}
-		}
+		clearAllSOTDGames();
 
 		console.log(`Today's Sudoku OTD is ready.`);
 	} catch (e) {
