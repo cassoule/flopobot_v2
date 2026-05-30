@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/index.js";
 
-const SQLITE_PATH = "flopobot.db";
+const SQLITE_PATH = "prisma/flopobot.db";
 const CHUNK = 1000;
 
 const sqlite = new Database(SQLITE_PATH, { readonly: true });
