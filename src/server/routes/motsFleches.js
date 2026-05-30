@@ -23,11 +23,24 @@ function hydrateFromRow(row) {
 }
 
 function publicGameState(state) {
-	const { grid, slots, ...safe } = state;
+	const { grid, slots, definitions, defCells, ...safe } = state;
 	const rows = state.rows;
 	const cols = state.cols;
 	const blackMask = grid.map((row) => row.map((ch) => ch === "#"));
-	return { ...safe, rows, cols, blackMask };
+
+	// Strip solution words from clues: resolve each clue's definition text
+	// server-side and drop both `word` and the word-keyed `definitions` dict
+	// so the client payload contains no answers.
+	const publicDefCells = {};
+	for (const [key, clues] of Object.entries(defCells || {})) {
+		publicDefCells[key] = (clues || []).map((clue) => ({
+			arrow: clue.arrow,
+			dir: clue.dir,
+			def: (definitions && clue.word ? definitions[clue.word.toUpperCase()] : "") || "",
+		}));
+	}
+
+	return { ...safe, rows, cols, blackMask, defCells: publicDefCells };
 }
 
 function computeScore(time, cluesSolved) {
