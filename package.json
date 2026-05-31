@@ -23,26 +23,35 @@
 	"dependencies": {
 		"@google/genai": "^1.30.0",
 		"@mistralai/mistralai": "^1.6.0",
-		"@prisma/client": "^6.19.2",
+		"@prisma/adapter-pg": "^7.8.0",
+		"@prisma/client": "^7.8.0",
 		"axios": "^1.15.0",
 		"discord-interactions": "^4.0.0",
 		"discord.js": "^14.25.1",
-		"dotenv": "^16.0.3",
+		"dotenv": "^16.6.1",
 		"express": "^4.18.2",
 		"jsonwebtoken": "^9.0.3",
 		"node-cron": "^3.0.3",
 		"openai": "^4.104.0",
+		"pg": "^8.21.0",
 		"pnpm": "^10.29.2",
 		"pokersolver": "^2.1.4",
-		"prisma": "^6.19.2",
+		"prisma": "^7.8.0",
 		"socket.io": "^4.8.1",
 		"stripe": "^20.3.0",
 		"sudoku-gen": "^1.0.2",
 		"unique-names-generator": "^4.7.1",
 		"uuid": "^11.1.0"
 	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"better-sqlite3"
+		]
+	},
 	"devDependencies": {
 		"@eslint/json": "^0.14.0",
+		"@types/pg": "^8.20.0",
+		"better-sqlite3": "^12.10.0",
 		"eslint": "^9.39.1",
 		"globals": "^16.5.0",
 		"nodemon": "^3.0.0",

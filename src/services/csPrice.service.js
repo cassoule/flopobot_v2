@@ -19,9 +19,8 @@ export async function insertSnapshots(items) {
 
 // Returns a nested map: marketHashName → { [version || ""]: priceData }.
 // Grouping on (market_hash_name, version) preserves phased/gem variants that share a hash.
-// Uses SQLite's NULL-safe `IS` operator so the (market_hash_name, version, created_at) index
-// can be used directly — COALESCE(version, '') would wrap the column and defeat the index,
-// causing the query to hang on large snapshot tables.
+// IS NOT DISTINCT FROM gives NULL-safe equality on Postgres without wrapping the column,
+// keeping the (market_hash_name, version, created_at) index usable.
 export async function getLatestSnapshotsMap() {
 	let rows;
 	try {
@@ -35,7 +34,7 @@ export async function getLatestSnapshotsMap() {
 				GROUP BY market_hash_name, version
 			) latest
 				ON s.market_hash_name = latest.market_hash_name
-				AND s.version IS latest.version
+				AND s.version IS NOT DISTINCT FROM latest.version
 				AND s.created_at = latest.max_created
 		`;
 	} catch (e) {
