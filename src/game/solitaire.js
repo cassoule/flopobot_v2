@@ -296,6 +296,87 @@ export function checkWinCondition(gameState) {
 }
 
 /**
+ * Returns a lightweight, client-facing view of the game state.
+ *
+ * Omits server-only fields — most importantly `hist`, the undo history which
+ * grows unbounded over a game and is never read by the client. The full
+ * gameState (with `hist`) is kept in memory server-side for undo; this only
+ * trims what we serialize onto the wire.
+ *
+ * @param {Object} gameState - The full server-side game state.
+ * @returns {Object} The client-facing subset of the state.
+ */
+export function serializeGameState(gameState) {
+	if (!gameState) return gameState;
+	return {
+		tableauPiles: gameState.tableauPiles,
+		foundationPiles: gameState.foundationPiles,
+		stockPile: gameState.stockPile,
+		wastePile: gameState.wastePile,
+		isDone: gameState.isDone,
+		isSOTD: gameState.isSOTD,
+		seed: gameState.seed,
+		hardMode: gameState.hardMode,
+		score: gameState.score,
+		moves: gameState.moves,
+		startTime: gameState.startTime,
+	};
+}
+
+/** Whether a single card may be placed on top of a foundation pile. */
+function canStackOnFoundation(card, foundationPile) {
+	const topCard = foundationPile[foundationPile.length - 1];
+	if (!topCard) return card.rank === "A";
+	return card.suit === topCard.suit && getRankValue(card.rank) - getRankValue(topCard.rank) === 1;
+}
+
+/**
+ * Whether the game has reached the "auto-completable" state: every tableau card
+ * is face-up and both the stock and waste are empty. From this state Klondike is
+ * mathematically guaranteed winnable, so the remaining cards can be dealt
+ * straight to the foundations.
+ * @param {Object} gameState - The current state of the game.
+ * @returns {boolean}
+ */
+export function isAutoSolvable(gameState) {
+	if (!gameState || gameState.isDone) return false;
+	if (gameState.stockPile.length > 0 || gameState.wastePile.length > 0) return false;
+
+	const allFaceUp = gameState.tableauPiles.every((pile) => pile.every((card) => card.faceUp));
+	if (!allFaceUp) return false;
+
+	const foundationCount = gameState.foundationPiles.reduce((acc, pile) => acc + pile.length, 0);
+	return foundationCount < 52;
+}
+
+/**
+ * Greedily moves every remaining tableau card to the foundations. Only valid
+ * from an auto-solvable state (see isAutoSolvable). Mutates gameState in place,
+ * scoring each placement like a normal foundation move (+10).
+ * @param {Object} gameState - The current state of the game.
+ */
+export function autoComplete(gameState) {
+	let movedAny = true;
+	while (movedAny) {
+		movedAny = false;
+		for (const pile of gameState.tableauPiles) {
+			if (pile.length === 0) continue;
+			const card = pile[pile.length - 1];
+			for (const foundationPile of gameState.foundationPiles) {
+				if (canStackOnFoundation(card, foundationPile)) {
+					pile.pop();
+					foundationPile.push(card);
+					gameState.moves++;
+					gameState.score += 10;
+					movedAny = true;
+					break;
+				}
+			}
+		}
+	}
+}
+
+/**
  * Reverts the game state to its previous state based on the last move in the history.
  * This function mutates the gameState object directly.
  * @param {Object} gameState - The current game state, which includes a `hist` array.

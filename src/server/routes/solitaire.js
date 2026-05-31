@@ -14,6 +14,9 @@ import {
 	draw3Cards,
 	getRankValue,
 	getCardColor,
+	serializeGameState,
+	isAutoSolvable,
+	autoComplete,
 } from "../../game/solitaire.js";
 
 // --- Game State & Database Imports ---
@@ -74,7 +77,7 @@ export function solitaireRoutes(client, io) {
 		if (userId && activeSolitaireGames[userId] && !activeSolitaireGames[userId].isSOTD) {
 			return res.json({
 				success: true,
-				gameState: activeSolitaireGames[userId],
+				gameState: serializeGameState(activeSolitaireGames[userId]),
 			});
 		}
 
@@ -105,12 +108,12 @@ export function solitaireRoutes(client, io) {
 
 		if (userId) {
 			activeSolitaireGames[userId] = gameState;
-			res.json({ success: true, gameState });
+			res.json({ success: true, gameState: serializeGameState(gameState) });
 		} else {
 			// Guest: store game with a generated gameId
 			const gameId = randomUUID();
 			guestGames[gameId] = gameState;
-			res.json({ success: true, gameState, gameId });
+			res.json({ success: true, gameState: serializeGameState(gameState), gameId });
 		}
 	});
 
@@ -120,7 +123,7 @@ export function solitaireRoutes(client, io) {
 		if (userId && activeSolitaireGames[userId]?.isSOTD) {
 			return res.json({
 				success: true,
-				gameState: activeSolitaireGames[userId],
+				gameState: serializeGameState(activeSolitaireGames[userId]),
 			});
 		}
 
@@ -147,12 +150,12 @@ export function solitaireRoutes(client, io) {
 
 		if (userId) {
 			activeSolitaireGames[userId] = gameState;
-			res.json({ success: true, gameState });
+			res.json({ success: true, gameState: serializeGameState(gameState) });
 		} else {
 			// Guest SOTD: store game with a generated gameId
 			const gameId = randomUUID();
 			guestGames[gameId] = gameState;
-			res.json({ success: true, gameState, gameId });
+			res.json({ success: true, gameState: serializeGameState(gameState), gameId });
 		}
 	});
 
@@ -219,7 +222,7 @@ export function solitaireRoutes(client, io) {
 		const { userId } = req.params;
 		const gameState = activeSolitaireGames[userId];
 		if (gameState) {
-			res.json({ success: true, gameState });
+			res.json({ success: true, gameState: serializeGameState(gameState) });
 		} else {
 			res.status(404).json({ error: "No active game found for this user." });
 		}
@@ -249,7 +252,12 @@ export function solitaireRoutes(client, io) {
 				gameState.isDone = true;
 				if (userId) {
 					const result = await handleWin(userId, gameState, io, client);
-					res.json({ success: true, gameState, win, isNewUser: result?.isNewUser || false });
+					res.json({
+						success: true,
+						gameState: serializeGameState(gameState),
+						win,
+						isNewUser: result?.isNewUser || false,
+					});
 				} else {
 					// Guest player: store the win for later claim
 					const submissionToken = randomUUID();
@@ -258,13 +266,13 @@ export function solitaireRoutes(client, io) {
 						timeTaken: Date.now() - gameState.startTime,
 					};
 					deleteActiveGame(null, gameId);
-					res.json({ success: true, gameState, win, submissionToken });
+					res.json({ success: true, gameState: serializeGameState(gameState), win, submissionToken });
 				}
 			} else {
-				res.json({ success: true, gameState, win });
+				res.json({ success: true, gameState: serializeGameState(gameState), win });
 			}
 		} else {
-			res.status(400).json({ error: "Invalid move" });
+			res.status(400).json({ error: "Invalid move", gameState: serializeGameState(gameState) });
 		}
 	});
 
@@ -282,7 +290,7 @@ export function solitaireRoutes(client, io) {
 			drawCard(gameState);
 		}
 		updateGameStats(gameState, "draw");
-		res.json({ success: true, gameState });
+		res.json({ success: true, gameState: serializeGameState(gameState) });
 	});
 
 	router.post("/undo", optionalAuth, (req, res) => {
@@ -295,7 +303,55 @@ export function solitaireRoutes(client, io) {
 		if (gameState.hist.length === 0) return res.status(400).json({ error: "No moves to undo." });
 
 		undoMove(gameState);
-		res.json({ success: true, gameState });
+		res.json({ success: true, gameState: serializeGameState(gameState) });
+	});
+
+	router.post("/auto-complete", optionalAuth, async (req, res) => {
+		const userId = req.userId;
+		const { gameId } = req.body;
+		const gameState = getActiveGame(userId, gameId);
+
+		if (!gameState) return res.status(404).json({ error: "Game not found." });
+		if (gameState.isDone) return res.status(400).json({ error: "This game is already completed." });
+
+		// Server-side guard: only auto-complete from a genuinely solvable state.
+		if (!isAutoSolvable(gameState)) {
+			return res.status(400).json({
+				error: "Game is not in an auto-completable state.",
+				gameState: serializeGameState(gameState),
+			});
+		}
+
+		autoComplete(gameState);
+
+		const win = checkWinCondition(gameState);
+		if (!win) {
+			// Should be unreachable: an auto-solvable state always completes.
+			return res.status(500).json({
+				error: "Auto-complete failed to finish the game.",
+				gameState: serializeGameState(gameState),
+			});
+		}
+
+		gameState.isDone = true;
+		if (userId) {
+			const result = await handleWin(userId, gameState, io, client);
+			res.json({
+				success: true,
+				gameState: serializeGameState(gameState),
+				win,
+				isNewUser: result?.isNewUser || false,
+			});
+		} else {
+			// Guest player: store the win for later claim, same as a normal win.
+			const submissionToken = randomUUID();
+			pendingSubmissions[submissionToken] = {
+				gameState,
+				timeTaken: Date.now() - gameState.startTime,
+			};
+			deleteActiveGame(null, gameId);
+			res.json({ success: true, gameState: serializeGameState(gameState), win, submissionToken });
+		}
 	});
 
 	router.post("/claim-submission", requireAuth, async (req, res) => {
