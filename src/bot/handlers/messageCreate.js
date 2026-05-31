@@ -639,16 +639,17 @@ async function handleGiveCommand(message, args) {
 		}
 
 		// 2. Find the skin by name (case-insensitive partial match)
-		const skinEntries = Object.entries(csSkinsData).filter(([name]) =>
-			name.toLowerCase().includes(skinQuery),
-		);
+		const skinEntries = Object.entries(csSkinsData).filter(([name]) => name.toLowerCase().includes(skinQuery));
 		if (skinEntries.length === 0) {
 			message.reply(`Aucun skin trouvé pour "${parts[0]}".`);
 			return;
 		}
 		if (skinEntries.length > 5) {
 			message.reply(
-				`Trop de skins correspondent à "${parts[0]}" (${skinEntries.length}). Sois plus précis.\nSuggestions: ${skinEntries.slice(0, 5).map(([n]) => `\`${n}\``).join(", ")}...`,
+				`Trop de skins correspondent à "${parts[0]}" (${skinEntries.length}). Sois plus précis.\nSuggestions: ${skinEntries
+					.slice(0, 5)
+					.map(([n]) => `\`${n}\``)
+					.join(", ")}...`,
 			);
 			return;
 		}
@@ -659,9 +660,7 @@ async function handleGiveCommand(message, args) {
 		if (wearQuery) {
 			wearStateKey = VALID_WEAR_STATES.find((ws) => ws === wearQuery);
 			if (!wearStateKey) {
-				message.reply(
-					`Wear state invalide. Utilise un de ceux-ci: ${VALID_WEAR_STATES.join(", ")}`,
-				);
+				message.reply(`Wear state invalide. Utilise un de ceux-ci: ${VALID_WEAR_STATES.join(", ")}`);
 				return;
 			}
 		}
@@ -689,7 +688,9 @@ async function handleGiveCommand(message, args) {
 		}
 
 		const { generatePrice } = await import("../../utils/cs.utils.js");
-		const price = parseInt(generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, version));
+		const price = parseInt(
+			generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, version),
+		);
 
 		// 5. Create the skin in DB
 		const displayName = skinData.name || skinName;
@@ -716,8 +717,8 @@ async function handleGiveCommand(message, args) {
 		const souvenirTag = skinIsSouvenir ? "Souvenir " : "";
 		message.reply(
 			`✅ Skin donné à **${targetUser.username}** !\n` +
-			`${stattrakTag}${souvenirTag}**${fullDisplayName}** (${wearStateName})\n` +
-			`Float: ${float.toFixed(6)} | Prix: **${price} FlopoCoins**`,
+				`${stattrakTag}${souvenirTag}**${fullDisplayName}** (${wearStateName})\n` +
+				`Float: ${float.toFixed(6)} | Prix: **${price} FlopoCoins**`,
 		);
 	} catch (e) {
 		console.error("Error in handleGiveCommand:", e);

@@ -16,7 +16,6 @@ import {
 	getCardColor,
 } from "../../game/solitaire.js";
 
-
 // --- Game State & Database Imports ---
 import { activeSolitaireGames, sotdResetVotes } from "../../game/state.js";
 import * as userService from "../../services/user.service.js";
@@ -300,7 +299,6 @@ export function solitaireRoutes(client, io) {
 	});
 
 	router.post("/claim-submission", requireAuth, async (req, res) => {
-
 		const userId = req.userId;
 		const { submissionToken } = req.body;
 
@@ -313,7 +311,13 @@ export function solitaireRoutes(client, io) {
 
 		const result = await handleWin(userId, gameState, io, client);
 
-		res.json({ success: true, time: timeTaken, moves: gameState.moves, score: gameState.score, isNewUser: result?.isNewUser || false });
+		res.json({
+			success: true,
+			time: timeTaken,
+			moves: gameState.moves,
+			score: gameState.score,
+			isNewUser: result?.isNewUser || false,
+		});
 	});
 
 	return router;
@@ -375,7 +379,9 @@ async function handleWin(userId, gameState, io, client) {
 			if (!currentUser) return;
 
 			isNewUser = true;
-			console.log(`Auto-registered user ${discordUser.username} (${discordUser.id}) via solitaire win with welcome bonus`);
+			console.log(
+				`Auto-registered user ${discordUser.username} (${discordUser.id}) via solitaire win with welcome bonus`,
+			);
 		} catch (e) {
 			console.error("Failed to auto-register user during solitaire win:", e);
 			return;
@@ -446,5 +452,3 @@ async function handleWin(userId, gameState, io, client) {
 
 	return { isNewUser };
 }
-
-

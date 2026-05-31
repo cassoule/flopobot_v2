@@ -21,7 +21,6 @@ export let activeSolitaireGames = {};
 // Cleared on reset and on daily SOTD regeneration.
 export let sotdResetVotes = new Set();
 
-
 // Stores active Poker rooms, keyed by a unique room ID (uuidv4).
 export let pokerRooms = {};
 

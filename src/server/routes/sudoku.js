@@ -175,7 +175,7 @@ export function sudokuRoutes(client, io) {
 		if (valid) {
 			gameState.isDone = true;
 			// Use client time if provided (more accurate), fallback to server calculation
-			const timeTaken = clientTime || (Date.now() - gameState.startTime);
+			const timeTaken = clientTime || Date.now() - gameState.startTime;
 
 			if (userId) {
 				// Logged in user: give rewards immediately
@@ -218,13 +218,13 @@ export function sudokuRoutes(client, io) {
 async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
 	let currentUser = await userService.getUser(userId);
 	let isNewUser = false;
-	
+
 	// Auto-register user if they don't exist yet
 	if (!currentUser) {
 		try {
 			const discordUser = await resolveUser(client, userId);
 			if (!discordUser) return;
-			
+
 			await userService.insertUser({
 				id: discordUser.id,
 				username: discordUser.username,
@@ -236,7 +236,7 @@ async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
 				avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
 				isAkhy: 0,
 			});
-			
+
 			// Give welcome bonus coins like the dashboard registration
 			await userService.updateUserCoins(userId, 5000);
 			await logService.insertLog({
@@ -247,10 +247,10 @@ async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
 				coinsAmount: 5000,
 				userNewAmount: 5000,
 			});
-			
+
 			currentUser = await userService.getUser(userId);
 			if (!currentUser) return;
-			
+
 			isNewUser = true;
 			console.log(`Auto-registered user ${discordUser.username} (${discordUser.id}) via sudoku win with welcome bonus`);
 		} catch (e) {
@@ -275,7 +275,7 @@ async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
 		return { isNewUser };
 	}
 
-	const finalTime = timeTaken || (Date.now() - gameState.startTime);
+	const finalTime = timeTaken || Date.now() - gameState.startTime;
 	const existingStats = await sudokuService.getUserSudokuOTDStats(userId);
 
 	if (!existingStats) {

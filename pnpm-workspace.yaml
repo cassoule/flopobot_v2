@@ -1,3 +1,8 @@
+allowBuilds:
+  "@prisma/engines": set this to true or false
+  better-sqlite3: set this to true or false
+  prisma: set this to true or false
+  protobufjs: set this to true or false
 onlyBuiltDependencies:
   - "@prisma/client"
   - "@prisma/engines"
