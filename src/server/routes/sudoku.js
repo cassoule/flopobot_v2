@@ -5,6 +5,7 @@ import * as logService from "../../services/log.service.js";
 import * as sudokuService from "../../services/sudoku.service.js";
 import { socketEmit } from "../socket.js";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
+import { resolveUser } from "../../utils/index.js";
 import { randomUUID } from "crypto";
 
 const gameStates = {};
@@ -178,10 +179,10 @@ export function sudokuRoutes(client, io) {
 
 			if (userId) {
 				// Logged in user: give rewards immediately
-				await handleWin(userId, gameState, gameId, timeTaken);
+				const result = await handleWin(userId, gameState, gameId, timeTaken, io, client);
 				delete gameStates[gameId];
 				delete userGameMap[userId];
-				res.json({ success: true, valid: true, time: timeTaken });
+				res.json({ success: true, valid: true, time: timeTaken, isNewUser: result?.isNewUser || false });
 			} else {
 				// Guest player: keep the win pending
 				const submissionToken = randomUUID();
@@ -206,17 +207,57 @@ export function sudokuRoutes(client, io) {
 		const { gameState, timeTaken } = pendingSubmissions[submissionToken];
 		delete pendingSubmissions[submissionToken];
 
-		await handleWin(userId, gameState, null, timeTaken);
+		const result = await handleWin(userId, gameState, null, timeTaken, io, client);
 
-		res.json({ success: true, time: timeTaken });
+		res.json({ success: true, time: timeTaken, isNewUser: result?.isNewUser || false });
 	});
 
 	return router;
 }
 
-async function handleWin(userId, gameState, gameId, timeTaken) {
-	const currentUser = await userService.getUser(userId);
-	if (!currentUser) return;
+async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
+	let currentUser = await userService.getUser(userId);
+	let isNewUser = false;
+	
+	// Auto-register user if they don't exist yet
+	if (!currentUser) {
+		try {
+			const discordUser = await resolveUser(client, userId);
+			if (!discordUser) return;
+			
+			await userService.insertUser({
+				id: discordUser.id,
+				username: discordUser.username,
+				globalName: discordUser.globalName,
+				warned: 0,
+				warns: 0,
+				allTimeWarns: 0,
+				totalRequests: 0,
+				avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
+				isAkhy: 0,
+			});
+			
+			// Give welcome bonus coins like the dashboard registration
+			await userService.updateUserCoins(userId, 5000);
+			await logService.insertLog({
+				id: `${userId}-welcome-${Date.now()}`,
+				userId: userId,
+				action: "WELCOME_BONUS",
+				targetUserId: null,
+				coinsAmount: 5000,
+				userNewAmount: 5000,
+			});
+			
+			currentUser = await userService.getUser(userId);
+			if (!currentUser) return;
+			
+			isNewUser = true;
+			console.log(`Auto-registered user ${discordUser.username} (${discordUser.id}) via sudoku win with welcome bonus`);
+		} catch (e) {
+			console.error("Failed to auto-register user during sudoku win:", e);
+			return;
+		}
+	}
 
 	if (!gameState.isSOTD) {
 		const reward = REWARDS_BY_DIFFICULTY[gameState.difficulty] || 250;
@@ -231,7 +272,7 @@ async function handleWin(userId, gameState, gameId, timeTaken) {
 			userNewAmount: newCoins,
 		});
 		await socketEmit("data-updated", { table: "users" });
-		return;
+		return { isNewUser };
 	}
 
 	const finalTime = timeTaken || (Date.now() - gameState.startTime);
@@ -264,6 +305,8 @@ async function handleWin(userId, gameState, gameId, timeTaken) {
 		await socketEmit("sudoku-sotd-update");
 		console.log(`New Sudoku SOTD best time for ${currentUser.globalName}: ${finalTime}ms.`);
 	}
+
+	return { isNewUser };
 }
 
 export function clearAllSOTDGames() {

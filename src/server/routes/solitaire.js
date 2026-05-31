@@ -3,7 +3,6 @@ import express from "express";
 // --- Game Logic Imports ---
 import {
 	createDeck,
-	shuffle,
 	deal,
 	isValidMove,
 	moveCard,
@@ -17,6 +16,7 @@ import {
 	getCardColor,
 } from "../../game/solitaire.js";
 
+
 // --- Game State & Database Imports ---
 import { activeSolitaireGames, sotdResetVotes } from "../../game/state.js";
 import * as userService from "../../services/user.service.js";
@@ -25,6 +25,7 @@ import * as solitaireService from "../../services/solitaire.service.js";
 import { socketEmit } from "../socket.js";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
 import { initTodaysSOTD } from "../../game/points.js";
+import { resolveUser } from "../../utils/index.js";
 import { randomUUID } from "crypto";
 
 const SOTD_RESET_VOTES_THRESHOLD = parseInt(process.env.SOTD_RESET_VOTES_THRESHOLD) || 3;
@@ -248,8 +249,8 @@ export function solitaireRoutes(client, io) {
 			if (win) {
 				gameState.isDone = true;
 				if (userId) {
-					await handleWin(userId, gameState, io);
-					res.json({ success: true, gameState, win });
+					const result = await handleWin(userId, gameState, io, client);
+					res.json({ success: true, gameState, win, isNewUser: result?.isNewUser || false });
 				} else {
 					// Guest player: store the win for later claim
 					const submissionToken = randomUUID();
@@ -298,8 +299,8 @@ export function solitaireRoutes(client, io) {
 		res.json({ success: true, gameState });
 	});
 
-	// Endpoint to claim a pending submission after login
 	router.post("/claim-submission", requireAuth, async (req, res) => {
+
 		const userId = req.userId;
 		const { submissionToken } = req.body;
 
@@ -310,9 +311,9 @@ export function solitaireRoutes(client, io) {
 		const { gameState, timeTaken } = pendingSubmissions[submissionToken];
 		delete pendingSubmissions[submissionToken];
 
-		await handleWin(userId, gameState, io);
+		const result = await handleWin(userId, gameState, io, client);
 
-		res.json({ success: true, time: timeTaken, moves: gameState.moves, score: gameState.score });
+		res.json({ success: true, time: timeTaken, moves: gameState.moves, score: gameState.score, isNewUser: result?.isNewUser || false });
 	});
 
 	return router;
@@ -336,10 +337,50 @@ function updateGameStats(gameState, actionType, moveData = {}) {
 	}
 }
 
-/** Handles the logic when a game is won. */
-async function handleWin(userId, gameState, io) {
-	const currentUser = await userService.getUser(userId);
-	if (!currentUser) return;
+/** Handles the logic when a game is won. Returns an object with isNewUser flag. */
+async function handleWin(userId, gameState, io, client) {
+	let currentUser = await userService.getUser(userId);
+	let isNewUser = false;
+
+	// Auto-register user if they don't exist yet
+	if (!currentUser) {
+		try {
+			const discordUser = await resolveUser(client, userId);
+			if (!discordUser) return;
+
+			await userService.insertUser({
+				id: discordUser.id,
+				username: discordUser.username,
+				globalName: discordUser.globalName,
+				warned: 0,
+				warns: 0,
+				allTimeWarns: 0,
+				totalRequests: 0,
+				avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
+				isAkhy: 0,
+			});
+
+			// Give welcome bonus coins like the dashboard registration
+			await userService.updateUserCoins(userId, 5000);
+			await logService.insertLog({
+				id: `${userId}-welcome-${Date.now()}`,
+				userId: userId,
+				action: "WELCOME_BONUS",
+				targetUserId: null,
+				coinsAmount: 5000,
+				userNewAmount: 5000,
+			});
+
+			currentUser = await userService.getUser(userId);
+			if (!currentUser) return;
+
+			isNewUser = true;
+			console.log(`Auto-registered user ${discordUser.username} (${discordUser.id}) via solitaire win with welcome bonus`);
+		} catch (e) {
+			console.error("Failed to auto-register user during solitaire win:", e);
+			return;
+		}
+	}
 
 	if (gameState.hardMode) {
 		const bonus = 500;
@@ -356,7 +397,7 @@ async function handleWin(userId, gameState, io) {
 		await socketEmit("data-updated", { table: "users" });
 	}
 
-	if (!gameState.isSOTD) return;
+	if (!gameState.isSOTD) return { isNewUser };
 
 	gameState.endTime = Date.now();
 	const timeTaken = gameState.endTime - gameState.startTime;
@@ -402,4 +443,8 @@ async function handleWin(userId, gameState, io) {
 	if (activeSolitaireGames[userId]) {
 		delete activeSolitaireGames[userId];
 	}
+
+	return { isNewUser };
 }
+
+
