@@ -6,3 +6,4 @@ flopobot.db-wal
 .idea
 *.db
 .claude
+generated/
