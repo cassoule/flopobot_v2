@@ -31,6 +31,7 @@
 		"dotenv": "^16.6.1",
 		"express": "^4.18.2",
 		"jsonwebtoken": "^9.0.3",
+		"mots-fleches": "file:../mots-fleches",
 		"node-cron": "^3.0.3",
 		"openai": "^4.104.0",
 		"pg": "^8.21.0",

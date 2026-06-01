@@ -3,10 +3,20 @@ import * as skinService from "../services/skin.service.js";
 import * as logService from "../services/log.service.js";
 import * as solitaireService from "../services/solitaire.service.js";
 import * as sudokuService from "../services/sudoku.service.js";
-import { activeSlowmodes, activeSolitaireGames, messagesTimestamps, skins, sotdResetVotes } from "./state.js";
+import * as motsFlechesService from "../services/motsFleches.service.js";
+import {
+	activeSlowmodes,
+	activeSolitaireGames,
+	activeSudokuGames,
+	activeMotsFlechesGames,
+	messagesTimestamps,
+	skins,
+	sotdResetVotes,
+} from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { generatePuzzle } from "./sudoku.js";
-import { emitSolitaireUpdate, emitSudokuUpdate } from "../server/socket.js";
+import { emitSolitaireUpdate, emitSudokuUpdate, emitMotsFlechesUpdate } from "../server/socket.js";
+import { generateWithDefinitions, getAllWords } from "mots-fleches";
 import { clearAllSOTDGames } from "../server/routes/sudoku.js";
 
 /**
@@ -299,5 +309,105 @@ export async function initTodaysSudokuOTD() {
 		console.log(`Today's Sudoku OTD is ready.`);
 	} catch (e) {
 		console.error(`Error saving new Sudoku OTD to database:`, e);
+	}
+}
+
+/**
+ * Initializes the Mots Fléchés of the Day.
+ * Archive-based (no clobber): inserts a new row per UTC date.
+ * Awards previous day's top 3 from the most recent past grid that has stats.
+ */
+export async function initTodaysMotsFlechesOTD() {
+	const today = new Date().toISOString();
+	console.log(`Initializing new Mots Fléchés OTD for ${today}...`);
+
+	const existing = await motsFlechesService.getMotsFlechesOTDByDate(today.slice(0, 10));
+	if (existing) {
+		console.log(`Mots Fléchés OTD for ${today} already exists, skipping generation.`);
+		return;
+	}
+
+	try {
+		const latestPast = await (async () => {
+			const all = await motsFlechesService.listArchive(null, 7);
+			return all.find((r) => r.date < today) || null;
+		})();
+		if (latestPast) {
+			const rankings = await motsFlechesService.getAllStatsForOTD(latestPast.id);
+			if (rankings.length > 0) {
+				const places = [
+					{ index: 0, reward: 2500, action: "MOTSFLECHES_OTD_FIRST_PLACE" },
+					{ index: 1, reward: 1500, action: "MOTSFLECHES_OTD_SECOND_PLACE" },
+					{ index: 2, reward: 750, action: "MOTSFLECHES_OTD_THIRD_PLACE" },
+				];
+				for (const { index, reward, action } of places) {
+					if (!rankings[index]) continue;
+					const playerId = rankings[index].userId;
+					const player = await userService.getUser(playerId);
+					if (!player) continue;
+					const newCoinTotal = player.coins + reward;
+					await userService.updateUserCoins(playerId, newCoinTotal);
+					await logService.insertLog({
+						id: `${playerId}-motsfleches-otd-${action.toLowerCase()}-${Date.now()}`,
+						targetUserId: null,
+						userId: playerId,
+						action,
+						coinsAmount: reward,
+						userNewAmount: newCoinTotal,
+					});
+					console.log(
+						`${player.globalName || player.username} got ${action.replace("MOTSFLECHES_OTD_", "").toLowerCase().replace("_", " ")} in the previous Mots Fléchés OTD and received ${reward} coins.`,
+					);
+				}
+			}
+		}
+	} catch (e) {
+		console.error("Error awarding previous Mots Fléchés OTD winners:", e);
+	}
+
+	const words = getAllWords();
+	let result = null;
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			result = await generateWithDefinitions(words, 9, 11, { seedString: today });
+			if (result) break;
+		} catch (e) {
+			console.error(`[MotsFleches] gen attempt ${attempt} failed:`, e?.message || e);
+		}
+		if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+	}
+
+	if (!result) {
+		console.error(`[MotsFleches] generation failed after 3 attempts — no grid for ${today}.`);
+		return;
+	}
+
+	try {
+		const defCellsObj = Object.fromEntries(result.defCells);
+		const inserted = await motsFlechesService.insertMotsFlechesOTD({
+			date: today.slice(0, 10),
+			rows: result.grid.length,
+			cols: result.grid[0]?.length || 0,
+			grid: JSON.stringify(result.grid),
+			slots: JSON.stringify(result.slots),
+			defCells: JSON.stringify(defCellsObj),
+			definitions: JSON.stringify(result.definitions || {}),
+			wordCount: result.wordCount,
+			seedString: result.seedString || null,
+			generationMs: Math.round(result.generationTimeMs ?? 0),
+		});
+
+		for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
+			if (gameData.isSOTD) {
+				delete activeMotsFlechesGames[userId];
+				emitMotsFlechesUpdate(userId);
+			}
+		}
+
+		console.log(
+			`Today's Mots Fléchés OTD is ready (id=${inserted.id}, ${result.wordCount} mots, gen=${result.generationTimeMs}ms).`,
+		);
+	} catch (e) {
+		console.error(`Error saving new Mots Fléchés OTD:`, e);
 	}
 }

@@ -4,7 +4,7 @@ import cron from "node-cron";
 // --- Local Imports ---
 import { getSkinTiers, getValorantSkins } from "../api/valorant.js";
 import { DiscordRequest } from "../api/discord.js";
-import { initTodaysSOTD, initTodaysSudokuOTD } from "../game/points.js";
+import { initTodaysSOTD, initTodaysSudokuOTD, initTodaysMotsFlechesOTD } from "../game/points.js";
 import * as userService from "../services/user.service.js";
 import * as skinService from "../services/skin.service.js";
 import * as marketService from "../services/market.service.js";
@@ -316,6 +316,7 @@ export function setupCronJobs(client, io) {
 			//if (!getSOTD.get()) {
 			initTodaysSOTD();
 			initTodaysSudokuOTD();
+			initTodaysMotsFlechesOTD();
 			//}
 		} catch (e) {
 			console.error("[Cron] Error during daily reset:", e);
