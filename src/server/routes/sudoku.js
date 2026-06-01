@@ -1,11 +1,16 @@
 import express from "express";
 import { generatePuzzle, validateSolution } from "../../game/sudoku.js";
-import { activeSudokuGames } from "../../game/state.js";
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import * as sudokuService from "../../services/sudoku.service.js";
 import { socketEmit } from "../socket.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, optionalAuth } from "../middleware/auth.js";
+import { resolveUser } from "../../utils/index.js";
+import { randomUUID } from "crypto";
+
+const gameStates = {};
+const userGameMap = {};
+const pendingSubmissions = {};
 
 const router = express.Router();
 
@@ -16,17 +21,28 @@ const REWARDS_BY_DIFFICULTY = {
 	expert: 1000,
 };
 
+function getOptionalUserId(req) {
+	const authHeader = req.headers.authorization;
+	if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+	try {
+		const token = authHeader.slice(7);
+		const jwt = require("jsonwebtoken");
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		return decoded.userId;
+	} catch (err) {
+		return null;
+	}
+}
+
 export function sudokuRoutes(client, io) {
-	router.post("/start", requireAuth, (req, res) => {
+	router.post("/start", optionalAuth, (req, res) => {
 		const userId = req.userId;
 		const { difficulty = "medium" } = req.body;
 
-		if (activeSudokuGames[userId] && !activeSudokuGames[userId].isSOTD) {
-			const { solution, ...safeState } = activeSudokuGames[userId];
-			return res.json({ success: true, gameState: safeState });
-		}
-
 		const { puzzle, solution, difficulty: diff } = generatePuzzle(difficulty);
+		const gameId = randomUUID();
+
+		console.log(`\n🆕 [GAME START] New game started (ID: ${gameId})`);
 
 		const gameState = {
 			puzzle,
@@ -37,24 +53,27 @@ export function sudokuRoutes(client, io) {
 			startTime: Date.now(),
 		};
 
-		activeSudokuGames[userId] = gameState;
+		gameStates[gameId] = gameState;
+
+		if (userId) {
+			userGameMap[userId] = gameId;
+		}
 
 		const { solution: _, ...safeState } = gameState;
-		res.json({ success: true, gameState: safeState });
+		res.json({ success: true, gameState: safeState, gameId });
 	});
 
-	router.post("/start/sotd", requireAuth, async (req, res) => {
+	router.post("/start/sotd", optionalAuth, async (req, res) => {
 		const userId = req.userId;
-
-		if (activeSudokuGames[userId]?.isSOTD) {
-			const { solution, ...safeState } = activeSudokuGames[userId];
-			return res.json({ success: true, gameState: safeState });
-		}
 
 		const sotd = await sudokuService.getSudokuOTD();
 		if (!sotd) {
 			return res.status(500).json({ error: "Sudoku of the Day is not configured." });
 		}
+
+		const gameId = randomUUID();
+
+		console.log(`\n☀️ [SOTD START] Player started Sudoku of the Day`);
 
 		const gameState = {
 			puzzle: sotd.puzzle,
@@ -65,10 +84,17 @@ export function sudokuRoutes(client, io) {
 			startTime: Date.now(),
 		};
 
-		activeSudokuGames[userId] = gameState;
+		gameStates[gameId] = gameState;
+
+		if (userId) {
+			if (userGameMap[userId]) {
+				delete gameStates[userGameMap[userId]];
+			}
+			userGameMap[userId] = gameId;
+		}
 
 		const { solution: _, ...safeState } = gameState;
-		res.json({ success: true, gameState: safeState });
+		res.json({ success: true, gameState: safeState, gameId });
 	});
 
 	router.get("/sotd/rankings", async (req, res) => {
@@ -82,51 +108,63 @@ export function sudokuRoutes(client, io) {
 
 	router.get("/state/:userId", (req, res) => {
 		const { userId } = req.params;
-		const gameState = activeSudokuGames[userId];
+		const gameId = userGameMap[userId];
+		const gameState = gameId ? gameStates[gameId] : null;
 		if (gameState) {
 			const { solution, ...safeState } = gameState;
-			res.json({ success: true, gameState: safeState });
+			res.json({ success: true, gameState: safeState, gameId });
 		} else {
 			res.status(404).json({ error: "No active game found for this user." });
 		}
 	});
 
-	router.post("/progress", requireAuth, (req, res) => {
-		const userId = req.userId;
-		const gameState = activeSudokuGames[userId];
+	router.post("/progress", optionalAuth, (req, res) => {
+		const { gameId, grid, notes } = req.body;
+		if (!gameId || !gameStates[gameId]) {
+			return res.status(404).json({ error: "Game not found" });
+		}
 
-		if (!gameState) return res.status(404).json({ error: "No active game found." });
-		if (gameState.isDone) return res.status(400).json({ error: "Game is already completed." });
-
-		const { grid, notes } = req.body;
+		const gameState = gameStates[gameId];
+		if (gameState.isDone) {
+			return res.status(400).json({ error: "Game already completed" });
+		}
 
 		if (grid && typeof grid === "string" && grid.length === 81) {
 			gameState.progress = grid;
 		}
-
 		if (Array.isArray(notes) && notes.length === 81) {
 			gameState.notes = notes;
 		}
-
 		res.json({ success: true });
 	});
 
-	router.post("/reset", requireAuth, (req, res) => {
-		const userId = req.userId;
-		if (activeSudokuGames[userId]) {
-			delete activeSudokuGames[userId];
+	router.post("/reset", optionalAuth, (req, res) => {
+		const { gameId } = req.body;
+		if (gameId && gameStates[gameId]) {
+			delete gameStates[gameId];
 		}
+
+		const userId = req.userId;
+		if (userId && userGameMap[userId]) {
+			delete gameStates[userGameMap[userId]];
+			delete userGameMap[userId];
+		}
+
 		res.json({ success: true, message: "Game reset." });
 	});
 
-	router.post("/submit", requireAuth, async (req, res) => {
+	router.post("/submit", optionalAuth, async (req, res) => {
 		const userId = req.userId;
-		const { grid } = req.body;
-		const gameState = activeSudokuGames[userId];
+		const { gameId, grid, timeTaken: clientTime } = req.body;
 
-		grid.toString();
-		if (!gameState) return res.status(404).json({ error: "Game not found." });
-		if (gameState.isDone) return res.status(400).json({ error: "This game is already completed." });
+		if (!gameId || !gameStates[gameId]) {
+			return res.status(404).json({ error: "Game not found" });
+		}
+
+		const gameState = gameStates[gameId];
+		if (gameState.isDone) {
+			return res.status(400).json({ error: "This game is already completed." });
+		}
 
 		if (!grid || typeof grid !== "string" || grid.length !== 81 || !/^[0-9]+$/.test(grid)) {
 			return res.status(400).json({ error: "Invalid grid. Expected 81 characters (0-9)." });
@@ -134,23 +172,92 @@ export function sudokuRoutes(client, io) {
 
 		const { valid, errors } = validateSolution(grid, gameState.solution);
 
-		if (!valid) {
-			return res.json({ success: true, valid: false, errors });
+		if (valid) {
+			gameState.isDone = true;
+			// Use client time if provided (more accurate), fallback to server calculation
+			const timeTaken = clientTime || Date.now() - gameState.startTime;
+
+			if (userId) {
+				// Logged in user: give rewards immediately
+				const result = await handleWin(userId, gameState, gameId, timeTaken, io, client);
+				delete gameStates[gameId];
+				delete userGameMap[userId];
+				res.json({ success: true, valid: true, time: timeTaken, isNewUser: result?.isNewUser || false });
+			} else {
+				// Guest player: keep the win pending
+				const submissionToken = randomUUID();
+				pendingSubmissions[submissionToken] = {
+					gameState,
+					timeTaken,
+				};
+				delete gameStates[gameId];
+				res.json({ success: true, valid: true, time: timeTaken, submissionToken });
+			}
+		}
+	});
+
+	router.post("/claim-submission", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { submissionToken } = req.body;
+
+		if (!submissionToken || !pendingSubmissions[submissionToken]) {
+			return res.status(404).json({ error: "No pending submission found." });
 		}
 
-		gameState.isDone = true;
-		await handleWin(userId, gameState);
+		const { gameState, timeTaken } = pendingSubmissions[submissionToken];
+		delete pendingSubmissions[submissionToken];
 
-		delete activeSudokuGames[userId];
-		res.json({ success: true, valid: true, time: Date.now() - gameState.startTime });
+		const result = await handleWin(userId, gameState, null, timeTaken, io, client);
+
+		res.json({ success: true, time: timeTaken, isNewUser: result?.isNewUser || false });
 	});
 
 	return router;
 }
 
-async function handleWin(userId, gameState) {
-	const currentUser = await userService.getUser(userId);
-	if (!currentUser) return;
+async function handleWin(userId, gameState, gameId, timeTaken, io, client) {
+	let currentUser = await userService.getUser(userId);
+	let isNewUser = false;
+
+	// Auto-register user if they don't exist yet
+	if (!currentUser) {
+		try {
+			const discordUser = await resolveUser(client, userId);
+			if (!discordUser) return;
+
+			await userService.insertUser({
+				id: discordUser.id,
+				username: discordUser.username,
+				globalName: discordUser.globalName,
+				warned: 0,
+				warns: 0,
+				allTimeWarns: 0,
+				totalRequests: 0,
+				avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
+				isAkhy: 0,
+			});
+
+			// Give welcome bonus coins like the dashboard registration
+			await userService.updateUserCoins(userId, 5000);
+			await logService.insertLog({
+				id: `${userId}-welcome-${Date.now()}`,
+				userId: userId,
+				action: "WELCOME_BONUS",
+				targetUserId: null,
+				coinsAmount: 5000,
+				userNewAmount: 5000,
+			});
+
+			currentUser = await userService.getUser(userId);
+			if (!currentUser) return;
+
+			isNewUser = true;
+			console.log(`Auto-registered user ${discordUser.username} (${discordUser.id}) via sudoku win with welcome bonus`);
+		} catch (e) {
+			console.error("Failed to auto-register user during sudoku win:", e);
+			return;
+		}
+	}
 
 	if (!gameState.isSOTD) {
 		const reward = REWARDS_BY_DIFFICULTY[gameState.difficulty] || 250;
@@ -165,10 +272,10 @@ async function handleWin(userId, gameState) {
 			userNewAmount: newCoins,
 		});
 		await socketEmit("data-updated", { table: "users" });
-		return;
+		return { isNewUser };
 	}
 
-	const timeTaken = Date.now() - gameState.startTime;
+	const finalTime = timeTaken || Date.now() - gameState.startTime;
 	const existingStats = await sudokuService.getUserSudokuOTDStats(userId);
 
 	if (!existingStats) {
@@ -186,16 +293,29 @@ async function handleWin(userId, gameState) {
 		await socketEmit("data-updated", { table: "users" });
 	}
 
-	const isNewBest = !existingStats || timeTaken < existingStats.time;
+	const isNewBest = !existingStats || finalTime < existingStats.time;
 
 	if (isNewBest) {
 		await sudokuService.deleteUserSudokuOTDStats(userId);
 		await sudokuService.insertSudokuOTDStats({
 			id: userId,
 			userId: userId,
-			time: timeTaken,
+			time: finalTime,
 		});
 		await socketEmit("sudoku-sotd-update");
-		console.log(`New Sudoku SOTD best time for ${currentUser.globalName}: ${timeTaken}ms.`);
+		console.log(`New Sudoku SOTD best time for ${currentUser.globalName}: ${finalTime}ms.`);
+	}
+
+	return { isNewUser };
+}
+
+export function clearAllSOTDGames() {
+	for (const [userId, gameId] of Object.entries(userGameMap)) {
+		const gameState = gameStates[gameId];
+		if (gameState && gameState.isSOTD) {
+			delete gameStates[gameId];
+			delete userGameMap[userId];
+			emitSudokuUpdate(userId);
+		}
 	}
 }

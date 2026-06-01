@@ -660,6 +660,8 @@ export const emitSolitaireUpdate = (userId, moves) => io.emit("solitaire:update"
 
 export const emitSudokuUpdate = (userId) => io.emit("sudoku:update", { userId });
 
+export const emitMotsFlechesUpdate = (userId) => io.emit("motsFleches:update", { userId });
+
 export const emitMarketUpdate = () => io.emit("market:update");
 
 // --- Sic Bo emissions ---

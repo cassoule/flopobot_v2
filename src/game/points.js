@@ -3,17 +3,21 @@ import * as skinService from "../services/skin.service.js";
 import * as logService from "../services/log.service.js";
 import * as solitaireService from "../services/solitaire.service.js";
 import * as sudokuService from "../services/sudoku.service.js";
+import * as motsFlechesService from "../services/motsFleches.service.js";
 import {
 	activeSlowmodes,
 	activeSolitaireGames,
 	activeSudokuGames,
+	activeMotsFlechesGames,
 	messagesTimestamps,
 	skins,
 	sotdResetVotes,
 } from "./state.js";
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { generatePuzzle } from "./sudoku.js";
-import { emitSolitaireUpdate, emitSudokuUpdate } from "../server/socket.js";
+import { emitSolitaireUpdate, emitSudokuUpdate, emitMotsFlechesUpdate } from "../server/socket.js";
+import { generateWithDefinitions, getAllWords } from "mots-fleches";
+import { clearAllSOTDGames } from "../server/routes/sudoku.js";
 
 /**
  * Handles awarding points (coins) to users for their message activity.
@@ -300,15 +304,132 @@ export async function initTodaysSudokuOTD() {
 		await sudokuService.deleteSudokuOTD();
 		await sudokuService.insertSudokuOTD({ puzzle, solution, difficulty });
 
-		for (const [userId, gameData] of Object.entries(activeSudokuGames)) {
-			if (gameData.isSOTD) {
-				delete activeSudokuGames[userId];
-				emitSudokuUpdate(userId);
-			}
-		}
+		clearAllSOTDGames();
 
 		console.log(`Today's Sudoku OTD is ready.`);
 	} catch (e) {
 		console.error(`Error saving new Sudoku OTD to database:`, e);
+	}
+}
+
+/**
+ * Initializes a Mots Fléchés of the Day grid.
+ * Archive-based (no clobber): inserts a new row per UTC date.
+ *
+ * @param {string|null} [dateArg] Optional `YYYY-MM-DD` date to generate the grid for.
+ *   - Omitted (daily rollover): generates today's grid, seeds from the current
+ *     timestamp, awards the previous day's top 3, and clears any live SOTD sessions.
+ *   - Provided (manual backfill): generates only that date's grid, seeded
+ *     deterministically from the date, with no reward payout. Live sessions are
+ *     only cleared when the target date is the current day.
+ * @returns {Promise<{date: string, skipped?: boolean, error?: boolean, id?: number, wordCount?: number}>}
+ */
+export async function initTodaysMotsFlechesOTD(dateArg = null) {
+	const nowIso = new Date().toISOString();
+	const isManualDate = !!dateArg;
+	const dateStr = isManualDate ? dateArg : nowIso.slice(0, 10);
+	// Daily rollover seeds from the current timestamp; a manual backfill seeds
+	// deterministically from the target date so a given day always yields the same grid.
+	const seedString = isManualDate ? `${dateArg}T00:00:00.000Z` : nowIso;
+
+	console.log(`Initializing new Mots Fléchés OTD for ${dateStr}...`);
+
+	const existing = await motsFlechesService.getMotsFlechesOTDByDate(dateStr);
+	if (existing) {
+		console.log(`Mots Fléchés OTD for ${dateStr} already exists, skipping generation.`);
+		return { date: dateStr, skipped: true };
+	}
+
+	// Only award the previous day's winners on the real daily rollover.
+	// A manual backfill for a specific date must not trigger any payout.
+	if (!isManualDate) {
+		try {
+			const latestPast = await (async () => {
+				const all = await motsFlechesService.listArchive(null, 7);
+				return all.find((r) => r.date < dateStr) || null;
+			})();
+			if (latestPast) {
+				const rankings = await motsFlechesService.getAllStatsForOTD(latestPast.id);
+				if (rankings.length > 0) {
+					const places = [
+						{ index: 0, reward: 2500, action: "MOTSFLECHES_OTD_FIRST_PLACE" },
+						{ index: 1, reward: 1500, action: "MOTSFLECHES_OTD_SECOND_PLACE" },
+						{ index: 2, reward: 750, action: "MOTSFLECHES_OTD_THIRD_PLACE" },
+					];
+					for (const { index, reward, action } of places) {
+						if (!rankings[index]) continue;
+						const playerId = rankings[index].userId;
+						const player = await userService.getUser(playerId);
+						if (!player) continue;
+						const newCoinTotal = player.coins + reward;
+						await userService.updateUserCoins(playerId, newCoinTotal);
+						await logService.insertLog({
+							id: `${playerId}-motsfleches-otd-${action.toLowerCase()}-${Date.now()}`,
+							targetUserId: null,
+							userId: playerId,
+							action,
+							coinsAmount: reward,
+							userNewAmount: newCoinTotal,
+						});
+						console.log(
+							`${player.globalName || player.username} got ${action.replace("MOTSFLECHES_OTD_", "").toLowerCase().replace("_", " ")} in the previous Mots Fléchés OTD and received ${reward} coins.`,
+						);
+					}
+				}
+			}
+		} catch (e) {
+			console.error("Error awarding previous Mots Fléchés OTD winners:", e);
+		}
+	}
+
+	const words = getAllWords();
+	let result = null;
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		try {
+			result = await generateWithDefinitions(words, 9, 11, { seedString });
+			if (result) break;
+		} catch (e) {
+			console.error(`[MotsFleches] gen attempt ${attempt} failed:`, e?.message || e);
+		}
+		if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
+	}
+
+	if (!result) {
+		console.error(`[MotsFleches] generation failed after 3 attempts — no grid for ${dateStr}.`);
+		return { date: dateStr, error: true };
+	}
+
+	try {
+		const defCellsObj = Object.fromEntries(result.defCells);
+		const inserted = await motsFlechesService.insertMotsFlechesOTD({
+			date: dateStr,
+			rows: result.grid.length,
+			cols: result.grid[0]?.length || 0,
+			grid: JSON.stringify(result.grid),
+			slots: JSON.stringify(result.slots),
+			defCells: JSON.stringify(defCellsObj),
+			definitions: JSON.stringify(result.definitions || {}),
+			wordCount: result.wordCount,
+			seedString: result.seedString || null,
+			generationMs: Math.round(result.generationTimeMs ?? 0),
+		});
+
+		// Clear any live SOTD sessions only when (re)generating the current day's grid.
+		if (dateStr === nowIso.slice(0, 10)) {
+			for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
+				if (gameData.isSOTD) {
+					delete activeMotsFlechesGames[userId];
+					emitMotsFlechesUpdate(userId);
+				}
+			}
+		}
+
+		console.log(
+			`Mots Fléchés OTD for ${dateStr} is ready (id=${inserted.id}, ${result.wordCount} mots, gen=${result.generationTimeMs}ms).`,
+		);
+		return { date: dateStr, id: inserted.id, wordCount: result.wordCount };
+	} catch (e) {
+		console.error(`Error saving new Mots Fléchés OTD:`, e);
+		return { date: dateStr, error: true };
 	}
 }

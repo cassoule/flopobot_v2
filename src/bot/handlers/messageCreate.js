@@ -17,6 +17,7 @@ import {
 	randomSkinPrice,
 	slowmodesHandler,
 	initTodaysSudokuOTD,
+	initTodaysMotsFlechesOTD,
 } from "../../game/points.js";
 import { activePolls, activeSlowmodes, requestTimestamps, skins, maintenance } from "../../game/state.js";
 import { activateMaintenance, deactivateMaintenance, startMaintenanceNotifications } from "../../server/socket.js";
@@ -217,6 +218,32 @@ async function handleAdminCommands(message) {
 			initTodaysSudokuOTD();
 			message.reply("New Sudoku of the Day initialized.");
 			break;
+		case `${prefix}:init-motsfleches`: {
+			const dateArg = args[0]?.trim();
+			if (dateArg) {
+				const isValidDate =
+					/^\d{4}-\d{2}-\d{2}$/.test(dateArg) &&
+					!Number.isNaN(Date.parse(`${dateArg}T00:00:00.000Z`)) &&
+					new Date(`${dateArg}T00:00:00.000Z`).toISOString().slice(0, 10) === dateArg;
+				if (!isValidDate) {
+					message.reply(
+						`Invalid date \`${dateArg}\`. Use a real \`YYYY-MM-DD\` date, e.g. \`${prefix}:init-motsfleches 2026-05-15\`.`,
+					);
+					break;
+				}
+			}
+
+			const target = dateArg || "today";
+			const pending = await message.reply(`Generating Mots Fléchés grid for ${target}...`);
+			const result = await initTodaysMotsFlechesOTD(dateArg || null);
+			const text = result?.skipped
+				? `A Mots Fléchés grid for ${result.date} already exists — skipped.`
+				: result?.error
+					? `Failed to generate the Mots Fléchés grid for ${result?.date ?? target}.`
+					: `New Mots Fléchés grid for ${result.date} initialized (${result.wordCount} mots).`;
+			await pending.edit(text).catch(() => message.reply(text));
+			break;
+		}
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");
 			try {
@@ -508,6 +535,9 @@ async function handleAdminCommands(message) {
 			}
 			break;
 		}
+		case `${prefix}:give`:
+			await handleGiveCommand(message, args);
+			break;
 		case `${prefix}:maintenance`:
 			handleMaintenanceCommand(message, args);
 			break;
@@ -582,6 +612,144 @@ Moon (100.00x+): ${distribution.moon} (${((distribution.moon / numSimulations) *
 				message.reply(`Error during crash simulation: ${e.message}`);
 			}
 			break;
+	}
+}
+
+/**
+ * Parses a "skin name; wear state; user" string and gives that CS skin to the user.
+ * Usage: dev:give Dragon Lore;Factory New;momozhok
+ * Wear state is optional: dev:give Dragon Lore;;momozhok will pick a random wear state.
+ */
+async function handleGiveCommand(message, args) {
+	const raw = args.join(" ");
+	// Split by semicolons — supports e.g. "Dragon Lore;Factory New;momozhok"
+	const parts = raw.split(";").map((s) => s.trim());
+	if (parts.length < 2) {
+		message.reply(
+			"Usage: `dev:give <nom skin>; <wear state>; <utilisateur>`\nExemple: `dev:give Dragon Lore;Factory New;momozhok`\nLe wear state est optionnel.",
+		);
+		return;
+	}
+
+	const skinQuery = parts[0].toLowerCase();
+	const wearQuery = parts[1]?.toLowerCase() || "";
+	const userQuery = parts.length >= 3 ? parts[2] : parts[1]; // if only 2 parts, second is user
+
+	const VALID_WEAR_STATES = ["factory new", "minimal wear", "field-tested", "well-worn", "battle-scarred"];
+	const WEAR_STATE_RANGES = {
+		"factory new": { min: 0.0, max: 0.07 },
+		"minimal wear": { min: 0.07, max: 0.15 },
+		"field-tested": { min: 0.15, max: 0.38 },
+		"well-worn": { min: 0.38, max: 0.45 },
+		"battle-scarred": { min: 0.45, max: 1.0 },
+	};
+	const WEAR_STATE_DISPLAY = {
+		"factory new": "Factory New",
+		"minimal wear": "Minimal Wear",
+		"field-tested": "Field-Tested",
+		"well-worn": "Well-Worn",
+		"battle-scarred": "Battle-Scarred",
+	};
+
+	try {
+		// 1. Find the user
+		const userIdentifier = userQuery || parts[1];
+		let targetUser;
+		const allUsers = await userService.getAllAkhys();
+		// Try by discord ID or username
+		targetUser = allUsers.find(
+			(u) => u.id === userIdentifier || u.username?.toLowerCase() === userIdentifier.toLowerCase(),
+		);
+		if (!targetUser) {
+			message.reply(`Utilisateur "${userIdentifier}" introuvable.`);
+			return;
+		}
+
+		// 2. Find the skin by name (case-insensitive partial match)
+		const skinEntries = Object.entries(csSkinsData).filter(([name]) => name.toLowerCase().includes(skinQuery));
+		if (skinEntries.length === 0) {
+			message.reply(`Aucun skin trouvé pour "${parts[0]}".`);
+			return;
+		}
+		if (skinEntries.length > 5) {
+			message.reply(
+				`Trop de skins correspondent à "${parts[0]}" (${skinEntries.length}). Sois plus précis.\nSuggestions: ${skinEntries
+					.slice(0, 5)
+					.map(([n]) => `\`${n}\``)
+					.join(", ")}...`,
+			);
+			return;
+		}
+		const [skinName, skinData] = skinEntries[0];
+
+		// 3. Determine wear state
+		let wearStateKey = null;
+		if (wearQuery) {
+			wearStateKey = VALID_WEAR_STATES.find((ws) => ws === wearQuery);
+			if (!wearStateKey) {
+				message.reply(`Wear state invalide. Utilise un de ceux-ci: ${VALID_WEAR_STATES.join(", ")}`);
+				return;
+			}
+		}
+
+		// 4. Generate specs
+		const versions = (await import("../../utils/cs.state.js")).csSkinsVersionMap[skinName];
+		const version = versions && versions.length > 0 ? versions[Math.floor(Math.random() * versions.length)] : null;
+
+		const skinIsStattrak = false;
+		const skinIsSouvenir = false;
+
+		let wearStateName;
+		let float;
+		if (wearStateKey) {
+			wearStateName = WEAR_STATE_DISPLAY[wearStateKey];
+			const range = WEAR_STATE_RANGES[wearStateKey];
+			float = range.min + Math.random() * (range.max - range.min);
+		} else {
+			// Random wear state
+			const keys = Object.keys(WEAR_STATE_RANGES);
+			const randomKey = keys[Math.floor(Math.random() * keys.length)];
+			wearStateName = WEAR_STATE_DISPLAY[randomKey];
+			const range = WEAR_STATE_RANGES[randomKey];
+			float = range.min + Math.random() * (range.max - range.min);
+		}
+
+		const { generatePrice } = await import("../../utils/cs.utils.js");
+		const price = parseInt(
+			generatePrice(skinName, skinData.rarity.name, float, skinIsStattrak, skinIsSouvenir, version),
+		);
+
+		// 5. Create the skin in DB
+		const displayName = skinData.name || skinName;
+		const fullDisplayName = version ? `${displayName} ${version}` : displayName;
+
+		const csSkin = await csSkinService.insertCsSkin({
+			marketHashName: skinName,
+			displayName: fullDisplayName,
+			imageUrl: skinData.image || null,
+			rarity: skinData.rarity.name,
+			rarityColor: skinData.rarity.color || null,
+			weaponType: skinData.weapon?.name || null,
+			float,
+			wearState: wearStateName,
+			isStattrak: skinIsStattrak,
+			isSouvenir: skinIsSouvenir,
+			price,
+			userId: targetUser.id,
+			version,
+		});
+
+		// 6. Reply
+		const stattrakTag = skinIsStattrak ? "StatTrak™ " : "";
+		const souvenirTag = skinIsSouvenir ? "Souvenir " : "";
+		message.reply(
+			`✅ Skin donné à **${targetUser.username}** !\n` +
+				`${stattrakTag}${souvenirTag}**${fullDisplayName}** (${wearStateName})\n` +
+				`Float: ${float.toFixed(6)} | Prix: **${price} FlopoCoins**`,
+		);
+	} catch (e) {
+		console.error("Error in handleGiveCommand:", e);
+		message.reply(`Erreur: ${e.message}`);
 	}
 }
 
