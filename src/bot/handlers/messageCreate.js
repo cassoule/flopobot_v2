@@ -218,10 +218,32 @@ async function handleAdminCommands(message) {
 			initTodaysSudokuOTD();
 			message.reply("New Sudoku of the Day initialized.");
 			break;
-		case `${prefix}:init-motsfleches`:
-			initTodaysMotsFlechesOTD();
-			message.reply("New Mots Fléchés of the Day initialized.");
+		case `${prefix}:init-motsfleches`: {
+			const dateArg = args[0]?.trim();
+			if (dateArg) {
+				const isValidDate =
+					/^\d{4}-\d{2}-\d{2}$/.test(dateArg) &&
+					!Number.isNaN(Date.parse(`${dateArg}T00:00:00.000Z`)) &&
+					new Date(`${dateArg}T00:00:00.000Z`).toISOString().slice(0, 10) === dateArg;
+				if (!isValidDate) {
+					message.reply(
+						`Invalid date \`${dateArg}\`. Use a real \`YYYY-MM-DD\` date, e.g. \`${prefix}:init-motsfleches 2026-05-15\`.`,
+					);
+					break;
+				}
+			}
+
+			const target = dateArg || "today";
+			const pending = await message.reply(`Generating Mots Fléchés grid for ${target}...`);
+			const result = await initTodaysMotsFlechesOTD(dateArg || null);
+			const text = result?.skipped
+				? `A Mots Fléchés grid for ${result.date} already exists — skipped.`
+				: result?.error
+					? `Failed to generate the Mots Fléchés grid for ${result?.date ?? target}.`
+					: `New Mots Fléchés grid for ${result.date} initialized (${result.wordCount} mots).`;
+			await pending.edit(text).catch(() => message.reply(text));
 			break;
+		}
 		case `${prefix}:sql`:
 			const sqlCommand = args.join(" ");
 			try {

@@ -4,9 +4,37 @@ import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import * as motsFlechesService from "../../services/motsFleches.service.js";
 import { socketEmit, emitMotsFlechesUpdate } from "../socket.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, optionalAuth } from "../middleware/auth.js";
+import { resolveUser } from "../../utils/index.js";
+import { randomUUID } from "crypto";
 
 const router = express.Router();
+
+// Stores guest wins waiting to be claimed after login, keyed by submissionToken.
+const pendingSubmissions = {};
+// Stores active guest games, keyed by gameId.
+const guestGames = {};
+
+/** Gets the active game by userId (logged in) or gameId (guest). */
+function getActiveGame(userId, gameId) {
+	if (userId && activeMotsFlechesGames[userId]) {
+		return activeMotsFlechesGames[userId];
+	}
+	if (!userId && gameId && guestGames[gameId]) {
+		return guestGames[gameId];
+	}
+	return null;
+}
+
+/** Deletes an active game for a logged-in user or a guest. */
+function deleteActiveGame(userId, gameId) {
+	if (userId && activeMotsFlechesGames[userId]) {
+		delete activeMotsFlechesGames[userId];
+	}
+	if (!userId && gameId && guestGames[gameId]) {
+		delete guestGames[gameId];
+	}
+}
 
 function hydrateFromRow(row) {
 	return {
@@ -82,10 +110,10 @@ function validateGrid(filledGrid, solutionGrid, slots) {
 }
 
 export function motsFlechesRoutes(client, io) {
-	router.post("/start/sotd", requireAuth, async (req, res) => {
+	router.post("/start/sotd", optionalAuth, async (req, res) => {
 		const userId = req.userId;
 
-		if (activeMotsFlechesGames[userId]?.isSOTD) {
+		if (userId && activeMotsFlechesGames[userId]?.isSOTD) {
 			return res.json({ success: true, gameState: publicGameState(activeMotsFlechesGames[userId]) });
 		}
 
@@ -101,11 +129,19 @@ export function motsFlechesRoutes(client, io) {
 			startTime: Date.now(),
 			filledGrid: null,
 		};
-		activeMotsFlechesGames[userId] = state;
-		res.json({ success: true, gameState: publicGameState(state) });
+
+		if (userId) {
+			activeMotsFlechesGames[userId] = state;
+			res.json({ success: true, gameState: publicGameState(state) });
+		} else {
+			// Guest: store game with a generated gameId
+			const gameId = randomUUID();
+			guestGames[gameId] = state;
+			res.json({ success: true, gameState: publicGameState(state), gameId });
+		}
 	});
 
-	router.post("/start/archive", requireAuth, async (req, res) => {
+	router.post("/start/archive", optionalAuth, async (req, res) => {
 		const userId = req.userId;
 		const { date } = req.body || {};
 		if (!date || typeof date !== "string") {
@@ -129,13 +165,21 @@ export function motsFlechesRoutes(client, io) {
 			startTime: Date.now(),
 			filledGrid: null,
 		};
-		activeMotsFlechesGames[userId] = state;
-		res.json({ success: true, gameState: publicGameState(state) });
+
+		if (userId) {
+			activeMotsFlechesGames[userId] = state;
+			res.json({ success: true, gameState: publicGameState(state) });
+		} else {
+			// Guest: store game with a generated gameId
+			const gameId = randomUUID();
+			guestGames[gameId] = state;
+			res.json({ success: true, gameState: publicGameState(state), gameId });
+		}
 	});
 
-	router.get("/archive", requireAuth, async (req, res) => {
+	router.get("/archive", optionalAuth, async (req, res) => {
 		try {
-			const userId = req.userId;
+			const userId = req.userId || null;
 			const limit = Math.min(parseInt(req.query.limit ?? "60", 10) || 60, 200);
 			const list = await motsFlechesService.listArchive(userId, limit);
 			res.json({ archive: list });
@@ -166,13 +210,13 @@ export function motsFlechesRoutes(client, io) {
 		res.json({ success: true, gameState: publicGameState(state) });
 	});
 
-	router.post("/progress", requireAuth, (req, res) => {
+	router.post("/progress", optionalAuth, (req, res) => {
 		const userId = req.userId;
-		const state = activeMotsFlechesGames[userId];
+		const { gameId, filledGrid } = req.body || {};
+		const state = getActiveGame(userId, gameId);
 		if (!state) return res.status(404).json({ error: "No active game found." });
 		if (state.isDone) return res.status(400).json({ error: "Game is already completed." });
 
-		const { filledGrid } = req.body || {};
 		if (!Array.isArray(filledGrid) || filledGrid.length !== state.rows) {
 			return res.status(400).json({ error: "Invalid filledGrid shape." });
 		}
@@ -180,21 +224,20 @@ export function motsFlechesRoutes(client, io) {
 		res.json({ success: true });
 	});
 
-	router.post("/reset", requireAuth, (req, res) => {
+	router.post("/reset", optionalAuth, (req, res) => {
 		const userId = req.userId;
-		if (activeMotsFlechesGames[userId]) {
-			delete activeMotsFlechesGames[userId];
-		}
+		const { gameId } = req.body || {};
+		deleteActiveGame(userId, gameId);
 		res.json({ success: true });
 	});
 
-	router.post("/submit", requireAuth, async (req, res) => {
+	router.post("/submit", optionalAuth, async (req, res) => {
 		const userId = req.userId;
-		const state = activeMotsFlechesGames[userId];
+		const { gameId, filledGrid } = req.body || {};
+		const state = getActiveGame(userId, gameId);
 		if (!state) return res.status(404).json({ error: "Game not found." });
 		if (state.isDone) return res.status(400).json({ error: "This game is already completed." });
 
-		const { filledGrid } = req.body || {};
 		const { valid, errors, cluesSolved, badShape } = validateGrid(filledGrid, state.grid, state.slots);
 
 		if (badShape) {
@@ -210,20 +253,90 @@ export function motsFlechesRoutes(client, io) {
 
 		state.isDone = true;
 
-		if (state.isSOTD) {
-			await handleSOTDWin(userId, state, { time, cluesSolved, score });
+		if (userId) {
+			// Logged-in player: award rewards immediately.
+			if (state.isSOTD) {
+				await handleSOTDWin(userId, state, { time, cluesSolved, score }, client);
+			}
+			deleteActiveGame(userId, gameId);
+			res.json({ success: true, valid: true, time, cluesSolved, score });
+		} else if (state.isSOTD) {
+			// Guest SOTD win: keep it pending until the player logs in and claims it.
+			const submissionToken = randomUUID();
+			pendingSubmissions[submissionToken] = { state, time, cluesSolved, score };
+			deleteActiveGame(null, gameId);
+			res.json({ success: true, valid: true, time, cluesSolved, score, submissionToken });
+		} else {
+			// Guest archive win: nothing to save (archives have no rankings/rewards).
+			deleteActiveGame(null, gameId);
+			res.json({ success: true, valid: true, time, cluesSolved, score });
+		}
+	});
+
+	router.post("/claim-submission", requireAuth, async (req, res) => {
+		const userId = req.userId;
+		const { submissionToken } = req.body;
+
+		if (!submissionToken || !pendingSubmissions[submissionToken]) {
+			return res.status(404).json({ error: "No pending submission found." });
 		}
 
-		delete activeMotsFlechesGames[userId];
-		res.json({ success: true, valid: true, time, cluesSolved, score });
+		const { state, time, cluesSolved, score } = pendingSubmissions[submissionToken];
+		delete pendingSubmissions[submissionToken];
+
+		const result = await handleSOTDWin(userId, state, { time, cluesSolved, score }, client);
+
+		res.json({ success: true, time, cluesSolved, score, isNewUser: result?.isNewUser || false });
 	});
 
 	return router;
 }
 
-async function handleSOTDWin(userId, state, { time, cluesSolved, score }) {
-	const currentUser = await userService.getUser(userId);
-	if (!currentUser) return;
+async function handleSOTDWin(userId, state, { time, cluesSolved, score }, client) {
+	let currentUser = await userService.getUser(userId);
+	let isNewUser = false;
+
+	// Auto-register user if they don't exist yet (e.g. a guest who just logged in).
+	if (!currentUser) {
+		try {
+			const discordUser = await resolveUser(client, userId);
+			if (!discordUser) return;
+
+			await userService.insertUser({
+				id: discordUser.id,
+				username: discordUser.username,
+				globalName: discordUser.globalName,
+				warned: 0,
+				warns: 0,
+				allTimeWarns: 0,
+				totalRequests: 0,
+				avatarUrl: discordUser.displayAvatarURL({ dynamic: true, size: 256 }),
+				isAkhy: 0,
+			});
+
+			// Give welcome bonus coins like the dashboard registration
+			await userService.updateUserCoins(userId, 5000);
+			await logService.insertLog({
+				id: `${userId}-welcome-${Date.now()}`,
+				userId: userId,
+				action: "WELCOME_BONUS",
+				targetUserId: null,
+				coinsAmount: 5000,
+				userNewAmount: 5000,
+			});
+
+			currentUser = await userService.getUser(userId);
+			if (!currentUser) return;
+
+			isNewUser = true;
+			console.log(
+				`Auto-registered user ${discordUser.username} (${discordUser.id}) via mots fléchés win with welcome bonus`,
+			);
+		} catch (e) {
+			console.error("Failed to auto-register user during mots fléchés win:", e);
+			return;
+		}
+	}
 
 	const existing = await motsFlechesService.getUserStatForOTD(state.otdId, userId);
 
@@ -256,4 +369,6 @@ async function handleSOTDWin(userId, state, { time, cluesSolved, score }) {
 			`Mots Fléchés OTD: ${currentUser.globalName || currentUser.username} → ${cluesSolved} mots, ${time}ms, score=${score}.`,
 		);
 	}
+
+	return { isNewUser };
 }
