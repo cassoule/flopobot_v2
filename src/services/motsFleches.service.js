@@ -1,7 +1,11 @@
 import prisma from "../prisma/client.js";
 
-function todayUTC() {
-	return new Date().toISOString().slice(0, 10);
+export function todayLocal() {
+	const now = new Date();
+	const yyyy = now.getFullYear();
+	const mm = String(now.getMonth() + 1).padStart(2, "0");
+	const dd = String(now.getDate()).padStart(2, "0");
+	return `${yyyy}-${mm}-${dd}`;
 }
 
 export async function getMotsFlechesOTDByDate(date) {
@@ -9,7 +13,7 @@ export async function getMotsFlechesOTDByDate(date) {
 }
 
 export async function getTodaysMotsFlechesOTD() {
-	return getMotsFlechesOTDByDate(todayUTC());
+	return getMotsFlechesOTDByDate(todayLocal());
 }
 
 export async function getMotsFlechesOTDById(id) {
