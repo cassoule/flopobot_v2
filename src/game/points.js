@@ -314,7 +314,7 @@ export async function initTodaysSudokuOTD() {
 
 /**
  * Initializes a Mots Fléchés of the Day grid.
- * Archive-based (no clobber): inserts a new row per UTC date.
+ * Archive-based (no clobber): inserts a new row per local calendar date.
  *
  * @param {string|null} [dateArg] Optional `YYYY-MM-DD` date to generate the grid for.
  *   - Omitted (daily rollover): generates today's grid, seeds from the current
@@ -327,7 +327,11 @@ export async function initTodaysSudokuOTD() {
 export async function initTodaysMotsFlechesOTD(dateArg = null) {
 	const nowIso = new Date().toISOString();
 	const isManualDate = !!dateArg;
-	const dateStr = isManualDate ? dateArg : nowIso.slice(0, 10);
+	// Use the local calendar date so generation matches the read side
+	// (getTodaysMotsFlechesOTD -> todayLocal). The cron fires at local midnight,
+	// where the UTC date can still be the previous day.
+	const todayStr = motsFlechesService.todayLocal();
+	const dateStr = isManualDate ? dateArg : todayStr;
 	// Daily rollover seeds from the current timestamp; a manual backfill seeds
 	// deterministically from the target date so a given day always yields the same grid.
 	const seedString = isManualDate ? `${dateArg}T00:00:00.000Z` : nowIso;
@@ -415,7 +419,7 @@ export async function initTodaysMotsFlechesOTD(dateArg = null) {
 		});
 
 		// Clear any live SOTD sessions only when (re)generating the current day's grid.
-		if (dateStr === nowIso.slice(0, 10)) {
+		if (dateStr === todayStr) {
 			for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
 				if (gameData.isSOTD) {
 					delete activeMotsFlechesGames[userId];
