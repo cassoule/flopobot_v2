@@ -1,11 +1,8 @@
 import prisma from "../prisma/client.js";
 
 export function todayLocal() {
-	const now = new Date();
-	const yyyy = now.getFullYear();
-	const mm = String(now.getMonth() + 1).padStart(2, "0");
-	const dd = String(now.getDate()).padStart(2, "0");
-	return `${yyyy}-${mm}-${dd}`;
+	// en-CA formats as YYYY-MM-DD.
+	return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
 }
 
 export async function getMotsFlechesOTDByDate(date) {

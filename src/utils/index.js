@@ -71,37 +71,6 @@ export async function getAkhys(client) {
 		console.log(
 			`[Sync] Found and synced ${usersToInsert.length} ${diff !== 0 ? "(" + (diff > 0 ? "+" + diff : diff) + ") " : ""}users with the 'Akhy' role. (ID:${process.env.AKHY_ROLE_ID})`,
 		);
-
-		// 2. Fetch Valorant Skins
-		// const [fetchedSkins, fetchedTiers] = await Promise.all([getValorantSkins(), getSkinTiers()]);
-
-		// // Clear and rebuild the in-memory skin cache
-		// skins.length = 0;
-		// fetchedSkins.forEach((skin) => skins.push(skin));
-
-		// const skinsToInsert = fetchedSkins
-		// 	.filter((skin) => skin.contentTierUuid)
-		// 	.map((skin) => {
-		// 		const tier = fetchedTiers.find((t) => t.uuid === skin.contentTierUuid) || {};
-		// 		const basePrice = calculateBasePrice(skin, tier.rank);
-		// 		return {
-		// 			uuid: skin.uuid,
-		// 			displayName: skin.displayName,
-		// 			contentTierUuid: skin.contentTierUuid,
-		// 			displayIcon: skin.displayIcon,
-		// 			userId: null,
-		// 			tierRank: tier.rank != null ? String(tier.rank) : null,
-		// 			tierColor: tier.highlightColor?.slice(0, 6) || "F2F3F3",
-		// 			tierText: formatTierText(tier.rank, skin.displayName),
-		// 			basePrice: basePrice.toFixed(0),
-		// 			maxPrice: parseInt(calculateMaxPrice(basePrice, skin).toFixed(0)),
-		// 		};
-		// 	});
-
-		// if (skinsToInsert.length > 0) {
-		// 	await skinService.insertManySkins(skinsToInsert);
-		// }
-		// console.log(`[Sync] Fetched and synced ${skinsToInsert.length} Valorant skins.`);
 	} catch (err) {
 		console.error("Error during initial data sync (getAkhys):", err);
 	}
@@ -307,50 +276,54 @@ export function setupCronJobs(client, io) {
 		if (cleanedCount > 0) console.log(`[Cron] Cleaned up ${cleanedCount} expired predictions.`);
 	});
 
-	// Daily at midnight: Reset daily rewards and init SOTD
-	cron.schedule(process.env.CRON_EXPR, async () => {
-		console.log("[Cron] Running daily midnight tasks...");
-		try {
-			await userService.resetDailyReward();
-			console.log("[Cron] Daily rewards have been reset for all users.");
-			//if (!getSOTD.get()) {
-			initTodaysSOTD();
-			initTodaysSudokuOTD();
-			initTodaysMotsFlechesOTD();
-			//}
-		} catch (e) {
-			console.error("[Cron] Error during daily reset:", e);
-		}
-		try {
-			const offers = await marketService.getMarketOffers();
-			const now = Date.now();
-			const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
-			for (const offer of offers) {
-				if (now >= offer.closingAt + TWO_DAYS) {
-					const offerBids = await marketService.getOfferBids(offer.id);
-					for (const bid of offerBids) {
-						await marketService.deleteBid(bid.id);
-					}
-					await marketService.deleteMarketOffer(offer.id);
-					console.log(`[Cron] Deleted expired market offer ID: ${offer.id}`);
-				}
+	// Daily at midnight (Europe/Paris): Reset daily rewards and init SOTD
+	cron.schedule(
+		process.env.CRON_EXPR,
+		async () => {
+			console.log("[Cron] Running daily midnight tasks...");
+			try {
+				await userService.resetDailyReward();
+				console.log("[Cron] Daily rewards have been reset for all users.");
+				//if (!getSOTD.get()) {
+				initTodaysSOTD();
+				initTodaysSudokuOTD();
+				initTodaysMotsFlechesOTD();
+				//}
+			} catch (e) {
+				console.error("[Cron] Error during daily reset:", e);
 			}
-		} catch (e) {
-			console.error("[Cron] Error during Market Offers clean up:", e);
-		}
-		try {
-			const pruned = await csPriceService.pruneOldSnapshots(30);
-			if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS price snapshots older than 30 days.`);
-		} catch (e) {
-			console.error("[Cron] Error pruning CS price snapshots:", e);
-		}
-		try {
-			const pruned = await csSkinService.pruneOldSkinPriceHistory(30);
-			if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS skin price history entries older than 30 days.`);
-		} catch (e) {
-			console.error("[Cron] Error pruning CS skin price history:", e);
-		}
-	});
+			try {
+				const offers = await marketService.getMarketOffers();
+				const now = Date.now();
+				const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
+				for (const offer of offers) {
+					if (now >= offer.closingAt + TWO_DAYS) {
+						const offerBids = await marketService.getOfferBids(offer.id);
+						for (const bid of offerBids) {
+							await marketService.deleteBid(bid.id);
+						}
+						await marketService.deleteMarketOffer(offer.id);
+						console.log(`[Cron] Deleted expired market offer ID: ${offer.id}`);
+					}
+				}
+			} catch (e) {
+				console.error("[Cron] Error during Market Offers clean up:", e);
+			}
+			try {
+				const pruned = await csPriceService.pruneOldSnapshots(30);
+				if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS price snapshots older than 30 days.`);
+			} catch (e) {
+				console.error("[Cron] Error pruning CS price snapshots:", e);
+			}
+			try {
+				const pruned = await csSkinService.pruneOldSkinPriceHistory(30);
+				if (pruned > 0) console.log(`[Cron] Pruned ${pruned} CS skin price history entries older than 30 days.`);
+			} catch (e) {
+				console.error("[Cron] Error pruning CS skin price history:", e);
+			}
+		},
+		{ timezone: "Europe/Paris" },
+	);
 
 	// Daily at 7 AM: Re-sync users and skins
 	cron.schedule("0 7 * * *", async () => {
