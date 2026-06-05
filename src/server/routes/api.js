@@ -10,6 +10,7 @@ import * as logService from "../../services/log.service.js";
 import * as transactionService from "../../services/transaction.service.js";
 import * as marketService from "../../services/market.service.js";
 import * as csSkinService from "../../services/csSkin.service.js";
+import * as patchNoteService from "../../services/patchNote.service.js";
 
 // --- Game State Imports ---
 import { activePolls, activePredis, activeSlowmodes, skins, activeSnakeGames } from "../../game/state.js";
@@ -63,6 +64,16 @@ export function apiRoutes(client, io) {
 		} catch (error) {
 			console.error("Error fetching akhys:", error);
 			res.status(500).json({ error: "Failed to fetch akhys" });
+		}
+	});
+
+	router.get("/devs", async (req, res) => {
+		try {
+			const devIds = await userService.getDevs();
+			res.json({ devIds });
+		} catch (error) {
+			console.error("Error fetching devs:", error);
+			res.status(500).json({ error: "Failed to fetch devs" });
 		}
 	});
 
@@ -543,8 +554,172 @@ export function apiRoutes(client, io) {
 		}
 	});
 
+	// --- Admin Routes ---
+	router.get("/admin/check", requireAuth, async (req, res) => {
+		try {
+			const user = await userService.getUser(req.userId);
+			res.json({ isAdmin: user?.isAdmin === 1 });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to check admin status." });
+		}
+	});
+
+	router.get("/admin/users", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const users = await userService.getAllUsers();
+			res.json({ users });
+		} catch (e) {
+			res.status(500).json({ error: "Failed to fetch users." });
+		}
+	});
+
+	// --- Admin Patch Notes Routes ---
+
+	// GET /admin/patch-notes - Get all patch notes (admin only)
+	router.get("/admin/patch-notes", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const patchNotes = await patchNoteService.getAllPatchNotes();
+			res.json({ patchNotes });
+		} catch (e) {
+			console.error("Error fetching patch notes:", e);
+			res.status(500).json({ error: "Failed to fetch patch notes." });
+		}
+	});
+
+	// POST /admin/patch-notes - Create a new patch note
+	router.post("/admin/patch-notes", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const { title, version, content, published } = req.body;
+			if (!title || !content) {
+				return res.status(400).json({ error: "Title and content are required." });
+			}
+			const patchNote = await patchNoteService.createPatchNote({
+				title,
+				version: version || null,
+				content,
+				authorId: req.userId,
+				published: published ?? false,
+			});
+			res.status(201).json({ patchNote });
+		} catch (e) {
+			console.error("Error creating patch note:", e);
+			res.status(500).json({ error: "Failed to create patch note." });
+		}
+	});
+
+	// PUT /admin/patch-notes/:id - Update a patch note
+	router.put("/admin/patch-notes/:id", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const { title, version, content, published } = req.body;
+			const patchNote = await patchNoteService.updatePatchNote(req.params.id, {
+				title,
+				version,
+				content,
+				published,
+			});
+			res.json({ patchNote });
+		} catch (e) {
+			console.error("Error updating patch note:", e);
+			res.status(500).json({ error: "Failed to update patch note." });
+		}
+	});
+
+	// DELETE /admin/patch-notes/:id - Delete a patch note
+	router.delete("/admin/patch-notes/:id", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			await patchNoteService.deletePatchNote(req.params.id);
+			res.json({ success: true });
+		} catch (e) {
+			console.error("Error deleting patch note:", e);
+			res.status(500).json({ error: "Failed to delete patch note." });
+		}
+	});
+
+	// PUT /admin/users/:id - Update a user (admin only)
+	router.put("/admin/users/:id", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const { coins, warns, isAkhy, isAdmin, isDev } = req.body;
+			const updateData = { id: req.params.id };
+			if (coins !== undefined) updateData.coins = parseInt(coins);
+			if (warns !== undefined) updateData.warns = parseInt(warns);
+			if (isAkhy !== undefined) updateData.isAkhy = isAkhy ? 1 : 0;
+			if (isAdmin !== undefined) updateData.isAdmin = isAdmin ? 1 : 0;
+			if (isDev !== undefined) updateData.isDev = isDev ? 1 : 0;
+
+			const updatedUser = await userService.updateUser(updateData);
+
+			await socketEmit("data-updated", { table: "users", action: "update", userId: req.params.id, newCoins: updatedUser.coins });
+
+			res.json({ user: updatedUser });
+		} catch (e) {
+			console.error("Error updating user:", e);
+			res.status(500).json({ error: "Failed to update user." });
+		}
+	});
+
+	// DELETE /admin/users/:id - Delete a user (admin only)
+	router.delete("/admin/users/:id", requireAuth, async (req, res) => {
+		try {
+			const requester = await userService.getUser(req.userId);
+			if (!requester || requester.isAdmin !== 1) {
+				return res.status(403).json({ error: "Access denied." });
+			}
+			const user = await userService.getUser(req.params.id);
+			if (!user) {
+				return res.status(404).json({ error: "User not found." });
+			}
+			if (user.isAdmin === 1) {
+				return res.status(403).json({ error: "Cannot delete an admin user." });
+			}
+			await userService.deleteUser(req.params.id);
+			res.json({ success: true });
+		} catch (e) {
+			console.error("Error deleting user:", e);
+			res.status(500).json({ error: "Failed to delete user." });
+		}
+	});
+
+	// --- Public Patch Notes Route ---
+
+
+	// GET /patch-notes - Get published patch notes (public)
+	router.get("/patch-notes", async (req, res) => {
+		try {
+			const patchNotes = await patchNoteService.getPublishedPatchNotes();
+			res.json({ patchNotes });
+		} catch (e) {
+			console.error("Error fetching patch notes:", e);
+			res.status(500).json({ error: "Failed to fetch patch notes." });
+		}
+	});
+
 	// --- User-Specific Routes ---
 	router.get("/user/:id", async (req, res) => {
+
 		try {
 			const user = await userService.getUser(req.params.id);
 			res.json({ user });
