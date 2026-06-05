@@ -148,7 +148,7 @@ export function motsFlechesRoutes(client, io) {
 			return res.status(400).json({ error: "Missing date." });
 		}
 
-		const today = new Date().toISOString().slice(0, 10);
+		const today = motsFlechesService.todayLocal();
 		if (date >= today) {
 			return res.status(400).json({ error: "Use /start/sotd for the current day." });
 		}

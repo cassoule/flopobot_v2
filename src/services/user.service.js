@@ -2,7 +2,7 @@ import prisma from "../prisma/client.js";
 import { socketEmit } from "../server/socket.js";
 import { getAllSOTDStats } from "./solitaire.service.js";
 import { getAllSudokuOTDStats } from "./sudoku.service.js";
-import { getAllStatsForOTD } from "./motsFleches.service.js";
+import { getAllStatsForOTD, getTodaysMotsFlechesOTD } from "./motsFleches.service.js";
 import { getUserGames } from "./game.service.js";
 
 export async function getUser(id) {
@@ -12,7 +12,8 @@ export async function getUser(id) {
 	});
 	const solitaireOTDRankings = await getAllSOTDStats();
 	const sudokuOTDRankings = await getAllSudokuOTDStats();
-	const motsFlechesOTDRankings = await getAllStatsForOTD();
+	const todaysMotsFleches = await getTodaysMotsFlechesOTD();
+	const motsFlechesOTDRankings = todaysMotsFleches ? await getAllStatsForOTD(todaysMotsFleches.id) : [];
 	const games = await getUserGames(id);
 	const wins = games.filter(
 		(g) => (g.p1 === id && g.p1Score > g.p2Score) || (g.p2 === id && g.p2Score > g.p1Score),
