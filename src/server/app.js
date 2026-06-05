@@ -61,6 +61,7 @@ app.get("/api/check", (req, res) => {
 			error: "maintenance",
 			message: "L'API est en maintenance.",
 			estimatedEnd: maintenance.scheduledEnd || null,
+			adminAccessible: true,
 		});
 	}
 	if (maintenance.scheduledStart) {
@@ -77,6 +78,10 @@ app.get("/api/check", (req, res) => {
 
 // --- MAINTENANCE MODE MIDDLEWARE ---
 app.use("/api", (req, res, next) => {
+	// Allow admin routes during maintenance
+	if (req.path.startsWith("/admin")) {
+		return next();
+	}
 	if (maintenance.active) {
 		return res.status(503).json({
 			error: "maintenance",

@@ -19,7 +19,8 @@ model User {
   dailyQueried  Int    @default(0)
   avatarUrl     String?
   isAkhy        Int    @default(0)
-
+  isAdmin       Int    @default(0)
+  isDev         Int    @default(0)
   elo           Elo?
   skins         Skin[]
   csSkins       CsSkin[]      @relation("CsSkins")
@@ -35,6 +36,7 @@ model User {
   sudokuStats   SudokuStat[]
   motsFlechesStats MotsFlechesStat[]
   transactions  Transaction[]
+  patchNotes    PatchNote[]
 
   @@map("users")
 }
@@ -310,4 +312,18 @@ model Transaction {
   user User @relation(fields: [userId], references: [id])
 
   @@map("transactions")
+}
+
+model PatchNote {
+  id        String   @id @default(uuid())
+  title     String
+  version   String?
+  content   String
+  authorId  String   @map("author_id")
+  published Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  author    User             @relation(fields: [authorId], references: [id])
+
+  @@map("patch_notes")
 }

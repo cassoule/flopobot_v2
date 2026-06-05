@@ -51,6 +51,22 @@ export async function getAllAkhys() {
 	return users.map((u) => ({ ...u, elo: u.elo?.elo ?? null }));
 }
 
+export async function getDevs() {
+	const devs = await prisma.user.findMany({
+		where: { isDev: 1 },
+		select: { id: true },
+	});
+	return devs.map((d) => d.id);
+}
+
+export async function getAdmins() {
+	const admins = await prisma.user.findMany({
+		where: { isAdmin: 1 },
+		select: { id: true },
+	});
+	return admins.map((a) => a.id);
+}
+
 export async function insertUser(data) {
 	return prisma.user.create({ data });
 }
@@ -96,6 +112,15 @@ export async function updateManyUsers(users) {
 			return prisma.user.update({ where: { id }, data });
 		}),
 	);
+}
+
+/**
+ * Delete a user by ID (cascades to related data via Prisma schema relations).
+ */
+export async function deleteUser(id) {
+	return prisma.user.delete({
+		where: { id },
+	});
 }
 
 // --- Featured Skins ---
