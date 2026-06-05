@@ -708,6 +708,7 @@ export function deactivateMaintenance() {
 		clearTimeout(maintenance.endTimer);
 		maintenance.endTimer = null;
 	}
+	io.emit("maintenance-update", { active: false, estimatedEnd: null });
 	io.emit("maintenance-scheduled", null);
 }
 

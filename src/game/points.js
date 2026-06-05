@@ -16,7 +16,7 @@ import {
 import { createDeck, createSeededRNG, deal, seededShuffle } from "./solitaire.js";
 import { generatePuzzle } from "./sudoku.js";
 import { emitSolitaireUpdate, emitSudokuUpdate, emitMotsFlechesUpdate } from "../server/socket.js";
-import { generateWithDefinitions, getAllWords } from "mots-fleches";
+import { generateMotsFlechesGrid } from "./motsFlechesGen.js";
 import { clearAllSOTDGames } from "../server/routes/sudoku.js";
 
 /**
@@ -142,10 +142,6 @@ export async function randomSkinPrice() {
 	return result.toFixed(0);
 }
 
-/**
- * Initializes the Solitaire of the Day.
- * This function clears previous stats, awards the winner, and generates a new daily seed.
- */
 export async function initTodaysSOTD() {
 	console.log(`Initializing new Solitaire of the Day...`);
 
@@ -255,10 +251,6 @@ export async function initTodaysSOTD() {
 	}
 }
 
-/**
- * Initializes the Sudoku of the Day.
- * Awards previous day's winners and generates a new daily puzzle.
- */
 export async function initTodaysSudokuOTD() {
 	console.log(`Initializing new Sudoku of the Day...`);
 
@@ -312,24 +304,11 @@ export async function initTodaysSudokuOTD() {
 	}
 }
 
-/**
- * Initializes a Mots Fléchés of the Day grid.
- * Archive-based (no clobber): inserts a new row per UTC date.
- *
- * @param {string|null} [dateArg] Optional `YYYY-MM-DD` date to generate the grid for.
- *   - Omitted (daily rollover): generates today's grid, seeds from the current
- *     timestamp, awards the previous day's top 3, and clears any live SOTD sessions.
- *   - Provided (manual backfill): generates only that date's grid, seeded
- *     deterministically from the date, with no reward payout. Live sessions are
- *     only cleared when the target date is the current day.
- * @returns {Promise<{date: string, skipped?: boolean, error?: boolean, id?: number, wordCount?: number}>}
- */
 export async function initTodaysMotsFlechesOTD(dateArg = null) {
 	const nowIso = new Date().toISOString();
 	const isManualDate = !!dateArg;
-	const dateStr = isManualDate ? dateArg : nowIso.slice(0, 10);
-	// Daily rollover seeds from the current timestamp; a manual backfill seeds
-	// deterministically from the target date so a given day always yields the same grid.
+	const todayStr = motsFlechesService.todayLocal();
+	const dateStr = isManualDate ? dateArg : todayStr;
 	const seedString = isManualDate ? `${dateArg}T00:00:00.000Z` : nowIso;
 
 	console.log(`Initializing new Mots Fléchés OTD for ${dateStr}...`);
@@ -340,8 +319,6 @@ export async function initTodaysMotsFlechesOTD(dateArg = null) {
 		return { date: dateStr, skipped: true };
 	}
 
-	// Only award the previous day's winners on the real daily rollover.
-	// A manual backfill for a specific date must not trigger any payout.
 	if (!isManualDate) {
 		try {
 			const latestPast = await (async () => {
@@ -382,17 +359,7 @@ export async function initTodaysMotsFlechesOTD(dateArg = null) {
 		}
 	}
 
-	const words = getAllWords();
-	let result = null;
-	for (let attempt = 1; attempt <= 3; attempt++) {
-		try {
-			result = await generateWithDefinitions(words, 9, 11, { seedString });
-			if (result) break;
-		} catch (e) {
-			console.error(`[MotsFleches] gen attempt ${attempt} failed:`, e?.message || e);
-		}
-		if (attempt < 3) await new Promise((r) => setTimeout(r, 2000 * attempt));
-	}
+	const result = await generateMotsFlechesGrid({ rows: 9, cols: 11, seedString });
 
 	if (!result) {
 		console.error(`[MotsFleches] generation failed after 3 attempts — no grid for ${dateStr}.`);
@@ -414,8 +381,7 @@ export async function initTodaysMotsFlechesOTD(dateArg = null) {
 			generationMs: Math.round(result.generationTimeMs ?? 0),
 		});
 
-		// Clear any live SOTD sessions only when (re)generating the current day's grid.
-		if (dateStr === nowIso.slice(0, 10)) {
+		if (dateStr === todayStr) {
 			for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
 				if (gameData.isSOTD) {
 					delete activeMotsFlechesGames[userId];

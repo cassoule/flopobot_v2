@@ -1,7 +1,8 @@
 import prisma from "../prisma/client.js";
 
-function todayUTC() {
-	return new Date().toISOString().slice(0, 10);
+export function todayLocal() {
+	// en-CA formats as YYYY-MM-DD.
+	return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
 }
 
 export async function getMotsFlechesOTDByDate(date) {
@@ -9,7 +10,7 @@ export async function getMotsFlechesOTDByDate(date) {
 }
 
 export async function getTodaysMotsFlechesOTD() {
-	return getMotsFlechesOTDByDate(todayUTC());
+	return getMotsFlechesOTDByDate(todayLocal());
 }
 
 export async function getMotsFlechesOTDById(id) {

@@ -3,7 +3,7 @@ import { generatePuzzle, validateSolution } from "../../game/sudoku.js";
 import * as userService from "../../services/user.service.js";
 import * as logService from "../../services/log.service.js";
 import * as sudokuService from "../../services/sudoku.service.js";
-import { socketEmit } from "../socket.js";
+import { socketEmit, emitSudokuUpdate } from "../socket.js";
 import { requireAuth, optionalAuth } from "../middleware/auth.js";
 import { resolveUser } from "../../utils/index.js";
 import { randomUUID } from "crypto";
