@@ -209,7 +209,6 @@ export function motsFlechesRoutes(client, io) {
 			state.revealed[key] = true;
 			return res.json({ success: true, r, c, letter, free: true });
 		}
-.
 		if (!userId) {
 			return res.status(401).json({ error: "Connecte-toi pour utiliser un indice sur la grille du jour." });
 		}
