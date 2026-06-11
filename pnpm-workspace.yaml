@@ -1,5 +1,5 @@
 allowBuilds:
-  '@google/genai': true
+  "@google/genai": true
   "@prisma/engines": true
   better-sqlite3: true
   prisma: true

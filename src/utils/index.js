@@ -287,7 +287,7 @@ export function setupCronJobs(client, io) {
 				//if (!getSOTD.get()) {
 				initTodaysSOTD();
 				initTodaysSudokuOTD();
-				initTodaysMotsFlechesOTD();
+				initTodaysMotsFlechesOTD(null, { persistentRetry: true });
 				//}
 			} catch (e) {
 				console.error("[Cron] Error during daily reset:", e);
