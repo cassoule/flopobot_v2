@@ -672,7 +672,12 @@ export function apiRoutes(client, io) {
 
 			const updatedUser = await userService.updateUser(updateData);
 
-			await socketEmit("data-updated", { table: "users", action: "update", userId: req.params.id, newCoins: updatedUser.coins });
+			await socketEmit("data-updated", {
+				table: "users",
+				action: "update",
+				userId: req.params.id,
+				newCoins: updatedUser.coins,
+			});
 
 			res.json({ user: updatedUser });
 		} catch (e) {
@@ -705,7 +710,6 @@ export function apiRoutes(client, io) {
 
 	// --- Public Patch Notes Route ---
 
-
 	// GET /patch-notes - Get published patch notes (public)
 	router.get("/patch-notes", async (req, res) => {
 		try {
@@ -719,7 +723,6 @@ export function apiRoutes(client, io) {
 
 	// --- User-Specific Routes ---
 	router.get("/user/:id", async (req, res) => {
-
 		try {
 			const user = await userService.getUser(req.params.id);
 			res.json({ user });

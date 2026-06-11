@@ -304,7 +304,7 @@ export async function initTodaysSudokuOTD() {
 	}
 }
 
-export async function initTodaysMotsFlechesOTD(dateArg = null) {
+export async function initTodaysMotsFlechesOTD(dateArg = null, { persistentRetry = false } = {}) {
 	const nowIso = new Date().toISOString();
 	const isManualDate = !!dateArg;
 	const todayStr = motsFlechesService.todayLocal();
@@ -359,43 +359,60 @@ export async function initTodaysMotsFlechesOTD(dateArg = null) {
 		}
 	}
 
-	const result = await generateMotsFlechesGrid({ rows: 9, cols: 11, seedString });
+	const MAX_ATTEMPTS = persistentRetry ? Number(process.env.MOTSFLECHES_OTD_MAX_ATTEMPTS) || 90 : 1;
+	const RETRY_DELAY_MS = Number(process.env.MOTSFLECHES_OTD_RETRY_MS) || 60_000;
 
-	if (!result) {
-		console.error(`[MotsFleches] generation failed after 3 attempts — no grid for ${dateStr}.`);
-		return { date: dateStr, error: true };
-	}
+	for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+		const concurrent = await motsFlechesService.getMotsFlechesOTDByDate(dateStr);
+		if (concurrent) {
+			console.log(`Mots Fléchés OTD for ${dateStr} was created elsewhere, stopping retries.`);
+			return { date: dateStr, skipped: true };
+		}
 
-	try {
-		const defCellsObj = Object.fromEntries(result.defCells);
-		const inserted = await motsFlechesService.insertMotsFlechesOTD({
-			date: dateStr,
-			rows: result.grid.length,
-			cols: result.grid[0]?.length || 0,
-			grid: JSON.stringify(result.grid),
-			slots: JSON.stringify(result.slots),
-			defCells: JSON.stringify(defCellsObj),
-			definitions: JSON.stringify(result.definitions || {}),
-			wordCount: result.wordCount,
-			seedString: result.seedString || null,
-			generationMs: Math.round(result.generationTimeMs ?? 0),
-		});
+		const result = await generateMotsFlechesGrid({ rows: 9, cols: 11, seedString });
 
-		if (dateStr === todayStr) {
-			for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
-				if (gameData.isSOTD) {
-					delete activeMotsFlechesGames[userId];
-					emitMotsFlechesUpdate(userId);
+		if (result) {
+			try {
+				const defCellsObj = Object.fromEntries(result.defCells);
+				const inserted = await motsFlechesService.insertMotsFlechesOTD({
+					date: dateStr,
+					rows: result.grid.length,
+					cols: result.grid[0]?.length || 0,
+					grid: JSON.stringify(result.grid),
+					slots: JSON.stringify(result.slots),
+					defCells: JSON.stringify(defCellsObj),
+					definitions: JSON.stringify(result.definitions || {}),
+					wordCount: result.wordCount,
+					seedString: result.seedString || null,
+					generationMs: Math.round(result.generationTimeMs ?? 0),
+				});
+
+				if (dateStr === todayStr) {
+					for (const [userId, gameData] of Object.entries(activeMotsFlechesGames)) {
+						if (gameData.isSOTD) {
+							delete activeMotsFlechesGames[userId];
+							emitMotsFlechesUpdate(userId);
+						}
+					}
 				}
+
+				console.log(
+					`Mots Fléchés OTD for ${dateStr} is ready (id=${inserted.id}, ${result.wordCount} mots, gen=${result.generationTimeMs}ms, attempt ${attempt}).`,
+				);
+				return { date: dateStr, id: inserted.id, wordCount: result.wordCount };
+			} catch (e) {
+				console.error(`Error saving new Mots Fléchés OTD (attempt ${attempt}/${MAX_ATTEMPTS}):`, e);
 			}
 		}
 
-		console.log(
-			`Mots Fléchés OTD for ${dateStr} is ready (id=${inserted.id}, ${result.wordCount} mots, gen=${result.generationTimeMs}ms).`,
-		);
-		return { date: dateStr, id: inserted.id, wordCount: result.wordCount };
-	} catch (e) {
-		console.error(`Error saving new Mots Fléchés OTD:`, e);
-		return { date: dateStr, error: true };
+		if (attempt < MAX_ATTEMPTS) {
+			console.warn(
+				`[MotsFleches] OTD for ${dateStr} not ready (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS / 1000}s...`,
+			);
+			await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+		}
 	}
+
+	console.error(`[MotsFleches] generation failed after ${MAX_ATTEMPTS} attempts — no grid for ${dateStr}.`);
+	return { date: dateStr, error: true };
 }

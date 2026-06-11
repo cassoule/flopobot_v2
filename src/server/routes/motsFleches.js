@@ -56,9 +56,6 @@ function publicGameState(state) {
 	const cols = state.cols;
 	const blackMask = grid.map((row) => row.map((ch) => ch === "#"));
 
-	// Strip solution words from clues: resolve each clue's definition text
-	// server-side and drop both `word` and the word-keyed `definitions` dict
-	// so the client payload contains no answers.
 	const publicDefCells = {};
 	for (const [key, clues] of Object.entries(defCells || {})) {
 		publicDefCells[key] = (clues || []).map((clue) => ({
@@ -71,8 +68,14 @@ function publicGameState(state) {
 	return { ...safe, rows, cols, blackMask, defCells: publicDefCells };
 }
 
-function computeScore(time, cluesSolved) {
-	return Math.max(0, Math.round(cluesSolved * 1000 - Math.min(time / 1000, 600) * 5));
+const HINT_COST = 100;
+const HINT_SCORE_PENALTY = 500;
+const FAILED_ATTEMPT_SCORE_PENALTY = 1000;
+
+function computeScore(time, cluesSolved, hintsUsed = 0, failedAttempts = 0) {
+	const base = cluesSolved * 1000 - Math.min(time / 1000, 600) * 5;
+	const penalty = hintsUsed * HINT_SCORE_PENALTY + failedAttempts * FAILED_ATTEMPT_SCORE_PENALTY;
+	return Math.max(0, Math.round(base - penalty));
 }
 
 function validateGrid(filledGrid, solutionGrid, slots) {
@@ -128,6 +131,9 @@ export function motsFlechesRoutes(client, io) {
 			isDone: false,
 			startTime: Date.now(),
 			filledGrid: null,
+			hintsUsed: 0,
+			failedAttempts: 0,
+			revealed: {},
 		};
 
 		if (userId) {
@@ -164,6 +170,9 @@ export function motsFlechesRoutes(client, io) {
 			isDone: false,
 			startTime: Date.now(),
 			filledGrid: null,
+			hintsUsed: 0,
+			failedAttempts: 0,
+			revealed: {},
 		};
 
 		if (userId) {
@@ -175,6 +184,61 @@ export function motsFlechesRoutes(client, io) {
 			guestGames[gameId] = state;
 			res.json({ success: true, gameState: publicGameState(state), gameId });
 		}
+	});
+
+	router.post("/hint", optionalAuth, async (req, res) => {
+		const userId = req.userId;
+		const { gameId, r, c } = req.body || {};
+		const state = getActiveGame(userId, gameId);
+		if (!state) return res.status(404).json({ error: "No active game found." });
+		if (state.isDone) return res.status(400).json({ error: "Cette grille est déjà terminée." });
+
+		if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || r >= state.rows || c < 0 || c >= state.cols) {
+			return res.status(400).json({ error: "Case invalide." });
+		}
+
+		const solution = state.grid[r]?.[c];
+		if (!solution || solution === "#" || solution === ".") {
+			return res.status(400).json({ error: "Cette case ne contient pas de lettre." });
+		}
+
+		const key = `${r},${c}`;
+		const letter = solution.toUpperCase();
+
+		if (!state.isSOTD) {
+			state.revealed[key] = true;
+			return res.json({ success: true, r, c, letter, free: true });
+		}
+.
+		if (!userId) {
+			return res.status(401).json({ error: "Connecte-toi pour utiliser un indice sur la grille du jour." });
+		}
+
+		if (state.revealed[key]) {
+			return res.json({ success: true, r, c, letter, free: true, hintsUsed: state.hintsUsed });
+		}
+
+		const user = await userService.getUser(userId);
+		if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
+		if ((user.coins ?? 0) < HINT_COST) {
+			return res.status(400).json({ error: "Pas assez de FlopoCoins pour un indice.", coins: user.coins ?? 0 });
+		}
+
+		const newCoins = user.coins - HINT_COST;
+		await userService.updateUserCoins(userId, newCoins);
+		await logService.insertLog({
+			id: `${userId}-motsfleches-otd-hint-${Date.now()}`,
+			userId,
+			action: "MOTSFLECHES_OTD_HINT",
+			targetUserId: null,
+			coinsAmount: -HINT_COST,
+			userNewAmount: newCoins,
+		});
+
+		state.revealed[key] = true;
+		state.hintsUsed = (state.hintsUsed || 0) + 1;
+
+		res.json({ success: true, r, c, letter, cost: HINT_COST, coins: newCoins, hintsUsed: state.hintsUsed });
 	});
 
 	router.get("/archive", optionalAuth, async (req, res) => {
@@ -244,30 +308,28 @@ export function motsFlechesRoutes(client, io) {
 			return res.status(400).json({ error: "Invalid grid shape." });
 		}
 
-		const time = Date.now() - state.startTime;
-		const score = valid ? computeScore(time, cluesSolved) : null;
-
 		if (!valid) {
-			return res.json({ success: true, valid: false, errors, cluesSolved });
+			state.failedAttempts = (state.failedAttempts || 0) + 1;
+			return res.json({ success: true, valid: false, errors, cluesSolved, failedAttempts: state.failedAttempts });
 		}
+
+		const time = Date.now() - state.startTime;
+		const score = computeScore(time, cluesSolved, state.hintsUsed || 0, state.failedAttempts || 0);
 
 		state.isDone = true;
 
 		if (userId) {
-			// Logged-in player: award rewards immediately.
 			if (state.isSOTD) {
 				await handleSOTDWin(userId, state, { time, cluesSolved, score }, client);
 			}
 			deleteActiveGame(userId, gameId);
 			res.json({ success: true, valid: true, time, cluesSolved, score });
 		} else if (state.isSOTD) {
-			// Guest SOTD win: keep it pending until the player logs in and claims it.
 			const submissionToken = randomUUID();
 			pendingSubmissions[submissionToken] = { state, time, cluesSolved, score };
 			deleteActiveGame(null, gameId);
 			res.json({ success: true, valid: true, time, cluesSolved, score, submissionToken });
 		} else {
-			// Guest archive win: nothing to save (archives have no rankings/rewards).
 			deleteActiveGame(null, gameId);
 			res.json({ success: true, valid: true, time, cluesSolved, score });
 		}
