@@ -108,7 +108,9 @@ export async function insertManyUsers(users) {
 export async function updateManyUsers(users) {
 	return prisma.$transaction(
 		users.map((user) => {
-			const { id, elo, ...data } = user;
+			// Strip relation/computed fields added by getUser() so they aren't
+			// forwarded to Prisma (which would reject them as unknown arguments).
+			const { id, elo, winRate, solitaireOTDRank, sudokuOTDRank, motsFlechesOTDRank, ...data } = user;
 			return prisma.user.update({ where: { id }, data });
 		}),
 	);
